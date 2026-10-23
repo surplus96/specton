@@ -17,4 +17,4 @@
 - 도메인 용어·상수는 `domain_packs/`에서 읽고 코드에 하드코딩하지 않는다.
 - `GENERATED` 표시가 있는 팩 파일은 직접 고치지 않는다. `term_specs.yaml` 등 입력을 고치고 `uv run python -m specton.packs.build`를 실행한다.
 - 실제 LLM 호출 테스트는 `@pytest.mark.llm`, DB 테스트는 `@pytest.mark.db`를 붙인다.
-- 설계 근거는 상위 `docs/`의 착수 문서와 ADR을 따른다.
+- 설계 근거는 `docs/`의 개발 문서와 `docs/adr/`의 결정 기록을 따른다.

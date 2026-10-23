@@ -1,7 +1,6 @@
 # 데이터 계약
 
-> 상태: **초안** (착수 문서 v0.1 기준, 계약 동결 전)
-> 원본: 상위 기획 폴더 `docs/개발착수_문서/05_데이터_계약_DB설계.md`
+> 상태: **초안** (계약 동결 전)
 > 변경 규칙: `specton/contracts/` 변경은 `contract-change` 라벨과 2인 승인 ([CONTRIBUTING](../CONTRIBUTING.md))
 
 ## 단계 간 모델

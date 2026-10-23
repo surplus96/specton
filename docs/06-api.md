@@ -1,7 +1,6 @@
 # API
 
-> 상태: **초안** (착수 문서 v0.1·OpenAPI 3.1.1 초안 기준, 구현 전)
-> 원본: 상위 기획 폴더 `docs/개발착수_문서/06_API_명세서.md`, `관리표/openapi.json`
+> 상태: **초안** (구현 전)
 
 Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비 업무 API와 다르다. 웹은 이 API만 호출한다.
 
@@ -27,7 +26,10 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 | `GET /runs/{id}/artifacts/{kind}` | `format`, `revision` | 200 파일 | 404, 409 미생성/다른 버전, 422 형식 불가 |
 | `GET /health` | — | 200 기동 상태 (구현됨) | — |
 
-OpenAPI 스키마: `Error`, `Interrupt`, `RunStatus`, `RunSummary`, `RunView`, `ResumeRequest`, `ExtractionResponse`, `RequirementsResponse`, `ReviewResponse`. 저장소에 둘 위치와 갱신 방법은 미정 (ADR-0009). FastAPI가 생성하는 `/openapi.json`과 초안을 대조해 맞춘다.
+계약 초안: [api/openapi.json](api/openapi.json) (OpenAPI 3.1.1). 스키마는 `Error`, `Interrupt`, `RunStatus`, `RunSummary`, `RunView`, `ResumeRequest`, `ExtractionResponse`, `RequirementsResponse`, `ReviewResponse`.
+
+- 초안은 계약 동결(ADR-0009) 때 확정한다. 바꿀 때는 이 문서와 같은 PR에서 고친다.
+- 구현 후에는 FastAPI가 생성하는 `/openapi.json`과 초안을 대조해 차이를 없앤다.
 
 ## 사용자 확인 응답 (`resume`)
 

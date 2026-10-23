@@ -24,9 +24,9 @@ patterns:
     name: status_transition_with_history
     when: Transactions move from draft to confirmed to cancelled and changes are kept (INV-007, INV-010, INV-014)
     suggests: { attribute: 거래상태코드, values: [draft, confirmed, cancelled], history_entity: true }
-    source: openmaint requirement A02
+    source: development set assumption A02
   - id: P-INV-06
     name: idempotent_request
     when: Repeated confirmation with the same request id applies only once (INV-013)
     suggests: { unique: [요청번호], store_result: true }
-    source: openmaint requirement A06
+    source: development set assumption A06

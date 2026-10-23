@@ -14,7 +14,7 @@ patterns:
     name: snapshot_on_generation
     when: Generated work must keep plan and check items as they were at generation (MNT-008, MNT-013)
     suggests: { copy_fields_into_child: true }
-    source: openmaint requirement A11
+    source: development set assumption A11
   - id: P-MNT-04
     name: request_to_work_orders
     when: One breakdown request is handled by one or more work orders (MNT-009, MNT-010)
@@ -29,12 +29,12 @@ patterns:
     name: effective_dated_membership
     when: Many-to-many membership with join and leave dates that must not overlap (MNT-004)
     suggests: { relationship: "N:M", attributes: [joined_on, left_on], rule: no_overlap }
-    source: openmaint requirement A09
+    source: development set assumption A09
   - id: P-MNT-07
     name: price_snapshot
     when: Rates and prices recorded on results must not change when master rates change (MNT-014, MNT-015)
     suggests: { store_applied_value: true }
-    source: openmaint requirement A13
+    source: development set assumption A13
   - id: P-MNT-08
     name: master_data_soft_delete
     when: Equipment with maintenance history is deactivated, not deleted (MNT-003)
