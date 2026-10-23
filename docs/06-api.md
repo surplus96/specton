@@ -1,7 +1,5 @@
 # API
 
-[![한국어](https://img.shields.io/badge/lang-%ED%95%9C%EA%B5%AD%EC%96%B4-1f6feb)](06-api.md) [![English](https://img.shields.io/badge/lang-English-lightgrey)](06-api.en.md)
-
 > 상태: **골격 (회의 전)** · 회의 결정 반영 후 작성한다.
 > 목적: 실행 제어 API의 엔드포인트와 오류 규칙.
 > 원본: 상위 기획 폴더 `docs/개발착수_문서/06_API_명세서.md`, `관리표/openapi.json`

@@ -1,7 +1,5 @@
 # 아키텍처
 
-[![한국어](https://img.shields.io/badge/lang-%ED%95%9C%EA%B5%AD%EC%96%B4-1f6feb)](03-architecture.md) [![English](https://img.shields.io/badge/lang-English-lightgrey)](03-architecture.en.md)
-
 > 상태: **골격 (회의 전)** · 회의 결정 반영 후 작성한다.
 > 목적: 구성 요소와 실행 흐름, 상태 전이를 정의한다.
 > 원본: 상위 기획 폴더 `docs/개발착수_문서/03_시스템_아키텍처.md`, `LLM_기능_설계.md`

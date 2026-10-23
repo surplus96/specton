@@ -1,7 +1,5 @@
 # 테스트·평가
 
-[![한국어](https://img.shields.io/badge/lang-%ED%95%9C%EA%B5%AD%EC%96%B4-1f6feb)](07-testing-eval.md) [![English](https://img.shields.io/badge/lang-English-lightgrey)](07-testing-eval.en.md)
-
 > 상태: **골격 (회의 전)** · 회의 결정 반영 후 작성한다.
 > 목적: 테스트 층위와 AI 평가 방법을 정의한다.
 > 원본: 상위 기획 폴더 `docs/개발착수_문서/09_테스트_평가계획.md`, `관리표/테스트_케이스.csv`
