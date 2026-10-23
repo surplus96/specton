@@ -1,0 +1,32 @@
+# 경로별 리뷰 담당자. PR이 해당 경로를 바꾸면 자동으로 리뷰어로 지정된다.
+# 역할 배정 후 @OWNER-Rn을 실제 GitHub 아이디로 바꾸고 주석을 해제한다.
+# 역할 정의: 상위 기획 폴더 docs/회의준비/06_역할_설명서.md
+#
+# *                         @OWNER-R1
+# specton/llm/              @OWNER-R1
+# specton/review/           @OWNER-R1 @OWNER-R4
+# specton/nodes/            @OWNER-R1
+# .github/                  @OWNER-R1
+# specton/ingest/           @OWNER-R2
+# specton/packs/            @OWNER-R2
+# domain_packs/             @OWNER-R2 @OWNER-R4
+# eval/                     @OWNER-R2
+# specton/contracts/        @OWNER-R3 @OWNER-R1
+# specton/api/              @OWNER-R3
+# specton/persistence/      @OWNER-R3
+# specton/codegen/          @OWNER-R4 @OWNER-R5
+# specton/validate/         @OWNER-R4
+# docker/                   @OWNER-R4
+# specton/export/           @OWNER-R3 @OWNER-R5
+# frontend/                 @OWNER-R5
+#
+# few-shot 예시: 에이전트 담당 + 팩 담당(R2)
+# domain_packs/*/examples/A01.yaml  @OWNER-R2
+# domain_packs/*/examples/A02.yaml  @OWNER-R3 @OWNER-R2
+# domain_packs/*/examples/A03.yaml  @OWNER-R4 @OWNER-R2
+# domain_packs/*/examples/A04.yaml  @OWNER-R5 @OWNER-R2
+# domain_packs/*/examples/A05.yaml  @OWNER-R1 @OWNER-R2
+# domain_packs/*/examples/A06.yaml  @OWNER-R2
+# domain_packs/*/examples/A07.yaml  @OWNER-R3 @OWNER-R2
+# domain_packs/*/examples/A08.yaml  @OWNER-R4 @OWNER-R2
+# domain_packs/*/examples/A09.yaml  @OWNER-R1 @OWNER-R2

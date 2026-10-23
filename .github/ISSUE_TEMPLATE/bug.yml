@@ -1,0 +1,28 @@
+name: Bug
+description: 결함 보고
+title: "[Bug] "
+labels: ["type:bug"]
+body:
+  - type: textarea
+    id: repro
+    attributes:
+      label: 재현 방법
+      description: 입력 파일·명령·단계
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대 결과 / 실제 결과
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 로그·환경
+      description: 오류 메시지, commit, 모델·팩 버전. API 키와 고객 문서 원문은 넣지 않는다.
+  - type: input
+    id: refs
+    attributes:
+      label: 관련 항목
+      placeholder: REQ-11, TC-F11

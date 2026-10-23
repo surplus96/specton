@@ -1,0 +1,33 @@
+name: Task
+description: 구현 작업 (WBS 1건 또는 그 일부)
+title: "[Wxx] "
+labels: ["type:task"]
+body:
+  - type: input
+    id: refs
+    attributes:
+      label: 관련 항목
+      description: WBS·REQ·ADR 번호
+      placeholder: W03, REQ-04, ADR-0008
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: 할 일
+      description: 무엇을 만들고 무엇은 범위 밖인지
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: 완료 조건
+      description: 확인 가능한 결과 (테스트, 화면, 산출물)
+      placeholder: "- [ ] 고정 응답 테스트 3종 통과"
+    validations:
+      required: true
+  - type: textarea
+    id: blockers
+    attributes:
+      label: 의존·막힌 이유
+      description: 먼저 끝나야 하는 이슈(#번호) 또는 필요한 결정
