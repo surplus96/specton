@@ -18,35 +18,35 @@ ID 규칙: 이 문서의 프로젝트 요구사항은 `REQ-01`~`REQ-27`. 고객 
 
 범위의 "필수/축소 후보"는 제안이다. 확정은 ADR-0002. 이 표가 요구사항 → 설계 문서 → 작업(이슈) → 테스트의 추적 기준이다. 구현 위치(코드 경로)와 상태 열은 구현이 시작되면 추가한다.
 
-| ID | 요구사항 | 핵심 내용 | 범위 | 설계 문서 | WBS (이슈) | TC |
+| ID | 요구사항 | 핵심 내용 | 범위 | 설계 문서 | 작업 (이슈) | TC |
 |---|---|---|---|---|---|---|
-| REQ-01 | Excel·CSV 입력 | 원문 ID·명칭·상세·출처와 행 위치 보존. 필수 열 누락·중복 ID는 확인 대상 | 필수 | [10](10-io-and-packs.md) | W08 #10 | TC-F01 |
-| REQ-02 | PDF 입력·추출 확인 | 텍스트·표 추출, 페이지·위치 보존, 사용자 확인 후 분석 | 필수 | [10](10-io-and-packs.md) | W08 #10 | TC-F02 |
-| REQ-03 | 도메인 팩 적용 | 팩 명시 선택. 미지원 팩은 외부 검색 없이 안내 | 필수 | [10](10-io-and-packs.md) | W09 #11 | TC-F03 |
-| REQ-04 | 요구사항 분석 (A01) | FR/NFR·복합 요구 분해·품질 경고·확인 질문 | 필수 | [04](04-agents.md) | W03 #5 | TC-F04, TC-A01 |
-| REQ-05 | 요구사항 사용자 확인 | 해석·질문 답변, 수정·유지·분할. 답변 버전·재개 위치 저장 | 필수 | [03](03-architecture.md), [04](04-agents.md) | W15 #17 | TC-F05 |
-| REQ-06 | 기능 명세 도출 (A02) | 기능명·설명·우선순위 근거·req_ids. 미정 우선순위로 범위 제외 금지 | 필수 | [04](04-agents.md) | W04 #6 | TC-F06, TC-A02 |
-| REQ-07 | 엔티티·속성·CRUD (A03) | 엔티티·속성·기능별 CRUD. 모든 참조는 현재 버전에서 유효 | 필수 | [04](04-agents.md) | W05 #7 | TC-F07, TC-A03 |
-| REQ-08 | 관계 도출 (A04) | 방향·카디널리티·선택 여부·근거. FK·연결 테이블은 코드가 생성 | 필수 | [04](04-agents.md) | W06 #8 | TC-F08, TC-A04 |
-| REQ-09 | 공통 모델 정규화 | 코드가 ID·명명·N:M 분해·FK 파생, 모델 버전 고정 | 필수 | [03](03-architecture.md), [04](04-agents.md) | W10 #12 | TC-F09 |
-| REQ-10 | ERD 생성 | 고정 모델 → Mermaid ERD, 웹 렌더링·원문 다운로드 | 필수 | [03](03-architecture.md), [04](04-agents.md) | W11 #13 | TC-F10 |
-| REQ-11 | DDL 생성·실행 검사 | PostgreSQL DDL, 허용 문장·pglast 파싱 후 격리 DB 실행·롤백 | 필수 | [03](03-architecture.md), [04](04-agents.md) | W13 #15 | TC-F11 |
-| REQ-12 | RTM 생성 | 요구사항→기능→엔티티·관계를 코드로 조인, 미연결 표시 | 필수 | [03](03-architecture.md), [04](04-agents.md) | W12 #14 | TC-F12 |
-| REQ-13 | 규칙 기반 검사 | 참조·추적·키/관계·명명·CRUD·DDL 검사, `source=rule` | 필수 | [03](03-architecture.md), [04](04-agents.md) | W13 #15 | TC-F13 |
-| REQ-14 | 4관점 병렬 검토 (A05~A08) | 관련 요구사항·설계 쌍 검토, 결과 또는 명시적 실패를 모아 합류 | 필수 | [04](04-agents.md) | W03 #5, W04 #6, W05 #7, W07 #9, W16 #18 | TC-F14, TC-A05~A08 |
-| REQ-15 | 지적 검증·병합 | 대상 ID·인용 실재 확인, 중복 병합, 반복 지문 보존 | 필수 | [03](03-architecture.md), [04](04-agents.md) | W16 #18 | TC-F15 |
-| REQ-16 | 재작업 제어 (A09) | 코드가 target_stage로 분기, 미매핑만 A09. 최대 3회·반복 지적은 사람에게 | 필수 | [04](04-agents.md) | W07 #9, W15 #17 | TC-F16, TC-A09 |
-| REQ-17 | 최종 승인·보류 | 남은 문제 확인. 미해결 차단 오류가 있으면 승인 완료로 표시하지 않음 | 필수 | [03](03-architecture.md), [04](04-agents.md) | W15 #17, W20 #22 | TC-F17 |
-| REQ-18 | 문서 내보내기 | 중간 Markdown, 최종 기능 명세서·ERD(PDF 포함)·DDL·RTM. 모든 파일에 같은 모델 버전 | 필수 | [10](10-io-and-packs.md) | W11 #13, W12 #14, W20 #22, W21 #23 | TC-F18 |
-| REQ-19 | 웹 진행·결과 확인 | React UI로 업로드~HITL·결과 확인, API만 사용 | 축소 후보 | [06](06-api.md), [09](09-ui-flow.md) | W14 #16, W17 #19, W21 #23 | TC-F19 |
-| REQ-20 | 실행 이력·재개 | 실행·문서·모델·팩·프롬프트 버전·검토·승인 저장, 체크포인트 재개 | 필수 | [05](05-data-contracts.md) | W02 #4, W14 #16 | TC-F20 |
-| REQ-21 | 추적 무결성 | 기능·엔티티·속성·관계의 req_ids는 비어 있지 않고 실재 | 필수 | [05](05-data-contracts.md) | W02 #4, W10 #12 | TC-N01 |
-| REQ-22 | 출력 형식·오류 통제 | 구조화 출력 실패는 최대 2회 재요청. 거절·호출 실패·계약 실패 구분 | 필수 | [03](03-architecture.md), [04](04-agents.md) | W01 #3 | TC-N02 |
-| REQ-23 | 문서·비밀 보호 | 입력은 비신뢰 데이터. 키·본문 로그 금지, 실행별 접근·파일·SQL 범위 제한 | 필수 | [11](11-deployment-security.md) | W19 #21 | TC-N03 |
-| REQ-24 | 재현성·평가 기록 | 모델·팩·프롬프트·데이터 버전과 시간·토큰·지표 기록 | 필수 | [07](07-testing-eval.md) | W09 #11, W18 #20 | TC-N04 |
-| REQ-25 | 자원·취소 | 파일 크기·페이지·실행 시간·토큰 한도 설정, 실행 취소 | 축소 후보 | [11](11-deployment-security.md) | W01 #3, W15 #17, W19 #21 | TC-N05 |
-| REQ-26 | 팩·공통 코드 분리 | 도메인 용어·패턴은 팩에서 공급, 두 도메인이 같은 파이프라인 사용 | 필수 | [03](03-architecture.md), [04](04-agents.md) | W09 #11, W10 #12 | TC-N06 |
-| REQ-27 | HWPX·HWP 입력 | 본문·표 추출, 원문 기호·위치 보존, 정형 흐름 완성 후 연결 | 축소 후보 | [10](10-io-and-packs.md) | W22 #24 | TC-F21 |
+| REQ-01 | Excel·CSV 입력 | 원문 ID·명칭·상세·출처와 행 위치 보존. 필수 열 누락·중복 ID는 확인 대상 | 필수 | [10](10-io-and-packs.md) | [#10](https://github.com/surplus96/specton/issues/10) | TC-F01 |
+| REQ-02 | PDF 입력·추출 확인 | 텍스트·표 추출, 페이지·위치 보존, 사용자 확인 후 분석 | 필수 | [10](10-io-and-packs.md) | [#10](https://github.com/surplus96/specton/issues/10) | TC-F02 |
+| REQ-03 | 도메인 팩 적용 | 팩 명시 선택. 미지원 팩은 외부 검색 없이 안내 | 필수 | [10](10-io-and-packs.md) | [#11](https://github.com/surplus96/specton/issues/11) | TC-F03 |
+| REQ-04 | 요구사항 분석 (A01) | FR/NFR·복합 요구 분해·품질 경고·확인 질문 | 필수 | [04](04-agents.md) | [#5](https://github.com/surplus96/specton/issues/5) | TC-F04, TC-A01 |
+| REQ-05 | 요구사항 사용자 확인 | 해석·질문 답변, 수정·유지·분할. 답변 버전·재개 위치 저장 | 필수 | [03](03-architecture.md), [04](04-agents.md) | [#17](https://github.com/surplus96/specton/issues/17) | TC-F05 |
+| REQ-06 | 기능 명세 도출 (A02) | 기능명·설명·우선순위 근거·req_ids. 미정 우선순위로 범위 제외 금지 | 필수 | [04](04-agents.md) | [#6](https://github.com/surplus96/specton/issues/6) | TC-F06, TC-A02 |
+| REQ-07 | 엔티티·속성·CRUD (A03) | 엔티티·속성·기능별 CRUD. 모든 참조는 현재 버전에서 유효 | 필수 | [04](04-agents.md) | [#7](https://github.com/surplus96/specton/issues/7) | TC-F07, TC-A03 |
+| REQ-08 | 관계 도출 (A04) | 방향·카디널리티·선택 여부·근거. FK·연결 테이블은 코드가 생성 | 필수 | [04](04-agents.md) | [#8](https://github.com/surplus96/specton/issues/8) | TC-F08, TC-A04 |
+| REQ-09 | 공통 모델 정규화 | 코드가 ID·명명·N:M 분해·FK 파생, 모델 버전 고정 | 필수 | [03](03-architecture.md), [04](04-agents.md) | [#12](https://github.com/surplus96/specton/issues/12) | TC-F09 |
+| REQ-10 | ERD 생성 | 고정 모델 → Mermaid ERD, 웹 렌더링·원문 다운로드 | 필수 | [03](03-architecture.md), [04](04-agents.md) | [#13](https://github.com/surplus96/specton/issues/13) | TC-F10 |
+| REQ-11 | DDL 생성·실행 검사 | PostgreSQL DDL, 허용 문장·pglast 파싱 후 격리 DB 실행·롤백 | 필수 | [03](03-architecture.md), [04](04-agents.md) | [#15](https://github.com/surplus96/specton/issues/15) | TC-F11 |
+| REQ-12 | RTM 생성 | 요구사항→기능→엔티티·관계를 코드로 조인, 미연결 표시 | 필수 | [03](03-architecture.md), [04](04-agents.md) | [#14](https://github.com/surplus96/specton/issues/14) | TC-F12 |
+| REQ-13 | 규칙 기반 검사 | 참조·추적·키/관계·명명·CRUD·DDL 검사, `source=rule` | 필수 | [03](03-architecture.md), [04](04-agents.md) | [#15](https://github.com/surplus96/specton/issues/15) | TC-F13 |
+| REQ-14 | 4관점 병렬 검토 (A05~A08) | 관련 요구사항·설계 쌍 검토, 결과 또는 명시적 실패를 모아 합류 | 필수 | [04](04-agents.md) | [#5](https://github.com/surplus96/specton/issues/5), [#6](https://github.com/surplus96/specton/issues/6), [#7](https://github.com/surplus96/specton/issues/7), [#9](https://github.com/surplus96/specton/issues/9), [#18](https://github.com/surplus96/specton/issues/18) | TC-F14, TC-A05~A08 |
+| REQ-15 | 지적 검증·병합 | 대상 ID·인용 실재 확인, 중복 병합, 반복 지문 보존 | 필수 | [03](03-architecture.md), [04](04-agents.md) | [#18](https://github.com/surplus96/specton/issues/18) | TC-F15 |
+| REQ-16 | 재작업 제어 (A09) | 코드가 target_stage로 분기, 미매핑만 A09. 최대 3회·반복 지적은 사람에게 | 필수 | [04](04-agents.md) | [#9](https://github.com/surplus96/specton/issues/9), [#17](https://github.com/surplus96/specton/issues/17) | TC-F16, TC-A09 |
+| REQ-17 | 최종 승인·보류 | 남은 문제 확인. 미해결 차단 오류가 있으면 승인 완료로 표시하지 않음 | 필수 | [03](03-architecture.md), [04](04-agents.md) | [#17](https://github.com/surplus96/specton/issues/17), [#22](https://github.com/surplus96/specton/issues/22) | TC-F17 |
+| REQ-18 | 문서 내보내기 | 중간 Markdown, 최종 기능 명세서·ERD(PDF 포함)·DDL·RTM. 모든 파일에 같은 모델 버전 | 필수 | [10](10-io-and-packs.md) | [#13](https://github.com/surplus96/specton/issues/13), [#14](https://github.com/surplus96/specton/issues/14), [#22](https://github.com/surplus96/specton/issues/22), [#23](https://github.com/surplus96/specton/issues/23) | TC-F18 |
+| REQ-19 | 웹 진행·결과 확인 | React UI로 업로드~HITL·결과 확인, API만 사용 | 축소 후보 | [06](06-api.md), [09](09-ui-flow.md) | [#16](https://github.com/surplus96/specton/issues/16), [#19](https://github.com/surplus96/specton/issues/19), [#23](https://github.com/surplus96/specton/issues/23) | TC-F19 |
+| REQ-20 | 실행 이력·재개 | 실행·문서·모델·팩·프롬프트 버전·검토·승인 저장, 체크포인트 재개 | 필수 | [05](05-data-contracts.md) | [#4](https://github.com/surplus96/specton/issues/4), [#16](https://github.com/surplus96/specton/issues/16) | TC-F20 |
+| REQ-21 | 추적 무결성 | 기능·엔티티·속성·관계의 req_ids는 비어 있지 않고 실재 | 필수 | [05](05-data-contracts.md) | [#4](https://github.com/surplus96/specton/issues/4), [#12](https://github.com/surplus96/specton/issues/12) | TC-N01 |
+| REQ-22 | 출력 형식·오류 통제 | 구조화 출력 실패는 최대 2회 재요청. 거절·호출 실패·계약 실패 구분 | 필수 | [03](03-architecture.md), [04](04-agents.md) | [#3](https://github.com/surplus96/specton/issues/3) | TC-N02 |
+| REQ-23 | 문서·비밀 보호 | 입력은 비신뢰 데이터. 키·본문 로그 금지, 실행별 접근·파일·SQL 범위 제한 | 필수 | [11](11-deployment-security.md) | [#21](https://github.com/surplus96/specton/issues/21) | TC-N03 |
+| REQ-24 | 재현성·평가 기록 | 모델·팩·프롬프트·데이터 버전과 시간·토큰·지표 기록 | 필수 | [07](07-testing-eval.md) | [#11](https://github.com/surplus96/specton/issues/11), [#20](https://github.com/surplus96/specton/issues/20) | TC-N04 |
+| REQ-25 | 자원·취소 | 파일 크기·페이지·실행 시간·토큰 한도 설정, 실행 취소 | 축소 후보 | [11](11-deployment-security.md) | [#3](https://github.com/surplus96/specton/issues/3), [#17](https://github.com/surplus96/specton/issues/17), [#21](https://github.com/surplus96/specton/issues/21) | TC-N05 |
+| REQ-26 | 팩·공통 코드 분리 | 도메인 용어·패턴은 팩에서 공급, 두 도메인이 같은 파이프라인 사용 | 필수 | [03](03-architecture.md), [04](04-agents.md) | [#11](https://github.com/surplus96/specton/issues/11), [#12](https://github.com/surplus96/specton/issues/12) | TC-N06 |
+| REQ-27 | HWPX·HWP 입력 | 본문·표 추출, 원문 기호·위치 보존, 정형 흐름 완성 후 연결 | 축소 후보 | [10](10-io-and-packs.md) | [#24](https://github.com/surplus96/specton/issues/24) | TC-F21 |
 
 ## 주요 수용 기준
 

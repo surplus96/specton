@@ -1,14 +1,13 @@
 name: Task
-description: 구현 작업 (WBS 1건 또는 그 일부)
-title: "[Wxx] "
+description: 구현 작업
 labels: ["type:task"]
 body:
   - type: input
     id: refs
     attributes:
       label: 관련 항목
-      description: WBS·REQ·ADR 번호
-      placeholder: W03, REQ-04, ADR-0008
+      description: 저장소 안에서 찾을 수 있는 근거만 적는다 (요구사항·docs 문서·TC·ADR)
+      placeholder: REQ-04, docs/04-agents.md, TC-A01, ADR-0008
     validations:
       required: true
   - type: textarea
@@ -29,5 +28,5 @@ body:
   - type: textarea
     id: blockers
     attributes:
-      label: 의존·막힌 이유
-      description: 먼저 끝나야 하는 이슈(#번호) 또는 필요한 결정
+      label: 선행 작업·막힌 이유
+      description: 먼저 끝나야 하는 이슈(#번호)와 기다려야 하는 이유, 기다리는 동안 먼저 할 수 있는 것, 필요한 결정(ADR)

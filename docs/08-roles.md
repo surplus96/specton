@@ -49,7 +49,7 @@
 | 도구 | 용도 |
 |---|---|
 | GitHub 저장소 | 코드·문서의 기준. 결정은 `docs/adr/`에 기록 |
-| GitHub Issues·[Projects](https://github.com/users/surplus96/projects/1) | 작업·결함. WBS W01~W23 = 이슈 #3~#25 |
+| GitHub Issues·[Projects](https://github.com/users/surplus96/projects/1) | 작업·결함. 초기 작업 23개는 이슈 #3~#25 (마일스톤별 목록은 [01 개요](01-overview.md#마일스톤)) |
 | Notion | 읽기용 안내·결정 링크 |
 | Slack | 알림·논의. 메시지만으로 계약을 바꾸지 않음 |
 
