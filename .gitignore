@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# 비밀값·로컬 설정
+.env
+.env.*
+!.env.example
+
+# 실행 산출물·업로드 원문 (고객 문서는 커밋하지 않는다)
+var/
+storage/
+outputs/
+
+# Frontend
+node_modules/
+frontend/dist/
+
+# OS·편집기
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
