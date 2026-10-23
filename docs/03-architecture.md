@@ -24,27 +24,65 @@ flowchart LR
 
 ## 실행 흐름
 
+색은 담당 역할, 회색 육각형은 사람(HITL) 단계, 점선은 재작업 경로다.
+
 ```mermaid
 flowchart TD
-    I["Excel·CSV·PDF·HWPX 추출"] --> P["추출 확인 · 필요 시 사용자 보완"]
-    P --> A1["A01 요구사항 분석"] --> H1{{"HITL 1"}}
-    H1 --> A2["A02 기능"] --> A3["A03 엔티티·CRUD"] --> A4["A04 관계"]
-    A4 --> N["코드: ID·명명·N:M·FK · 모델 버전 고정"]
-    N --> E["ERD"] & D["DDL · 파싱·격리 실행"] & T["RTM"]
-    E & D & T --> J["같은 버전 결과 합류"]
-    J --> R["규칙 검사 RULE-01~07"]
-    R --> RV["A05~A08 검토 (설정형 리뷰어)"]
-    RV --> M["근거 확인·중복 병합"]
-    M --> Q{"재작업 필요?"}
-    Q -->|예| L["코드 라우팅 · 미매핑만 A09"]
-    L --> B{"상한/반복?"}
-    B -->|아니오| BACK["target_stage로 복귀"]
-    B -->|예| H2{{"HITL 2"}}
-    L -->|판단 불가| H2
-    Q -->|아니오| H2
-    H2 -->|수정 요청| L
-    H2 -->|승인| O["승인 버전 내보내기"]
+    IN["문서 입력·추출<br/>Excel·CSV·PDF·HWPX"]:::r2 --> CHK{{"추출 확인<br/>필요 시 사용자 보완"}}:::human
+    CHK --> A01["A01 요구사항 분석"]:::r2
+    A01 --> H1{{"HITL 1<br/>요구사항 확인"}}:::human
+
+    subgraph DESIGN["① 설계 (순차)"]
+        A02["A02 기능 설계"]:::r3 --> A03["A03 엔티티·CRUD"]:::r4 --> A04["A04 관계 설계"]:::r5
+    end
+    H1 --> A02
+    A04 --> NORM["모델 정리 (코드)<br/>ID·명명·N:M·FK·버전 고정"]:::r4
+
+    subgraph GEN["② 산출물 생성 (병렬, 코드)"]
+        DDL["DDL 생성<br/>파싱·격리 실행"]:::r4
+        ERD["ERD (Mermaid)"]:::r5
+        RTM["RTM"]:::r3
+    end
+    NORM --> DDL & ERD & RTM
+
+    subgraph REVIEW["③ 검토"]
+        RULE["규칙 검사<br/>RULE-01~07"]:::r4
+        A05["A05 관계 검토"]:::r1
+        A06["A06 누락 검토"]:::r2
+        A07["A07 비기능 검토"]:::r3
+        A08["A08 정규화 검토"]:::r4
+        RULE --> A05 & A06 & A07 & A08
+    end
+    DDL & ERD & RTM -->|같은 버전만 합류| RULE
+
+    A05 & A06 & A07 & A08 --> MERGE["근거 확인·중복 병합"]:::r1
+    MERGE --> Q{"재작업 필요?"}:::r1
+    Q -->|예| ROUTE{"코드 라우팅<br/>미매핑만 A09"}:::r1
+    ROUTE -.->|requirements| A01
+    ROUTE -.->|functions| A02
+    ROUTE -.->|data_model| A03
+    Q -->|아니오| H2{{"HITL 2<br/>최종 검토"}}:::human
+    ROUTE -->|3회 초과·반복·판단 불가| H2
+    H2 -.->|수정 요청| ROUTE
+    H2 -->|승인| OUT["승인본 내보내기<br/>기능 명세·ERD PDF, SQL, RTM"]:::r5
+
+    classDef r1 fill:#fde2e2,stroke:#c0392b,color:#000
+    classDef r2 fill:#e3f0fd,stroke:#2471a3,color:#000
+    classDef r3 fill:#e6f6e6,stroke:#1e8449,color:#000
+    classDef r4 fill:#fff3d6,stroke:#b9770e,color:#000
+    classDef r5 fill:#efe3f8,stroke:#7d3c98,color:#000
+    classDef human fill:#eeeeee,stroke:#555,color:#000
 ```
+
+| 색 | 역할 | 흐름에서 맡는 단계 | 흐름 밖에서 상시 맡는 것 |
+|---|---|---|---|
+| 🟥 | R1 실행 제어·통합 | A05 관계 검토, 병합·재작업 판단·라우팅(A09) | 그래프 연결·상태·멈춤/재개 |
+| 🟦 | R2 입력·분석·평가 | 문서 입력·추출, A01 분석, A06 누락 검토 | 평가 데이터·채점 |
+| 🟩 | R3 기능·API·저장 | A02 기능, RTM, A07 비기능 검토 | API·DB 저장·데이터 계약, 기능 명세 템플릿 |
+| 🟨 | R4 데이터 모델·검증 | A03 엔티티, 모델 정리, DDL, 규칙 검사, A08 정규화 검토 | 격리 DB 검증 |
+| 🟪 | R5 관계·시각화·웹 | A04 관계, ERD, PDF 내보내기 | 웹 화면·AWS 배포 |
+
+역할 배정은 제안 (ADR-0001). 검토 관점 A05~A08은 설정형 리뷰어 노드 1종으로 구현한다 (제안, ADR-0008).
 
 - A01~A04는 앞 단계 결과를 쓰므로 순차 실행한다.
 - ERD·DDL·RTM은 같은 고정 모델을 읽는 코드 작업이라 병렬로 실행한다. DDL 내부의 생성 → 파싱 → 격리 실행은 순서를 지킨다.
