@@ -1,4 +1,4 @@
-# 규칙 검사 설정. 심각도는 O-05 결정 후 채운다.
+# 규칙 검사 설정. 심각도는 ADR-0010 결정 후 채운다.
 rules:
   RULE-01: id_reference_validity
   RULE-02: requirement_traceability

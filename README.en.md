@@ -5,7 +5,7 @@
 A LangGraph-based agent service that reads customer requirement documents, drafts a **functional specification, ERD, DDL, and RTM**, and reviews them for omissions and contradictions.
 Team Seolgyero (설계로) · Hanwha Systems K-New Deal Academy, Capstone Project 8.
 
-Development docs (Korean) live in [docs/](docs/README.md). Original planning and meeting materials are in the parent planning folder `docs/` (project plan, `개발착수_문서/`, `회의준비/`).
+The design reference documents (Korean) live in [docs/](docs/README.md), and decision records in [docs/adr/](docs/adr/README.md).
 
 ## Tech stack
 

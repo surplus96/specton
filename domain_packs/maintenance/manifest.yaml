@@ -1,7 +1,7 @@
 # 팩 정보. 실행 시 name·version이 run에 기록된다.
 name: maintenance
-version: 0.1.0
+version: 0.1.1
 description: Equipment registry, preventive maintenance, breakdown requests, work orders, and work results
-source: 예시자료/openmaint 설비 요구사항 MNT-001~022 (development set), 공공데이터 공통표준 8차 용어, EN 13306, Odoo·ERPNext maintenance
+source: 설비 요구사항 MNT-001~022 (development set, not published), 공공데이터 공통표준 8차 용어, EN 13306, Odoo·ERPNext maintenance
 origin: synthetic          # synthetic | public | approved
 status: draft              # draft | approved

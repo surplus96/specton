@@ -18,5 +18,5 @@ table:
 column:
   primary_key:                   # project: 고시에 규정 없음
   foreign_key:                   # project: 고시에 규정 없음
-type_profile: strict             # project 제안: strict(표준 저장 형식) | pg_native. B1에서 확정
+type_profile: strict             # project 제안: strict(표준 저장 형식) | pg_native. ADR-0009에서 확정
 reserved_words_source: postgresql_18_sql_key_words   # 예약어와 같은 단독 컬럼명(END 등)은 거부
