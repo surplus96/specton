@@ -25,6 +25,7 @@ FORBIDDEN = {
     "planning decision ids (use ADR numbers)": re.compile(
         r"\b(?:O-\d{2}|D-00\d)\b|(?<![\w.%-])[AB][1-7](?![\w.%-])"
     ),
+    "WBS ids (use issue numbers)": re.compile(r"\bW\d{2}\b"),
 }
 
 
@@ -70,6 +71,7 @@ def test_forbidden_patterns_are_detected() -> None:
         "최종 기획서 기준",
         "입력은 예시자료/openmaint에서 가져온다",
         "데이터 계약(B1 동결 후)과 같은 모양",
+        "선행: W02 (#4)",
     ],
 )
 def test_other_external_references_are_detected(line: str) -> None:

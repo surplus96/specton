@@ -52,12 +52,12 @@
 
 ## 마일스톤
 
-| 마일스톤 | 범위 | WBS |
+| 마일스톤 | 범위 | 이슈 |
 |---|---|---|
-| M1 계약·환경 | 데이터 계약·대표 입력·개발 환경, 전원 첫 에이전트 구현 | W01~W07 |
-| M2 설계 파이프라인 | 분석→설계→생성 연결, 코드 생성·DB 검증 | W09, W10, W12, W13 |
-| M3 문서 입출력·웹 | PDF 입출력, HWPX/HWP 연결, React 웹 뼈대 | W08, W11, W17, W22 |
-| M4 검토·재작업 통합 | 4관점 검토·재작업·HITL·지속성, 1차 E2E | W14, W15, W16, W19 |
-| M5 평가·배포·인수 | 품질 평가·결함 수정·문서 동결·AWS 배포·릴리스 | W18, W20, W21, W23 |
+| M1 계약·환경 | 데이터 계약·대표 입력·개발 환경, 전원 첫 에이전트 구현 | [#3](https://github.com/surplus96/specton/issues/3), [#4](https://github.com/surplus96/specton/issues/4), [#5](https://github.com/surplus96/specton/issues/5), [#6](https://github.com/surplus96/specton/issues/6), [#7](https://github.com/surplus96/specton/issues/7), [#8](https://github.com/surplus96/specton/issues/8), [#9](https://github.com/surplus96/specton/issues/9) |
+| M2 설계 파이프라인 | 분석→설계→생성 연결, 코드 생성·DB 검증 | [#11](https://github.com/surplus96/specton/issues/11), [#12](https://github.com/surplus96/specton/issues/12), [#14](https://github.com/surplus96/specton/issues/14), [#15](https://github.com/surplus96/specton/issues/15) |
+| M3 문서 입출력·웹 | PDF 입출력, HWPX/HWP 연결, React 웹 뼈대 | [#10](https://github.com/surplus96/specton/issues/10), [#13](https://github.com/surplus96/specton/issues/13), [#19](https://github.com/surplus96/specton/issues/19), [#24](https://github.com/surplus96/specton/issues/24) |
+| M4 검토·재작업 통합 | 4관점 검토·재작업·HITL·지속성, 1차 E2E | [#16](https://github.com/surplus96/specton/issues/16), [#17](https://github.com/surplus96/specton/issues/17), [#18](https://github.com/surplus96/specton/issues/18), [#21](https://github.com/surplus96/specton/issues/21) |
+| M5 평가·배포·인수 | 품질 평가·결함 수정·문서 동결·AWS 배포·릴리스 | [#20](https://github.com/surplus96/specton/issues/20), [#22](https://github.com/surplus96/specton/issues/22), [#23](https://github.com/surplus96/specton/issues/23), [#25](https://github.com/surplus96/specton/issues/25) |
 
 작업은 GitHub Issues(#3~#25)와 [Projects 보드](https://github.com/users/surplus96/projects/1)에서 관리한다.
