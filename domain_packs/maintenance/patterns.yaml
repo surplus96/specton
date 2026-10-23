@@ -1,0 +1,42 @@
+# 설비 도메인에서 흔한 설계 패턴. 요구사항 원문에 근거가 있을 때만 적용한다.
+patterns:
+  - id: P-MNT-01
+    name: self_reference_hierarchy
+    when: An equipment has at most one upper equipment and many lower equipment (MNT-002)
+    suggests: { relationship: self_reference, cardinality: "1:N", optional: true, rule: no_cycle }
+    source: CMMS asset hierarchy (parent_asset_id), openMAINT CI.ParentCI
+  - id: P-MNT-02
+    name: plan_generates_work_orders
+    when: Preventive plans generate work orders by cycle and schedule (MNT-005, MNT-007)
+    suggests: { entities: [maintenance_plan, work_order], unique: [plan, equipment, scheduled_date], idempotent: true }
+    source: ERPNext Asset Maintenance, Odoo preventive requests
+  - id: P-MNT-03
+    name: snapshot_on_generation
+    when: Generated work must keep plan and check items as they were at generation (MNT-008, MNT-013)
+    suggests: { copy_fields_into_child: true }
+    source: openmaint requirement A11
+  - id: P-MNT-04
+    name: request_to_work_orders
+    when: One breakdown request is handled by one or more work orders (MNT-009, MNT-010)
+    suggests: { relationship: { parent: breakdown_request, child: work_order, cardinality: "1:N" } }
+    source: CMMS request → work order
+  - id: P-MNT-05
+    name: status_transition_with_history
+    when: Work order moves through fixed states and every change is kept (MNT-012)
+    suggests: { attribute: status, values: [waiting, in_progress, review, closed, cancelled], history_entity: true }
+    source: Odoo maintenance stages
+  - id: P-MNT-06
+    name: effective_dated_membership
+    when: Many-to-many membership with join and leave dates that must not overlap (MNT-004)
+    suggests: { relationship: "N:M", attributes: [joined_on, left_on], rule: no_overlap }
+    source: openmaint requirement A09
+  - id: P-MNT-07
+    name: price_snapshot
+    when: Rates and prices recorded on results must not change when master rates change (MNT-014, MNT-015)
+    suggests: { store_applied_value: true }
+    source: openmaint requirement A13
+  - id: P-MNT-08
+    name: master_data_soft_delete
+    when: Equipment with maintenance history is deactivated, not deleted (MNT-003)
+    suggests: { attribute: is_active, crud_exemption: soft_delete }
+    source: same as inventory pattern; candidate for common

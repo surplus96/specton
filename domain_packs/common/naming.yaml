@@ -1,0 +1,22 @@
+# 명명 규칙. 근거 등급: official(고시·공식 데이터) / observed(공식 데이터 전수 관찰) / project(국가 규칙 없음, 팀 결정)
+physical_name:
+  dictionary_case: upper_snake   # observed: 공식 영문약어는 모두 대문자, 단어는 "_"로 연결 (예: REG_YMD)
+  ddl_case: lower                # project: PostgreSQL은 따옴표 없는 식별자를 소문자로 접는다
+  word_separator: "_"            # observed
+  max_bytes: 63                  # official(PostgreSQL 18): 초과분은 조용히 잘리므로 생성 전에 거부한다
+abbreviation:
+  case: upper                    # observed
+  min_length: 2                  # observed: 공식 단어 3,284개 약어 길이 2~6
+  max_length: 6                  # observed
+term:
+  classifier_last: true          # observed: 분류어(is_classifier)가 용어의 마지막 단어
+  max_words:                     # project (2차 자료에 5개 제한 언급, 공식 미확인)
+  official_term_immutable: true  # official(고시 제13조④): 공식 용어의 영문약어는 바꾸지 않는다
+table:
+  prefix:                        # project: 고시에 규정 없음 (예: TB_)
+  form:                          # project: singular | plural
+column:
+  primary_key:                   # project: 고시에 규정 없음
+  foreign_key:                   # project: 고시에 규정 없음
+type_profile: strict             # project 제안: strict(표준 저장 형식) | pg_native. B1에서 확정
+reserved_words_source: postgresql_18_sql_key_words   # 예약어와 같은 단독 컬럼명(END 등)은 거부

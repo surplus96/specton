@@ -1,0 +1,10 @@
+# 공식 표준 원본 사본. 판을 바꿀 때는 CSV를 교체하고 이 파일을 고친 뒤 build를 다시 실행한다.
+edition: 공공데이터 공통표준 8차 제·개정 (2025-11)
+publisher: 행정안전부
+legal_basis: 공공기관의 데이터베이스 표준화 지침 (행정안전부고시 제2025-19호)
+license: 이용허락범위 제한 없음 (data.go.kr)
+retrieved_on: 2026-10-23
+files:
+  words:   { path: common_standard_words_20251101.csv,   dataset_id: "15156439" }
+  terms:   { path: common_standard_terms_20251101.csv,   dataset_id: "15156379" }
+  domains: { path: common_standard_domains_20251101.csv, dataset_id: "15156442" }

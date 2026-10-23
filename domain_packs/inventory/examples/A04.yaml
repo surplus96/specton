@@ -1,0 +1,7 @@
+# few-shot 예시 (inventory · A04 relationship_design). 사람이 작성하는 입력 파일이다.
+# - 입력은 개발용 세트(예시자료/openmaint)에서만 가져오고 source_id에 원문 ID를 적는다. 평가용 세트 문서는 넣지 않는다.
+# - output은 데이터 계약(B1 동결 후)과 같은 모양이어야 한다. 동결 전까지는 형식 견본이다.
+agent: A04
+role: relationship_design
+status: draft
+examples: []

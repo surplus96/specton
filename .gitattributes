@@ -1,0 +1,7 @@
+# 생성 파일과 공식 원본 CSV는 PR diff에서 접어 둔다.
+domain_packs/common/words.yaml        linguist-generated=true
+domain_packs/common/domains.yaml      linguist-generated=true
+domain_packs/*/terms.yaml             linguist-generated=true
+domain_packs/sources/*.csv            linguist-generated=true -diff
+uv.lock                               linguist-generated=true
+frontend/package-lock.json            linguist-generated=true

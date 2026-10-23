@@ -1,0 +1,310 @@
+# 용어 명세 (maintenance). 사람이 작성하는 입력 파일이다.
+# term: 용어명, composition: 구성 단어(마지막은 분류어), domain: common 표준도메인명, synonyms: 고객 문서 표현.
+# 수정 후 `uv run python -m specton.packs.build`로 terms.yaml을 다시 생성한다.
+terms:
+- term: 설비코드
+  composition:
+  - 설비
+  - 코드
+  domain: 코드C10
+  synonyms:
+  - 설비번호
+  - 장비코드
+  - 자산코드
+- term: 설비명
+  composition:
+  - 설비
+  - 명
+  domain: 명V200
+  synonyms:
+  - 장비명
+- term: 설비분류명
+  composition:
+  - 설비
+  - 분류
+  - 명
+  domain: 명V100
+  synonyms:
+  - 분류명
+- term: 설치위치명
+  composition:
+  - 설치
+  - 위치
+  - 명
+  domain: 명V200
+  synonyms:
+  - 설치 위치
+- term: 모델명
+  composition:
+  - 모델
+  - 명
+  domain: 명V100
+  synonyms: []
+- term: 제조번호
+  composition:
+  - 제조
+  - 번호
+  domain: 번호V50
+  synonyms:
+  - 일련번호
+  - 시리얼 번호
+- term: 도입일자
+  composition:
+  - 도입
+  - 일자
+  domain: 연월일C8
+  synonyms: []
+- term: 보증시작일자
+  composition:
+  - 보증
+  - 시작
+  - 일자
+  domain: 연월일C8
+  synonyms: []
+- term: 보증종료일자
+  composition:
+  - 보증
+  - 종료
+  - 일자
+  domain: 연월일C8
+  synonyms: []
+- term: 설비상태코드
+  composition:
+  - 설비
+  - 상태
+  - 코드
+  domain: 코드C2
+  synonyms:
+  - 사용 상태
+- term: 사용여부
+  composition:
+  - 사용
+  - 여부
+  domain: 여부C1
+  synonyms: []
+- term: 상위설비코드
+  composition:
+  - 상위
+  - 설비
+  - 코드
+  domain: 코드C10
+  synonyms:
+  - 상위 설비
+- term: 점검계획번호
+  composition:
+  - 점검
+  - 계획
+  - 번호
+  domain: 번호V20
+  synonyms:
+  - 계획 번호
+  - 예방보전 계획 번호
+- term: 점검주기일수
+  composition:
+  - 점검
+  - 주기
+  - 일
+  - 수
+  domain: 수N7
+  synonyms:
+  - 점검 주기
+  - 주기 일수
+- term: 최초예정일자
+  composition:
+  - 최초
+  - 예정
+  - 일자
+  domain: 연월일C8
+  synonyms:
+  - 최초 예정일
+- term: 적용시작일자
+  composition:
+  - 적용
+  - 시작
+  - 일자
+  domain: 연월일C8
+  synonyms: []
+- term: 적용종료일자
+  composition:
+  - 적용
+  - 종료
+  - 일자
+  domain: 연월일C8
+  synonyms: []
+- term: 항목순서
+  composition:
+  - 항목
+  - 순서
+  domain: 순서N10
+  synonyms:
+  - 점검 항목 순서
+- term: 합격기준내용
+  composition:
+  - 합격
+  - 기준
+  - 내용
+  domain: 내용V1000
+  synonyms:
+  - 합격 기준
+- term: 필수여부
+  composition:
+  - 필수
+  - 여부
+  domain: 여부C1
+  synonyms: []
+- term: 고장접수번호
+  composition:
+  - 고장
+  - 접수
+  - 번호
+  domain: 번호V20
+  synonyms:
+  - 접수 번호
+  - 고장 신고 번호
+- term: 접수일시
+  composition:
+  - 접수
+  - 일시
+  domain: 연월일시분초D
+  synonyms:
+  - 신고 일시
+- term: 증상내용
+  composition:
+  - 증상
+  - 내용
+  domain: 내용V1000
+  synonyms:
+  - 증상
+- term: 우선순위
+  composition:
+  - 우선
+  - 순위
+  domain: 수N10
+  synonyms: []
+- term: 작업번호
+  composition:
+  - 작업
+  - 번호
+  domain: 번호V20
+  synonyms:
+  - 작업 지시 번호
+- term: 작업구분코드
+  composition:
+  - 작업
+  - 구분
+  - 코드
+  domain: 코드C2
+  synonyms:
+  - 예방·고장 구분
+- term: 작업상태코드
+  composition:
+  - 작업
+  - 상태
+  - 코드
+  domain: 코드C2
+  synonyms:
+  - 작업 상태
+- term: 예정시작일시
+  composition:
+  - 예정
+  - 시작
+  - 일시
+  domain: 연월일시분초D
+  synonyms: []
+- term: 예정종료일시
+  composition:
+  - 예정
+  - 종료
+  - 일시
+  domain: 연월일시분초D
+  synonyms: []
+- term: 점검결과코드
+  composition:
+  - 점검
+  - 결과
+  - 코드
+  domain: 코드C2
+  synonyms:
+  - 점검 결과
+- term: 시작일시
+  composition:
+  - 시작
+  - 일시
+  domain: 연월일시분초D
+  synonyms: []
+- term: 종료일시
+  composition:
+  - 종료
+  - 일시
+  domain: 연월일시분초D
+  synonyms: []
+- term: 적용시급금액
+  composition:
+  - 적용
+  - 시급
+  - 금액
+  domain: 금액N15
+  synonyms:
+  - 시급
+  - 적용 시급
+- term: 인건비
+  composition:
+  - 인건비
+  domain: 금액N15
+  synonyms: []
+- term: 부품코드
+  composition:
+  - 부품
+  - 코드
+  domain: 코드C10
+  synonyms: []
+- term: 부품명
+  composition:
+  - 부품
+  - 명
+  domain: 명V300
+  synonyms: []
+- term: 사용수량
+  composition:
+  - 사용
+  - 수량
+  domain: 수N10,3
+  synonyms:
+  - 부품 수량
+- term: 적용단가
+  composition:
+  - 적용
+  - 단가
+  domain: 금액N15
+  synonyms:
+  - 부품 단가
+- term: 팀명
+  composition:
+  - 팀
+  - 명
+  domain: 명V300
+  synonyms: []
+- term: 가입일자
+  composition:
+  - 가입
+  - 일자
+  domain: 연월일C8
+  synonyms: []
+- term: 탈퇴일자
+  composition:
+  - 탈퇴
+  - 일자
+  domain: 연월일C8
+  synonyms: []
+- term: 변경사유
+  composition:
+  - 변경
+  - 사유
+  domain: 내용V4000
+  synonyms: []
+- term: 변경일시
+  composition:
+  - 변경
+  - 일시
+  domain: 연월일시분초D
+  synonyms: []

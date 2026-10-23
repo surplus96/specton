@@ -1,0 +1,32 @@
+# 재고 도메인에서 흔한 설계 패턴. 요구사항 원문에 근거가 있을 때만 적용한다.
+patterns:
+  - id: P-INV-01
+    name: master_data_soft_delete
+    when: Warehouses or items with transaction history are deactivated, not deleted (INV-012)
+    suggests: { attribute: USE_YN, crud_exemption: soft_delete }
+    source: same as maintenance P-MNT-08; candidate for common
+  - id: P-INV-02
+    name: header_line_document
+    when: One stock transaction document contains one or more item lines (INV-004, INV-005)
+    suggests: { entities: [inventory_transaction, inventory_transaction_line], cardinality: "1:N", unique: [transaction, item] }
+    source: Odoo stock.picking / stock.move, openMAINT inventory
+  - id: P-INV-03
+    name: immutable_ledger
+    when: Confirmed stock changes are not modified and cancellation adds reverse entries (INV-007, INV-010)
+    suggests: { entity: inventory_ledger, crud_exemption: immutable_ledger, cancel_as: reverse_entry }
+    source: Fowler Analysis Patterns (Account/Entry)
+  - id: P-INV-04
+    name: derived_value_as_view
+    when: Current stock equals the sum of confirmed changes (INV-008)
+    suggests: { implement_as: view, term: 재고수량 }
+    source: Odoo stock.quant (derived balance)
+  - id: P-INV-05
+    name: status_transition_with_history
+    when: Transactions move from draft to confirmed to cancelled and changes are kept (INV-007, INV-010, INV-014)
+    suggests: { attribute: 거래상태코드, values: [draft, confirmed, cancelled], history_entity: true }
+    source: openmaint requirement A02
+  - id: P-INV-06
+    name: idempotent_request
+    when: Repeated confirmation with the same request id applies only once (INV-013)
+    suggests: { unique: [요청번호], store_result: true }
+    source: openmaint requirement A06

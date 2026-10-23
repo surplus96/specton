@@ -1,0 +1,23 @@
+# few-shot 예시 (inventory · A03 entity_attribute_crud). 사람이 작성하는 입력 파일이다.
+# - 입력은 개발용 세트(예시자료/openmaint)에서만 가져오고 source_id에 원문 ID를 적는다. 평가용 세트 문서는 넣지 않는다.
+# - output은 데이터 계약(B1 동결 후)과 같은 모양이어야 한다. 동결 전까지는 형식 견본이다.
+agent: A03
+role: entity_attribute_crud
+status: draft
+examples:
+- source_id: INV-005
+  input: 하나의 수불 문서에는 하나 이상의 품목 내역을 등록한다. 각 내역은 한 품목과 수량을 가지며 수량은 0보다 크고 소수 셋째 자리까지 허용한다.
+  output:
+    entities:
+    - name: inventory_transaction_line
+      attributes:
+      - term: 품목코드
+        nullable: false
+      - term: 거래수량
+        nullable: false
+        check: '> 0'
+    entity_ops:
+    - entity: inventory_transaction_line
+      ops:
+      - C
+      - R

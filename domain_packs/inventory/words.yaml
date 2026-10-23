@@ -1,0 +1,3 @@
+# 표준단어 사전 (inventory). 공통표준(common/words.yaml)에 없는 재고 전용 단어만 둔다.
+# "수불"은 공통표준 단어가 없어 재고+거래(INVT_DLNG)로 표준화하고 terms의 synonyms로만 남긴다.
+words: []

@@ -1,0 +1,27 @@
+# 규칙 검사 설정. 심각도는 O-05 결정 후 채운다.
+rules:
+  RULE-01: id_reference_validity
+  RULE-02: requirement_traceability
+  RULE-03: pk_type_constraint
+  RULE-04: relationship_fk_consistency
+  RULE-05: naming_duplication
+  RULE-06: crud_consistency
+  RULE-07: ddl_parse_execute
+
+# 데이터 표준 준수 검사. 공식 산식·기준값은 공개 자료에서 확인하지 못해 항목은 프로젝트 정의(project)다.
+standard_compliance:
+  checks:
+    - { id: SC-01, name: unregistered_word,          action: finding }  # 사전에 없는 단어
+    - { id: SC-02, name: missing_classifier,         action: finding }  # 마지막 단어가 분류어가 아님
+    - { id: SC-03, name: classifier_domain_mismatch, action: finding }  # 분류어의 도메인 분류와 다른 도메인
+    - { id: SC-04, name: forbidden_synonym,          action: finding }  # 금칙어 사용 (이음동의어는 경고)
+    - { id: SC-05, name: official_term_conflict,     action: finding }  # 공식 용어와 이름은 같고 약어·도메인이 다름
+    - { id: SC-06, name: type_length_mismatch,       action: finding }  # 도메인과 다른 타입·길이
+  compliance_rate: compliant_columns / diagnosed_columns * 100   # project 정의, 항목별로 함께 보고
+
+# CRUD 면제 사유. 엔티티에 이 사유가 있으면 RULE-06이 U·D 누락을 허용한다.
+crud_exemption_reasons:
+  - immutable_ledger
+  - soft_delete
+
+# 법정 점검 근거 (참고): 고시 제17조 연 1회 이상 표준화 수준 점검, 제18조 시정요구 후 3개월 내 조치
