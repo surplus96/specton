@@ -1,5 +1,7 @@
 # Specton
 
+[![한국어](https://img.shields.io/badge/lang-%ED%95%9C%EA%B5%AD%EC%96%B4-1f6feb)](README.md) [![English](https://img.shields.io/badge/lang-English-lightgrey)](README.en.md)
+
 고객 요구사항 문서를 읽어 **기능 명세서·ERD·DDL·RTM** 초안을 만들고, 누락·모순을 검토하는 LangGraph 기반 에이전트 서비스.
 팀 설계로 · 한화시스템 K-뉴딜 아카데미 캡스톤 과제 8.
 
