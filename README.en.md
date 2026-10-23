@@ -5,7 +5,7 @@
 A LangGraph-based agent service that reads customer requirement documents, drafts a **functional specification, ERD, DDL, and RTM**, and reviews them for omissions and contradictions.
 Team Seolgyero (설계로) · Hanwha Systems K-New Deal Academy, Capstone Project 8.
 
-Development docs live in [docs/](docs/README.en.md). Original planning and meeting materials are in the parent planning folder `docs/` (project plan, `개발착수_문서/`, `회의준비/`).
+Development docs (Korean) live in [docs/](docs/README.md). Original planning and meeting materials are in the parent planning folder `docs/` (project plan, `개발착수_문서/`, `회의준비/`).
 
 ## Tech stack
 
@@ -49,7 +49,7 @@ uv run pytest -m llm              # real LLM calls; run manually after budget ap
 
 ## Domain packs
 
-`domain_packs/` holds inputs based on the 8th edition of the Korean Public Data Common Standard. Human-written files and generated files are kept separate ([guide](domain_packs/README.en.md)).
+`domain_packs/` holds inputs based on the 8th edition of the Korean Public Data Common Standard. Human-written files and generated files are kept separate ([guide](domain_packs/README.md), Korean).
 
 ```bash
 uv run python -m specton.packs.build          # regenerate after editing inputs
@@ -80,7 +80,7 @@ tests/          unit · integration · e2e
 
 ## Collaboration
 
-See [CONTRIBUTING.en.md](CONTRIBUTING.en.md) for details.
+See [CONTRIBUTING.md](CONTRIBUTING.md) (Korean) for details.
 
 - Work is tracked in GitHub Issues. Branch `feat/<issue>-summary`, commit `feat: description (#issue)`.
 - A PR states `Closes #issue` and its test results, and is reviewed by one person other than the author. Contract (`contracts/`) changes need two approvals.

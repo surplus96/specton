@@ -1,7 +1,5 @@
 # 요구사항
 
-[![한국어](https://img.shields.io/badge/lang-%ED%95%9C%EA%B5%AD%EC%96%B4-1f6feb)](02-requirements.md) [![English](https://img.shields.io/badge/lang-English-lightgrey)](02-requirements.en.md)
-
 > 상태: **골격 (회의 전)** · 회의 결정 반영 후 작성한다.
 > 목적: 구현 대상 요구사항과 수용 기준의 기준 목록.
 > 원본: 상위 기획 폴더 `docs/개발착수_문서/02_요구사항_정의서.md`, `관리표/요구사항_목록.csv`
