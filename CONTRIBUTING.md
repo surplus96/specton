@@ -1,5 +1,7 @@
 # 협업 규칙
 
+[![한국어](https://img.shields.io/badge/lang-%ED%95%9C%EA%B5%AD%EC%96%B4-1f6feb)](CONTRIBUTING.md) [![English](https://img.shields.io/badge/lang-English-lightgrey)](CONTRIBUTING.en.md)
+
 작업은 **GitHub Issues + Projects**로 관리하고, 코드는 **GitHub Flow**(보호된 `main` + 짧은 작업 브랜치)로 합친다.
 
 ## 작업 흐름

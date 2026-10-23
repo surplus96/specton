@@ -1,5 +1,7 @@
 # 개요·범위
 
+[![한국어](https://img.shields.io/badge/lang-%ED%95%9C%EA%B5%AD%EC%96%B4-1f6feb)](01-overview.md) [![English](https://img.shields.io/badge/lang-English-lightgrey)](01-overview.en.md)
+
 > 상태: **골격 (회의 전)** · 회의 결정 반영 후 작성한다.
 > 목적: 무엇을 만들고 무엇을 만들지 않는지 한 장으로 정리한다.
 > 원본: 기획서 `프로젝트기획서_설계로.xlsx`, 상위 기획 폴더 `docs/개발착수_문서/01_프로젝트_수행계획.md`

@@ -1,5 +1,7 @@
 # 개발 문서
 
+[![한국어](https://img.shields.io/badge/lang-%ED%95%9C%EA%B5%AD%EC%96%B4-1f6feb)](README.md) [![English](https://img.shields.io/badge/lang-English-lightgrey)](README.en.md)
+
 Specton 구현에 필요한 문서만 둔다. 기획·회의 자료 원본은 상위 기획 폴더 `docs/`에 있다.
 
 | 문서 | 내용 | 상태 |

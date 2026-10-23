@@ -1,5 +1,7 @@
 # 도메인 팩
 
+[![한국어](https://img.shields.io/badge/lang-%ED%95%9C%EA%B5%AD%EC%96%B4-1f6feb)](README.md) [![English](https://img.shields.io/badge/lang-English-lightgrey)](README.en.md)
+
 Specton 실행 **전에** 준비하는 입력이다. 실행 중에는 읽기만 하고, 실행 결과물(요구사항·ERD·DDL 등)은 여기에 쓰지 않는다.
 
 ## 파일 구분
