@@ -1,5 +1,5 @@
 name: Task
-description: 구현 작업
+description: 구현 작업. 만든 뒤 담당자·마일스톤·role 라벨을 지정하고 선행 이슈는 Relationships → Blocked by로 연결한다
 labels: ["type:task"]
 body:
   - type: input
@@ -14,7 +14,8 @@ body:
     id: goal
     attributes:
       label: 할 일
-      description: 무엇을 만들고 무엇은 범위 밖인지
+      description: 체크리스트로 적는다. 무엇을 만들고 무엇은 범위 밖인지
+      placeholder: "- [ ] A01 노드 어댑터\n- [ ] 고정 응답 테스트 3종"
     validations:
       required: true
   - type: textarea
@@ -22,7 +23,7 @@ body:
     attributes:
       label: 완료 조건
       description: 확인 가능한 결과 (테스트, 화면, 산출물)
-      placeholder: "- [ ] 고정 응답 테스트 3종 통과"
+      placeholder: "- 관련 TC 통과 (결과를 PR 본문에 기재)"
     validations:
       required: true
   - type: textarea

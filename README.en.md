@@ -82,8 +82,8 @@ tests/          unit · integration · e2e
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) (Korean) for details.
 
-- Work is tracked in GitHub Issues. Branch `feat/<issue>-summary`, commit `feat: description (#issue)`.
-- A PR states `Closes #issue` and its test results, and is reviewed by one person other than the author. Contract (`contracts/`) changes need two approvals.
+- Work is tracked in GitHub Issues and the [Projects board](https://github.com/users/surplus96/projects/1). Branch `feat/<issue>-summary`, PR title `feat: description`.
+- A PR states `Closes #issue` and its test results and needs one approval from someone other than the author. Only R1 (@surplus96) merges into `main`, using squash. Contract (`contracts/`) changes need two approvals.
 - Nodes stay thin adapters; generators and validators never import the LLM client. Domain constants are read from packs.
 - Never commit customer documents, API keys, or run outputs.
 

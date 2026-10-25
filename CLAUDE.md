@@ -18,3 +18,4 @@
 - `GENERATED` 표시가 있는 팩 파일은 직접 고치지 않는다. `term_specs.yaml` 등 입력을 고치고 `uv run python -m specton.packs.build`를 실행한다.
 - 실제 LLM 호출 테스트는 `@pytest.mark.llm`, DB 테스트는 `@pytest.mark.db`를 붙인다.
 - 설계 근거는 `docs/`의 개발 문서와 `docs/adr/`의 결정 기록을 따른다.
+- 작업은 이슈 → 브랜치 `<type>/<이슈번호>-요약` → PR(`Closes #번호`, 제목에 번호 없음) 순서. `main` 병합은 R1만 Squash로 한다 (CONTRIBUTING.md).

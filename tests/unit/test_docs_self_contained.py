@@ -11,6 +11,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CHECKED_SUFFIXES = {".md", ".yaml", ".yml", ".toml", ".json", ".py"}
+CHECKED_NAMES = {"CODEOWNERS"}
 EXCLUDED_PREFIXES = ("domain_packs/sources/", "frontend/package-lock.json")
 THIS_FILE = Path(__file__).resolve().relative_to(REPO_ROOT).as_posix()
 
@@ -36,7 +37,7 @@ def tracked_files() -> list[str]:
     return [
         path
         for path in result.stdout.splitlines()
-        if Path(path).suffix in CHECKED_SUFFIXES
+        if (Path(path).suffix in CHECKED_SUFFIXES or Path(path).name in CHECKED_NAMES)
         and not path.startswith(EXCLUDED_PREFIXES)
         and path != THIS_FILE
     ]
