@@ -33,17 +33,43 @@
 
 ## 역할 간 인계
 
-| 주는 쪽 → 받는 쪽 | 넘겨주는 것 | 시점 |
-|---|---|---|
-| R3 → 전원 | 데이터 계약 (`contracts/`) | 가장 먼저 |
-| R1 → 전원 | LLM client·stub, 리뷰어 노드 틀 | 가장 먼저 |
-| R2 → R3 | 확인된 요구사항 | A01 완료 |
-| R3 → R4 | 기능 목록 | A02 완료 |
-| R4 → R5 | 엔티티·속성 | A03 완료 |
-| R4·R5 → R3 | 고정된 모델 → RTM | 모델 정리 완료 |
-| R3 → R5 | API 명세 (OpenAPI) | 화면 연동 전 |
+| 주는 쪽 → 받는 쪽 | 넘겨주는 것 | 시점 | 주는 이슈 → 받는 이슈 |
+|---|---|---|---|
+| R3 → 전원 | 데이터 계약 (`contracts/`) | 가장 먼저 | [#4](https://github.com/surplus96/specton/issues/4) → 에이전트·API·입력·평가 이슈 |
+| R1 → 전원 | LLM client·stub | 가장 먼저 | [#3](https://github.com/surplus96/specton/issues/3) → [#5](https://github.com/surplus96/specton/issues/5)~[#9](https://github.com/surplus96/specton/issues/9), [#42](https://github.com/surplus96/specton/issues/42) |
+| R1 → R1·R2·R3·R4 | 리뷰어 노드 틀 (관점 설정 형식) | 가장 먼저 | [#42](https://github.com/surplus96/specton/issues/42) → [#5](https://github.com/surplus96/specton/issues/5), [#6](https://github.com/surplus96/specton/issues/6), [#7](https://github.com/surplus96/specton/issues/7), [#9](https://github.com/surplus96/specton/issues/9) |
+| R2 → R3 | 확인된 요구사항 | A01 완료 | [#5](https://github.com/surplus96/specton/issues/5) → [#6](https://github.com/surplus96/specton/issues/6) |
+| R3 → R4 | 기능 목록 | A02 완료 | [#6](https://github.com/surplus96/specton/issues/6) → [#7](https://github.com/surplus96/specton/issues/7) |
+| R4 → R5 | 엔티티·속성 | A03 완료 | [#7](https://github.com/surplus96/specton/issues/7) → [#8](https://github.com/surplus96/specton/issues/8) |
+| R5 → R4 | 관계 | A04 완료 | [#8](https://github.com/surplus96/specton/issues/8) → [#12](https://github.com/surplus96/specton/issues/12) |
+| R4 → R3·R5 | 고정된 모델 → RTM·ERD | 모델 정리 완료 | [#12](https://github.com/surplus96/specton/issues/12) → [#14](https://github.com/surplus96/specton/issues/14), [#13](https://github.com/surplus96/specton/issues/13) |
+| R3 → R5 | API 명세 (OpenAPI) | 화면 연동 전 | [#16](https://github.com/surplus96/specton/issues/16) → [#19](https://github.com/surplus96/specton/issues/19) |
+| R2 → R3·R2 | `approved`로 고정된 팩 | 평가 전 | [#11](https://github.com/surplus96/specton/issues/11) → [#40](https://github.com/surplus96/specton/issues/40), [#20](https://github.com/surplus96/specton/issues/20) |
+| R3 → R2 | 승인된 평가 세트·정답 | 팩 고정 후 | [#40](https://github.com/surplus96/specton/issues/40) → [#20](https://github.com/surplus96/specton/issues/20) |
 
-앞 단계가 늦어도 고정 응답(fixture)으로 먼저 구현하고, 계약이 동결되면 실제로 연결한다.
+앞 단계가 늦어도 고정 응답(fixture)으로 먼저 구현하고, 계약이 동결되면 실제로 연결한다. 각 이슈의 "넘겨줄 것"·"받을 것" 섹션에 같은 내용이 있다. 실제로 기다려야 하는 관계는 이슈의 Blocked by로 연결했다.
+
+## 작업 순서
+
+전체 구현은 단계 0 → 4 순서로 진행한다. 같은 단계 안의 작업은 병렬로 한다.
+
+| 단계 | 내용 | 이슈 |
+|---|---|---|
+| 0 기반 | 모두가 쓰는 계약·client·리뷰어 틀 | [#3](https://github.com/surplus96/specton/issues/3), [#4](https://github.com/surplus96/specton/issues/4), [#42](https://github.com/surplus96/specton/issues/42) |
+| 1 에이전트 | 고정 응답으로 에이전트 9개 첫 구현 | [#5](https://github.com/surplus96/specton/issues/5)~[#9](https://github.com/surplus96/specton/issues/9) |
+| 2 생성·입력 | 입력 처리, 팩 고정, 평가 세트, 모델 정리, ERD·RTM·DDL, API | [#10](https://github.com/surplus96/specton/issues/10), [#11](https://github.com/surplus96/specton/issues/11), [#40](https://github.com/surplus96/specton/issues/40), [#12](https://github.com/surplus96/specton/issues/12), [#13](https://github.com/surplus96/specton/issues/13), [#14](https://github.com/surplus96/specton/issues/14), [#15](https://github.com/surplus96/specton/issues/15), [#16](https://github.com/surplus96/specton/issues/16) |
+| 3 통합 | 그래프·검토 병합·웹·보안 점검·HWPX | [#17](https://github.com/surplus96/specton/issues/17), [#18](https://github.com/surplus96/specton/issues/18), [#19](https://github.com/surplus96/specton/issues/19), [#21](https://github.com/surplus96/specton/issues/21), [#24](https://github.com/surplus96/specton/issues/24) |
+| 4 평가·배포 | 평가, AWS 배포, 결함 수정, 시연 | [#20](https://github.com/surplus96/specton/issues/20), [#25](https://github.com/surplus96/specton/issues/25), [#22](https://github.com/surplus96/specton/issues/22), [#23](https://github.com/surplus96/specton/issues/23) |
+
+| 담당 | 순서 |
+|---|---|
+| R1 최태영 | [#3](https://github.com/surplus96/specton/issues/3) client·stub → [#42](https://github.com/surplus96/specton/issues/42) 리뷰어 노드 틀 → [#9](https://github.com/surplus96/specton/issues/9) A05·A09 → [#18](https://github.com/surplus96/specton/issues/18) 검토 병합 → [#17](https://github.com/surplus96/specton/issues/17) 그래프 → [#22](https://github.com/surplus96/specton/issues/22) 결함 수정 → [#23](https://github.com/surplus96/specton/issues/23) 시연 |
+| R2 김희영 | [#5](https://github.com/surplus96/specton/issues/5) A01·A06 → [#10](https://github.com/surplus96/specton/issues/10) 입력 → [#11](https://github.com/surplus96/specton/issues/11) 팩 고정 → [#24](https://github.com/surplus96/specton/issues/24) HWPX → [#20](https://github.com/surplus96/specton/issues/20) 평가 |
+| R3 박성진 | [#4](https://github.com/surplus96/specton/issues/4) 계약 → [#6](https://github.com/surplus96/specton/issues/6) A02·A07 → [#16](https://github.com/surplus96/specton/issues/16) API → [#40](https://github.com/surplus96/specton/issues/40) 평가 세트·정답 → [#14](https://github.com/surplus96/specton/issues/14) RTM → [#21](https://github.com/surplus96/specton/issues/21) 접근·한도 |
+| R4 김유경 | [#7](https://github.com/surplus96/specton/issues/7) A03·A08 → [#12](https://github.com/surplus96/specton/issues/12) 모델 정리 → [#15](https://github.com/surplus96/specton/issues/15) DDL·규칙 |
+| R5 김순재 | [#8](https://github.com/surplus96/specton/issues/8) A04 → [#13](https://github.com/surplus96/specton/issues/13) ERD·PDF → [#19](https://github.com/surplus96/specton/issues/19) 웹 → [#25](https://github.com/surplus96/specton/issues/25) AWS |
+
+프로젝트 보드의 **단계**·**순서** 필드에 같은 값이 들어 있다. "내 작업" 뷰를 순서로 정렬하면 위 표의 순서대로 보인다.
 
 ## 협업 도구
 
