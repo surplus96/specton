@@ -1,32 +1,32 @@
 # 경로별 리뷰 담당자. PR이 해당 경로를 바꾸면 자동으로 리뷰어로 지정된다.
-# 역할 배정 후 @OWNER-Rn을 실제 GitHub 아이디로 바꾸고 주석을 해제한다.
-# 역할 정의: 상위 기획 폴더 docs/회의준비/06_역할_설명서.md
-#
-# *                         @OWNER-R1
-# specton/llm/              @OWNER-R1
-# specton/review/           @OWNER-R1 @OWNER-R4
-# specton/nodes/            @OWNER-R1
-# .github/                  @OWNER-R1
-# specton/ingest/           @OWNER-R2
-# specton/packs/            @OWNER-R2
-# domain_packs/             @OWNER-R2 @OWNER-R4
-# eval/                     @OWNER-R2
-# specton/contracts/        @OWNER-R3 @OWNER-R1
-# specton/api/              @OWNER-R3
-# specton/persistence/      @OWNER-R3
-# specton/codegen/          @OWNER-R4 @OWNER-R5
-# specton/validate/         @OWNER-R4
-# docker/                   @OWNER-R4
-# specton/export/           @OWNER-R3 @OWNER-R5
-# frontend/                 @OWNER-R5
-#
+# 역할 정의와 담당: docs/08-roles.md (ADR-0001)
+# R1 최태영 · R2 김희영 · R3 박성진 · R4 김유경 · R5 김순재
+
+*                         @surplus96
+specton/llm/              @surplus96
+specton/review/           @surplus96 @yugyeong-k
+specton/nodes/            @surplus96
+.github/                  @surplus96
+specton/ingest/           @workbaselab-ops
+specton/packs/            @workbaselab-ops
+domain_packs/             @workbaselab-ops @yugyeong-k
+eval/                     @workbaselab-ops
+specton/contracts/        @c189021 @surplus96
+specton/api/              @c189021
+specton/persistence/      @c189021
+specton/codegen/          @yugyeong-k @kisoja24782-ux
+specton/validate/         @yugyeong-k
+docker/                   @yugyeong-k
+specton/export/           @c189021 @kisoja24782-ux
+frontend/                 @kisoja24782-ux
+
 # few-shot 예시: 에이전트 담당 + 팩 담당(R2)
-# domain_packs/*/examples/A01.yaml  @OWNER-R2
-# domain_packs/*/examples/A02.yaml  @OWNER-R3 @OWNER-R2
-# domain_packs/*/examples/A03.yaml  @OWNER-R4 @OWNER-R2
-# domain_packs/*/examples/A04.yaml  @OWNER-R5 @OWNER-R2
-# domain_packs/*/examples/A05.yaml  @OWNER-R1 @OWNER-R2
-# domain_packs/*/examples/A06.yaml  @OWNER-R2
-# domain_packs/*/examples/A07.yaml  @OWNER-R3 @OWNER-R2
-# domain_packs/*/examples/A08.yaml  @OWNER-R4 @OWNER-R2
-# domain_packs/*/examples/A09.yaml  @OWNER-R1 @OWNER-R2
+domain_packs/*/examples/A01.yaml  @workbaselab-ops
+domain_packs/*/examples/A02.yaml  @c189021 @workbaselab-ops
+domain_packs/*/examples/A03.yaml  @yugyeong-k @workbaselab-ops
+domain_packs/*/examples/A04.yaml  @kisoja24782-ux @workbaselab-ops
+domain_packs/*/examples/A05.yaml  @surplus96 @workbaselab-ops
+domain_packs/*/examples/A06.yaml  @workbaselab-ops
+domain_packs/*/examples/A07.yaml  @c189021 @workbaselab-ops
+domain_packs/*/examples/A08.yaml  @yugyeong-k @workbaselab-ops
+domain_packs/*/examples/A09.yaml  @surplus96 @workbaselab-ops
