@@ -82,8 +82,8 @@ tests/          unit · integration · e2e
 
 자세한 내용은 [CONTRIBUTING.md](CONTRIBUTING.md).
 
-- 작업은 GitHub Issues로 관리한다. 브랜치 `feat/<이슈번호>-요약`, 커밋 `feat: 내용 (#이슈번호)`
-- PR은 `Closes #이슈번호`와 테스트 결과를 적고 작성자 외 1명이 검토한다. 계약(`contracts/`) 변경은 2인 승인.
+- 작업은 GitHub Issues와 [Projects 보드](https://github.com/users/surplus96/projects/1)로 관리한다. 브랜치 `feat/<이슈번호>-요약`, PR 제목 `feat: 내용`
+- PR은 `Closes #이슈번호`와 테스트 결과를 적고 작성자 외 1명이 승인한다. `main` 병합은 R1(@surplus96)만 Squash로 한다. 계약(`contracts/`) 변경은 2인 승인.
 - 노드는 얇은 어댑터로 두고, 생성기·검증기는 LLM client를 import하지 않는다. 도메인 상수는 팩에서 읽는다.
 - 고객 문서·API 키·실행 산출물은 커밋하지 않는다.
 
