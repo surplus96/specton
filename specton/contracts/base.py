@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 class Contract(BaseModel):
     """모든 계약 모델의 기반. 불변이며, 알 수 없는 필드는 거절하고 앞뒤 공백을 제거한다.
 
+    원문을 그대로 담는 필드는 `SourceText`로 선언해 공백 제거에서 뺀다.
+
     값을 바꿀 때는 `model_copy(update=...)`로 새 객체를 만든다. 목록 필드는 tuple이다.
     """
 
@@ -21,6 +23,8 @@ ReqId = Annotated[str, StringConstraints(pattern=r"^REQ-\d{2,}$")]
 EntityId = Annotated[str, StringConstraints(min_length=1, max_length=64)]
 ObjectId = Annotated[str, StringConstraints(min_length=1, max_length=64)]
 NonEmptyText = Annotated[str, StringConstraints(min_length=1)]
+# 원문 그대로 보존할 텍스트. 앞뒤 공백·줄바꿈을 지우지 않고, 공백만 있는 값은 거절한다.
+SourceText = Annotated[str, StringConstraints(strip_whitespace=False, pattern=r"\S")]
 # 표 안 셀 위치. 엑셀 셀 주소 형식(열 문자 + 1부터 시작하는 행 번호)이다.
 CellAddress = Annotated[str, StringConstraints(pattern=r"^[A-Z]+[1-9][0-9]*$")]
 

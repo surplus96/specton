@@ -3,7 +3,10 @@ from pathlib import Path
 import pytest
 import yaml
 
+from specton.contracts.base import SqlType
 from specton.packs.build import BuildError, build, check, write
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 REVISION_COLUMNS = ["제정차수", "개정구분명(폐기 또는 변경)", "개정항목", "개정사유"]
 
@@ -186,3 +189,10 @@ def test_check_detects_hand_edited_generated_file(tmp_path: Path) -> None:
     terms_file.write_text(terms_file.read_text(encoding="utf-8") + "# edited\n", encoding="utf-8")
 
     assert check(root) == [terms_file]
+
+
+def test_common_pack_allows_exactly_the_contract_sql_types() -> None:
+    domains_file = REPO_ROOT / "domain_packs/common/domains.yaml"
+    domains = yaml.safe_load(domains_file.read_text(encoding="utf-8"))
+
+    assert domains["allowed_sql_types"] == [t.value for t in SqlType]

@@ -11,6 +11,7 @@ from specton.contracts import (
     FindingDraft,
     Function,
     FunctionDraft,
+    RawRequirement,
     Relationship,
     Requirement,
     RequirementDraft,
@@ -145,6 +146,19 @@ class TestSourceRef:
     def test_round_trips_through_json(self) -> None:
         ref = _src()
         assert SourceRef.model_validate_json(ref.model_dump_json()) == ref
+
+
+class TestSourceText:
+    def test_raw_requirement_keeps_source_whitespace(self) -> None:
+        raw = RawRequirement(
+            document_id="DOC-1", block_id="B-1", source_ref=_src(), text="  ① 입고한다\n"
+        )
+
+        assert raw.text == "  ① 입고한다\n"
+
+    def test_raw_requirement_rejects_blank_text(self) -> None:
+        with pytest.raises(ValidationError):
+            RawRequirement(document_id="DOC-1", block_id="B-1", source_ref=_src(), text="  \n")
 
 
 class TestNfrCategory:

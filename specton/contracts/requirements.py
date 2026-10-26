@@ -12,6 +12,7 @@ from specton.contracts.base import (
     ReqId,
     RequirementType,
     SourceRef,
+    SourceText,
 )
 
 
@@ -30,7 +31,7 @@ class RawRequirement(Contract):
     block_id: NonEmptyText
     source_id: str | None = None  # 고객 문서의 원문 ID (예: SFR-001). 그대로 보존
     source_ref: SourceRef
-    text: NonEmptyText
+    text: SourceText
     extraction_status: ExtractionStatus = ExtractionStatus.OK
 
 

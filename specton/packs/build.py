@@ -17,6 +17,8 @@ from typing import Any
 
 import yaml
 
+from specton.contracts.base import SqlType
+
 Record = dict[str, Any]
 
 DEFAULT_ROOT = Path("domain_packs")
@@ -208,19 +210,7 @@ def build(root: Path) -> dict[Path, str]:
     outputs[root / "common/domains.yaml"] = render(
         {
             "edition": edition,
-            "allowed_sql_types": [
-                "char",
-                "varchar",
-                "text",
-                "numeric",
-                "integer",
-                "bigint",
-                "boolean",
-                "date",
-                "time",
-                "timestamp",
-                "timestamptz",
-            ],
+            "allowed_sql_types": [t.value for t in SqlType],
             "domains": common_domains,
             "on_unknown": "finding",
         }

@@ -17,6 +17,7 @@
 | DesignState | `requirements`, `functions`, `entities`, `relationships`, `artifacts`, `findings`, `iteration` | `run_id`, `revision`, `status`, `interrupt_id`, 문서·팩·프롬프트·모델 버전, 병렬 가지 결과 |
 
 - 추가 필드를 모두 LLM 출력에 넣지 않는다. 실행 메타데이터·버전·ID·필터 결과는 코드가 채운다.
+- 계약의 텍스트 필드는 앞뒤 공백을 지운다. 단, 추출한 원문(`RawRequirement.text`)은 `SourceText` 타입으로 앞뒤 공백·줄바꿈까지 그대로 보존한다.
 - LLM 출력 모델(예: FindingDraft)과 저장 모델(Finding)을 나눈다. `id`·`source`·`fingerprint`·`iteration`은 코드가 붙인다.
 - `source_ref`는 **구조체**로 둔다 (ADR-0009). 문자열 인코딩은 파서마다 형식이 달라지고 비교·검증이 어렵다.
 
@@ -89,7 +90,7 @@ priority_source: explicit | inferred | unspecified
 
 ## 타입
 
-- 허용 SQL 타입: `char`, `varchar`, `text`, `numeric`, `integer`, `bigint`, `boolean`, `date`, `time`, `timestamp`, `timestamptz` (`domain_packs/common/domains.yaml`의 `allowed_sql_types`).
+- 허용 SQL 타입: `char`, `varchar`, `text`, `numeric`, `integer`, `bigint`, `boolean`, `date`, `time`, `timestamp`, `timestamptz` (`SqlType`). 팩 생성기가 이 목록으로 `domain_packs/common/domains.yaml`의 `allowed_sql_types`를 만들고, 테스트가 둘이 같은지 대조한다.
 - 도메인 → PostgreSQL 매핑은 공통표준 도메인 기준이며, 타입 프로필 `strict`(표준 저장 형식)와 `pg_native`(PostgreSQL 고유 타입) 중 선택한다. 현재 초안은 `strict` (ADR-0009).
 - 미지원 타입을 조용히 `text`로 바꾸지 않는다.
 - 속성 제약 표현(`check`)은 계약에 두지 않는다. LLM 출력에는 넣지 않고, 허용 범위(AST·연산)는 규칙 검사(#15)에서 정한 뒤 저장 모델에 추가한다.
