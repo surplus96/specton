@@ -4,11 +4,13 @@ LLM 모델·예산·한도의 기본값은 ADR-0007을 따른다.
 """
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, PostgresDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from specton.llm.types import ReasoningEffort
+# OpenAI 추론 강도. 설정이 가장 아래층이므로 여기서 정의하고 specton.llm이 가져다 쓴다.
+ReasoningEffort = Literal["low", "medium", "high"]
 
 
 class Settings(BaseSettings):
