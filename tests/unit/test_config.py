@@ -53,6 +53,14 @@ def test_llm_defaults_follow_adr_0007(monkeypatch: pytest.MonkeyPatch) -> None:
     assert {name: getattr(settings, name) for name in ADR_0007_DEFAULTS} == ADR_0007_DEFAULTS
 
 
+def test_review_mode_defaults_to_combined_and_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SPECTON_REVIEW_MODE", raising=False)
+    default = Settings(_env_file=None)
+    monkeypatch.setenv("SPECTON_REVIEW_MODE", "parallel")
+
+    assert (default.review_mode, Settings(_env_file=None).review_mode) == ("combined", "parallel")
+
+
 def test_settings_rejects_unknown_reasoning_effort(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SPECTON_DESIGN_REASONING_EFFORT", "extreme")
 

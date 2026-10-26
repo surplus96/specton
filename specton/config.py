@@ -11,6 +11,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # OpenAI 추론 강도. 설정이 가장 아래층이므로 여기서 정의하고 specton.llm이 가져다 쓴다.
 ReasoningEffort = Literal["low", "medium", "high"]
+# 리뷰어 실행 방식 (ADR-0008). parallel은 관점마다 1회, combined는 전체 1회 호출한다.
+ReviewMode = Literal["parallel", "combined"]
 
 
 class Settings(BaseSettings):
@@ -21,6 +23,7 @@ class Settings(BaseSettings):
     review_model: str = "gpt-6-luna"
     design_reasoning_effort: ReasoningEffort = "medium"
     review_reasoning_effort: ReasoningEffort = "low"
+    review_mode: ReviewMode = "combined"
 
     llm_timeout_seconds: float = Field(default=120, gt=0)
     llm_api_retries: int = Field(default=3, ge=0)
