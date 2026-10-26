@@ -81,8 +81,8 @@ class TestSourceRef:
     def test_each_kind_requires_its_locator(self) -> None:
         assert SourceRef(kind="csv", row=3).display() == "3행"
         assert SourceRef(kind="pdf", page=2, block=0).display() == "2쪽 블록0"
-        hwpx = SourceRef(kind="hwpx", section=0, paragraph=4, table=1, cell="B2")
-        assert hwpx.display() == "구역0 문단4 표1 B2"
+        hwpx = SourceRef(kind="hwpx", section=0, paragraph=4, table=1, cell="2행1열")
+        assert hwpx.display() == "구역0 문단4 표1 2행1열"
 
     @pytest.mark.parametrize(
         "kwargs",
