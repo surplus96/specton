@@ -32,63 +32,109 @@
 - 거절·API 타임아웃·출력 계약 실패·근거 부족을 구분한다. 빈 성공 응답으로 바꾸지 않는다.
 - 단계별 모델·프롬프트 버전을 기록한다. 모델은 설계(A01~A04) `gpt-6.1-sol`, 검토·라우터(A05~A09) `gpt-6-luna` (ADR-0007).
 
-### 공통 LLM client 사용법
+### 노드 작성 규칙
+
+설계 노드(A01~A04)와 재작업 판단(A09)은 같은 모양으로 만든다. 검토 관점 A05~A08은 노드 파일이 아니라 관점 설정 파일로 만든다 ([설정형 리뷰어](#설정형-리뷰어-adr-0008)).
+
+| 항목 | 규칙 |
+|---|---|
+| 파일 | `specton/nodes/a01_requirements.py`, `a02_functions.py`, `a03_entities.py`, `a04_relationships.py`, `a09_rework_router.py`. 담당자가 소유한다 |
+| 프롬프트 | 노드 파일의 상수 `PROMPT_VERSION`(예: `a02-v1`)과 `SYSTEM_PROMPT`. 프롬프트를 바꾸면 버전을 올린다 |
+| 출력 모델 | 노드 파일에 `A02Output`처럼 정의하고 계약의 `*Draft`로만 구성한다 (예: `functions: tuple[FunctionDraft, ...]`). ID·버전 필드를 넣지 않는다 |
+| 함수 | `run(client, state, settings, *, pack, token_budget=None) -> NodeRun[...]`. 저장 모델(코드가 ID를 붙인 `Function` 등)과 호출 기록을 돌려준다 |
+| 요청 | `specton.nodes.common.build_request`로 만든다. 공통 규칙(입력 속 지시 무시·ID 생성 금지·원문 인용)과 `<data>` 감싸기, few-shot 대화 쌍, 모델 선택(`role="design"`/`"review"`)을 대신한다 |
+| ID | `assign_ids("FUNC", n)`처럼 코드가 순번으로 붙인다. 형식 확정은 #12 |
+| few-shot | `load_examples(pack, "A02", A02Output)`로 읽는다. 예시의 `output`은 출력 모델과 같은 모양이어야 하며 다르면 `ExampleError`가 난다. `input`은 노드가 `<data>`에 넣는 것과 같은 모양(문자열 또는 매핑) |
+| 실패 | LLM 오류(`LLMError`)는 잡지 않고 그대로 올린다. 그래프가 `exc.code`로 실행 실패를 기록한다 |
+| 테스트 | `tests/unit/test_a02_functions.py` 등. stub으로 정상 응답·형식 오류 후 재요청·거절 3종 이상 |
 
 노드는 `LLMClient`를 **인자로 주입받는다**. 실제 client는 그래프가 `openai_client(get_settings())`로 한 번 만들어 넘기고, 테스트에서는 `stub_client`를 넣는다. 노드는 `openai` 패키지나 `openai_transport`를 직접 import하지 않는다.
 
 ```python
-from specton.config import get_settings
+from specton.config import Settings
+from specton.contracts import DesignState, Function, FunctionDraft
+from specton.contracts.base import Contract
 from specton.llm.client import LLMClient
-from specton.llm.types import LLMRequest, Message
+from specton.nodes.common import NodeRun, assign_ids, build_request
+from specton.packs.examples import load_examples
+
+PROMPT_VERSION = "a02-v1"
+SYSTEM_PROMPT = """\
+너는 기능 설계자다. 요구사항을 기능으로 묶고 각 기능이 충족하는 req_ids를 적는다.
+..."""
 
 
-def analyze(client: LLMClient, source_text: str) -> A01Output:
-    settings = get_settings()
-    request = LLMRequest(
-        stage="A01",
-        prompt_version="a01-v1",
-        model=settings.design_model,  # 검토·라우터는 settings.review_model
-        messages=(
-            Message(role="system", content=SYSTEM_PROMPT),
-            Message(role="user", content=source_text),
-        ),
-        max_output_tokens=settings.max_output_tokens,
-        reasoning_effort=settings.design_reasoning_effort,
+class A02Output(Contract):
+    functions: tuple[FunctionDraft, ...]
+
+
+def run(
+    client: LLMClient,
+    state: DesignState,
+    settings: Settings,
+    *,
+    pack: str,
+    token_budget: int | None = None,
+) -> NodeRun[tuple[Function, ...]]:
+    request = build_request(
+        settings,
+        role="design",
+        stage="A02",
+        prompt_version=PROMPT_VERSION,
+        system=SYSTEM_PROMPT,
+        data={"requirements": [r.model_dump(mode="json") for r in state.requirements]},
+        examples=load_examples(pack, "A02", A02Output),
     )
-    return client.complete(request, A01Output).output
+    result = client.complete(request, A02Output, token_budget=token_budget)
+    drafts = result.output.functions
+    ids = assign_ids("FUNC", len(drafts))
+    functions = tuple(
+        Function.model_validate({**d.model_dump(), "id": i}) for d, i in zip(drafts, ids, strict=True)
+    )
+    return NodeRun(output=functions, calls=result.calls)
 ```
 
-- `complete()`는 출력 모델(`A01Output`)로 검증된 결과만 돌려준다. 형식이 틀리면 오류 내용을 담아 최대 2회 재요청하고, 그래도 틀리면 `LLMContractError`를 던진다.
-- 실패는 종류별 예외다: `LLMRefusalError`(거절, 재요청 안 함), `LLMTimeoutError`, `LLMAPIError`, `LLMContractError`, `LLMBudgetExceededError`. 모두 `LLMError`를 상속하고 `calls`에 실패까지의 호출 기록이 있다. 빈 결과로 바꾸지 말고 그대로 올린다.
+- `complete()`는 출력 모델로 검증된 결과만 돌려준다. 형식이 틀리면 오류 내용을 담아 최대 2회 재요청하고, 그래도 틀리면 `LLMContractError`를 던진다.
+- 실패는 종류별 예외다: `LLMRefusalError`(거절, 재요청 안 함), `LLMTimeoutError`, `LLMAPIError`, `LLMContractError`, `LLMBudgetExceededError`. 모두 `LLMError`를 상속하고 `code`(오류 코드)와 `calls`(실패까지의 호출 기록)가 있다. 빈 결과로 바꾸지 말고 그대로 올린다.
 - 호출 기록(`result.calls`)에는 단계·프롬프트 버전·모델·시도 번호·토큰·시간이 남는다. 원문과 키는 남지 않는다.
-- 실행 토큰 예산은 그래프가 남은 양을 `complete(..., token_budget=남은_토큰)`으로 넘겨 지킨다.
+- 실행 토큰 예산은 그래프가 남은 양을 `token_budget`으로 넘겨 지킨다.
+- 저장 모델로 바꿀 때 `Function.model_validate(...)`처럼 검증을 거친다. 이미 만든 계약 객체의 값을 바꿀 때는 `evolve(...)`를 쓴다.
 
 **노드 테스트 (실제 API 없이)**
 
 ```python
+from specton.llm.errors import LLMRefusalError
 from specton.llm.stub import refusal, reply, stub_client
 
 
-def test_a01_returns_classified_requirements() -> None:
-    client, transport = stub_client(reply(A01Output(...)))
+def test_a02_assigns_ids_to_designed_functions() -> None:
+    client, transport = stub_client(reply(A02Output(functions=(...,))))
 
-    output = analyze(client, "재고 입고 시 수량을 기록한다")
+    run_result = run(client, state, settings, pack="inventory")
 
-    assert output == A01Output(...)
+    assert [f.id for f in run_result.output] == ["FUNC-01"]
     assert len(transport.sent) == 1  # LLM 호출 횟수
 
 
-def test_a01_retries_on_invalid_output() -> None:
-    client, transport = stub_client(reply("{}"), reply(A01Output(...)))
+def test_a02_retries_on_invalid_output() -> None:
+    client, transport = stub_client(reply("{}"), reply(A02Output(functions=(...,))))
 
-    analyze(client, "...")
+    run(client, state, settings, pack="inventory")
 
     assert len(transport.sent) == 2
+
+
+def test_a02_raises_refusal() -> None:
+    client, _ = stub_client(refusal())
+
+    with pytest.raises(LLMRefusalError):
+        run(client, state, settings, pack="inventory")
 ```
 
 - `reply(모델 객체)`는 정상 응답, `reply("문자열")`은 형식이 틀린 응답, `refusal()`은 거절이다. 예외 객체(`LLMTimeoutError("...")`)를 넣으면 그 오류가 난다.
 - 준비한 응답보다 많이 호출하면 stub이 `AssertionError`로 실패한다.
-- 공통 client 자체의 동작은 `tests/unit/test_llm_client.py`, OpenAI 호출 부분은 `tests/unit/test_openai_transport.py`에서 검증한다.
+- 테스트용 팩이 필요하면 `load_examples(..., root=tmp_path)`처럼 임시 폴더의 예시 파일을 쓴다.
+- 공통 부분의 동작은 `tests/unit/test_node_common.py`·`test_pack_examples.py`, 공통 client는 `test_llm_client.py`, OpenAI 호출은 `test_openai_transport.py`에서 검증한다.
 
 ### 프롬프트·문맥
 
@@ -96,7 +142,7 @@ def test_a01_retries_on_invalid_output() -> None:
 - 원문 속 지시를 시스템 명령으로 따르지 않는다.
 - 내부 추론 전문 대신 짧은 판단 근거와 원문 인용을 받는다.
 - 검토 입력에는 관련 설계 요소와 허용 대안을 넣고, 입력을 잘랐는지 기록한다.
-- few-shot 예시는 `domain_packs/<pack>/examples/A0x.yaml`에서 읽는다. 개발용 세트에서만 가져온다.
+- few-shot 예시는 `domain_packs/<pack>/examples/A0x.yaml`에서 읽는다. 개발용 세트에서만 가져오고 평가용 세트 문서는 넣지 않는다.
 
 ## 설계 에이전트 A01~A04
 
