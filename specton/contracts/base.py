@@ -44,7 +44,7 @@ class RequirementType(StrEnum):
 
 
 class NfrCategory(StrEnum):
-    """비기능 분류 후보. 값 목록은 계약 검토에서 확정한다."""
+    """비기능 분류 (05 문서, ADR-0009). 데이터 정합성 요구는 FR로 분류한다."""
 
     SECURITY = "security"
     AUDIT = "audit"
@@ -99,7 +99,7 @@ class ExtractionStatus(StrEnum):
 
 
 class SourceRef(Contract):
-    """원문 위치. 문자열 인코딩 대신 구조체로 둔다 (ADR-0009 제안).
+    """원문 위치. 문자열 인코딩 대신 구조체로 둔다 (ADR-0009).
 
     형식별 필수 필드:
     - xlsx: sheet, row

@@ -1,8 +1,8 @@
 # ADR-0009: 데이터 계약·API·도메인 팩 형식
 
-- 날짜: 2026-10-23
-- 상태: 제안
-- 결정자: 팀 설계로 (회의에서 승인·수정·보류)
+- 날짜: 2026-10-23 (계약 승인 2026-10-26)
+- 상태: 계약 승인, 도메인 팩 제안
+- 결정자: 팀 설계로 (계약은 PR #48 리뷰에서 R1 승인, 팩은 #11에서 결정)
 
 ## 배경
 
@@ -10,10 +10,16 @@
 
 ## 결정
 
-- [05 데이터 계약](../05-data-contracts.md), [06 API](../06-api.md), [api/openapi.json](../api/openapi.json)을 기준으로 계약을 동결한다. ADR-0006을 반영한다.
-- `source_ref` 표현은 **구조체**(`kind`별 `sheet`/`row`/`page`/`block`/`section`/`paragraph`/`table`/`cell`)로 제안한다. 화면 표기는 코드가 만든다. 동결 때 확정한다.
-- 계약 구현은 `specton/contracts/`의 Pydantic 모델이며 LLM 출력(`*Draft`)과 저장 모델을 나눈다 ([05](../05-data-contracts.md)).
-- 도메인 팩:
+### 계약 (승인)
+
+- [05 데이터 계약](../05-data-contracts.md), [06 API](../06-api.md), [api/openapi.json](../api/openapi.json)을 기준으로 계약을 동결한다. ADR-0006을 반영한다. PR #48 병합 시점이 동결 시점이다.
+- `source_ref`는 **구조체**(`kind`별 `sheet`/`row`/`page`/`block`/`section`/`paragraph`/`table`/`cell`)다. 행·쪽은 1부터, 블록·구역·문단·표는 0부터 센다. 화면 표기는 코드가 만든다.
+- 계약 구현은 `specton/contracts/`의 Pydantic 모델이며 LLM 출력(`*Draft`)과 저장 모델을 나눈다. 모든 계약 모델은 불변(`frozen`)이고 목록 필드는 튜플이다.
+- 속성 제약 표현(`check`)은 계약에 두지 않는다. 허용 범위는 규칙 검사(#15)에서 정한 뒤 추가한다.
+- 오류 코드는 06 문서의 16개다. 실행 실패 원인(`LLM_REFUSED`·`LLM_OUTPUT_INVALID`·`LLM_UNAVAILABLE`·`BUDGET_EXCEEDED`·`EXTRACTION_FAILED`)을 `INTERNAL`과 구분한다.
+- 동결 후 계약 변경은 `contract-change` 라벨과 2인 승인을 거친다.
+
+### 도메인 팩 (제안, #11)
 
 | 항목 | 제안 |
 |---|---|
