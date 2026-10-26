@@ -6,38 +6,38 @@
 
 ## 단계 간 모델
 
-| 모델               | 핵심 필드                                                                                                                               | 추가·정리 후보                                                                                       |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| RawRequirement     | 원문·원문 ID·출처                                                                                                                     | `document_id`, `source_ref`(시트/행 또는 페이지/블록), `extraction_status`                      |
-| Requirement        | `id`, `source_id`, `source_ref`, `parent_id`, `text`, `type`, `nfr_category`, `quality_issues`                          | 원문과 사용자 수정본 구분, 분석 버전                                                                  |
-| Function           | `id`, `name`, `description`, `priority`, `req_ids`, `entity_ops`                                                            | `priority` nullable + 근거·확인 상태 (ADR-0006). A03 전까지 `entity_ops` 비움                    |
-| Entity / Attribute | `pack`, `name`, `description`, `attributes`, `req_ids`, `crud_exemptions` / 타입·길이·정밀도·키·NULL·제약              | 허용 타입 고정, 안정적 내부 참조 키. FK는 관계에서 파생                                               |
-| Relationship       | `id`, `parent`, `child`, `cardinality`, `optional`, `identifying`, `rationale`, `req_ids`                               | 참조 키 선택·복합 키 표현                                                                            |
-| Finding            | `id`, `severity`, `kind`, `source`, `targets`, `evidence`, `suggestion`, `target_stage`, `fingerprint`, `iteration` | `reviewer_id`, 근거 위치, 필터 결과                                                                 |
-| DesignState        | `requirements`, `functions`, `entities`, `relationships`, `artifacts`, `findings`, `iteration`                            | `run_id`, `revision`, `status`, `interrupt_id`, 문서·팩·프롬프트·모델 버전, 병렬 가지 결과 |
+| 모델 | 핵심 필드 | 추가·정리 후보 |
+|---|---|---|
+| RawRequirement | 원문·원문 ID·출처 | `document_id`, `source_ref`(시트/행 또는 페이지/블록), `extraction_status` |
+| Requirement | `id`, `source_id`, `source_ref`, `parent_id`, `text`, `type`, `nfr_category`, `quality_issues` | 원문과 사용자 수정본 구분, 분석 버전 |
+| Function | `id`, `name`, `description`, `priority`, `req_ids`, `entity_ops` | `priority` nullable + 근거·확인 상태 (ADR-0006). A03 전까지 `entity_ops` 비움 |
+| Entity / Attribute | `pack`, `name`, `description`, `attributes`, `req_ids`, `crud_exemptions` / 타입·길이·정밀도·키·NULL·제약 | 허용 타입 고정, 안정적 내부 참조 키. FK는 관계에서 파생 |
+| Relationship | `id`, `parent`, `child`, `cardinality`, `optional`, `identifying`, `rationale`, `req_ids` | 참조 키 선택·복합 키 표현 |
+| Finding | `id`, `severity`, `kind`, `source`, `targets`, `evidence`, `suggestion`, `target_stage`, `fingerprint`, `iteration` | `reviewer_id`, 근거 위치, 필터 결과 |
+| DesignState | `requirements`, `functions`, `entities`, `relationships`, `artifacts`, `findings`, `iteration` | `run_id`, `revision`, `status`, `interrupt_id`, 문서·팩·프롬프트·모델 버전, 병렬 가지 결과 |
 
 - 추가 필드를 모두 LLM 출력에 넣지 않는다. 실행 메타데이터·버전·ID·필터 결과는 코드가 채운다.
 - LLM 출력 모델(예: FindingDraft)과 저장 모델(Finding)을 나눈다. `id`·`source`·`fingerprint`·`iteration`은 코드가 붙인다.
 - `source_ref`는 **구조체**로 제안한다 (ADR-0009, 검토에서 확정). 문자열 인코딩은 파서마다 형식이 달라지고 비교·검증이 어렵다.
 
-| kind     | 필수 필드                  | 선택 필드                            |
-| -------- | -------------------------- | ------------------------------------ |
-| `xlsx` | `sheet`, `row`         |                                      |
-| `csv`  | `row`                    |                                      |
-| `pdf`  | `page`, `block`        |                                      |
+| kind | 필수 필드 | 선택 필드 |
+|---|---|---|
+| `xlsx` | `sheet`, `row` | |
+| `csv` | `row` | |
+| `pdf` | `page`, `block` | |
 | `hwpx` | `section`, `paragraph` | `table`+`cell` (표 안일 때 함께) |
 
 - 화면 표기는 `SourceRef.display()`가 만든다. 저장·비교는 구조체로 한다.
 
 ### LLM 출력 모델과 저장 모델
 
-| 단계    | LLM 출력 (`*Draft`)                                                          | 저장 모델                               | 코드가 채우는 필드                                                                            |
-| ------- | ------------------------------------------------------------------------------ | --------------------------------------- | --------------------------------------------------------------------------------------------- |
-| A01     | `RequirementDraft` (원문 블록 ID로 연결)                                     | `Requirement`                         | `id`, `source_id`, `source_ref`, `parent_id`, `original_text`, `analysis_version` |
-| A02     | `FunctionDraft`                                                              | `Function`                            | `id`, `entity_ops`(A03 전까지 비움)                                                       |
-| A03     | `EntityDesignDraft` (`EntityDraft`·`AttributeDraft`·`EntityOpDraft`) | `Entity`, `Attribute`, `EntityOp` | `id`, `pack`, 엔티티 이름 → ID 해석                                                      |
-| A04     | `RelationshipDraft` (엔티티 이름으로 부모·자식 지정)                        | `Relationship`                        | `id`, 이름 → 엔티티 ID 해석, FK 파생                                                       |
-| A05~A08 | `FindingDraft`                                                               | `Finding`                             | `id`, `source`, `reviewer_id`/`rule_code`, `fingerprint`, `iteration`             |
+| 단계 | LLM 출력 (`*Draft`) | 저장 모델 | 코드가 채우는 필드 |
+|---|---|---|---|
+| A01 | `RequirementDraft` (원문 블록 ID로 연결) | `Requirement` | `id`, `source_id`, `source_ref`, `parent_id`, `original_text`, `analysis_version` |
+| A02 | `FunctionDraft` | `Function` | `id`, `entity_ops`(A03 전까지 비움) |
+| A03 | `EntityDesignDraft` (`EntityDraft`·`AttributeDraft`·`EntityOpDraft`) | `Entity`, `Attribute`, `EntityOp` | `id`, `pack`, 엔티티 이름 → ID 해석 |
+| A04 | `RelationshipDraft` (엔티티 이름으로 부모·자식 지정) | `Relationship` | `id`, 이름 → 엔티티 ID 해석, FK 파생 |
+| A05~A08 | `FindingDraft` | `Finding` | `id`, `source`, `reviewer_id`/`rule_code`, `fingerprint`, `iteration` |
 
 - LLM 출력에는 ID·버전·FK 속성을 두지 않는다. 모든 Draft는 알 수 없는 필드를 거절한다.
 - `Attribute`도 `req_ids`가 필수다 (REQ-21).
@@ -57,11 +57,11 @@ priority_source: explicit | inferred | unspecified
 
 ## ID·추적
 
-| 구분                  | 예                         | 부여 주체                        |
-| --------------------- | -------------------------- | -------------------------------- |
-| 원문 ID               | 고객 문서의 `SFR-001` 등 | 원문 그대로 `source_id`에 보존 |
-| 내부 요구사항 ID      | `REQ-01`                 | 코드                             |
-| 기능·엔티티·관계 ID | 코드 규칙에 따름           | 코드 (LLM 금지)                  |
+| 구분 | 예 | 부여 주체 |
+|---|---|---|
+| 원문 ID | 고객 문서의 `SFR-001` 등 | 원문 그대로 `source_id`에 보존 |
+| 내부 요구사항 ID | `REQ-01` | 코드 |
+| 기능·엔티티·관계 ID | 코드 규칙에 따름 | 코드 (LLM 금지) |
 
 - 재작업 때 같은 의미의 객체는 ID를 유지하고, 신규·삭제를 기록한다.
 - Function·Entity·Attribute·Relationship의 `req_ids`는 필수이며 현재 revision에 실재하는 REQ만 허용한다.
@@ -78,17 +78,17 @@ priority_source: explicit | inferred | unspecified
 
 저장 대상 정의이며 DDL 확정본이 아니다. 컬럼·인덱스·보존 기간은 ADR-0009·0011·0012에서 정한다.
 
-| 객체           | 주요 필드                                                                                                      | 관계·제약                                          |
-| -------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| run            | `run_id`, `owner_ref`, `status`, `revision`, `iteration`, `pack_version`, `model_config`, 시각   | revision 낙관적 잠금, 상태 전이 검사                |
-| document       | `document_id`, `run_id`, `file_hash`, `media_type`, `storage_ref`, `original_name`                 | run 1:N (초기 API는 1파일), 파일 경로 노출 금지     |
-| source_block   | `block_id`, `document_id`, `source_ref`, `text`, `extraction_status`                                 | document 1:N, 원문·수정본 버전 보존                |
-| model_snapshot | `snapshot_id`, `run_id`, `revision`, `normalized_model`, `model_hash`                                | UNIQUE(run_id, revision), 승인 후 불변              |
-| finding        | `finding_id`, `snapshot_id`, `source`, `reviewer_or_rule`, `fingerprint`, `iteration`, `payload` | 모델 버전 연결, 과거 지적 보존                      |
-| approval       | `approval_id`, `snapshot_id`, `interrupt_id`, `actor_ref`, `decision`, `feedback`, `answered_at` | 같은 interrupt 응답 1회                             |
-| artifact       | `artifact_id`, `snapshot_id`, `kind`, `format`, `hash`, `storage_ref`, `approval_status`         | UNIQUE(snapshot_id, kind, format), 초안/승인본 구분 |
-| run_event      | `run_id`, `event_id`, `event_type`, `revision`, `payload`, `created_at`                            | UNIQUE(run_id, event_id), SSE 재생 기준             |
-| job_lease      | `run_id`, `holder`, `lease_until`, `last_checkpoint`                                                   | run당 활성 실행자 1개                               |
+| 객체 | 주요 필드 | 관계·제약 |
+|---|---|---|
+| run | `run_id`, `owner_ref`, `status`, `revision`, `iteration`, `pack_version`, `model_config`, 시각 | revision 낙관적 잠금, 상태 전이 검사 |
+| document | `document_id`, `run_id`, `file_hash`, `media_type`, `storage_ref`, `original_name` | run 1:N (초기 API는 1파일), 파일 경로 노출 금지 |
+| source_block | `block_id`, `document_id`, `source_ref`, `text`, `extraction_status` | document 1:N, 원문·수정본 버전 보존 |
+| model_snapshot | `snapshot_id`, `run_id`, `revision`, `normalized_model`, `model_hash` | UNIQUE(run_id, revision), 승인 후 불변 |
+| finding | `finding_id`, `snapshot_id`, `source`, `reviewer_or_rule`, `fingerprint`, `iteration`, `payload` | 모델 버전 연결, 과거 지적 보존 |
+| approval | `approval_id`, `snapshot_id`, `interrupt_id`, `actor_ref`, `decision`, `feedback`, `answered_at` | 같은 interrupt 응답 1회 |
+| artifact | `artifact_id`, `snapshot_id`, `kind`, `format`, `hash`, `storage_ref`, `approval_status` | UNIQUE(snapshot_id, kind, format), 초안/승인본 구분 |
+| run_event | `run_id`, `event_id`, `event_type`, `revision`, `payload`, `created_at` | UNIQUE(run_id, event_id), SSE 재생 기준 |
+| job_lease | `run_id`, `holder`, `lease_until`, `last_checkpoint` | run당 활성 실행자 1개 |
 
 - LangGraph 체크포인트 스키마는 라이브러리 관리 영역이다. 복제하지 않는다.
 - 문서·모델 본문 접근 권한은 `owner_ref`로 연결한다.
