@@ -4,8 +4,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from specton.config import ReasoningEffort
+
 Role = Literal["system", "user", "assistant"]
-ReasoningEffort = Literal["low", "medium", "high"]
 CallOutcome = Literal["ok", "invalid_output", "refused", "timeout", "api_error"]
 
 

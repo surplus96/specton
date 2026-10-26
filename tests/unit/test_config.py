@@ -1,3 +1,6 @@
+import subprocess
+import sys
+
 import pytest
 
 from specton.config import Settings
@@ -55,3 +58,16 @@ def test_settings_rejects_unknown_reasoning_effort(monkeypatch: pytest.MonkeyPat
 
     with pytest.raises(ValueError):
         Settings(_env_file=None)
+
+
+def test_config_does_not_import_llm_package() -> None:
+    code = (
+        "import sys, specton.config; "
+        "print(sorted(m for m in sys.modules if m.startswith('specton.llm')))"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", code], check=True, capture_output=True, text=True
+    )
+
+    assert result.stdout.strip() == "[]"
