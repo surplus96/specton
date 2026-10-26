@@ -13,6 +13,7 @@ Specton 실행 **전에** 준비하는 입력이다. 실행 중에는 읽기만 
 sources/                       ✍ 공식 공통표준 CSV 사본 + sources.yaml (판·출처)
 common/
   manifest.yaml naming.yaml rules.yaml   ✍
+  RATIONALE.md                 ✍ 공통표준 단어·도메인·명명·진단·타입 프로필 근거
   words.yaml                   ⚙ 팩들이 쓰는 공식 단어 + 공식 분류어 전체
   domains.yaml                 ⚙ 팩들이 쓰는 공식 도메인 (PostgreSQL 매핑 포함)
 inventory/ · maintenance/
@@ -22,6 +23,7 @@ inventory/ · maintenance/
   words.yaml                   ✍ 공통표준에 없는 팩 전용 단어
   patterns.yaml                ✍
   examples/A01.yaml … A09.yaml ✍ 에이전트별 few-shot 예시 (각 에이전트 담당 소유)
+  RATIONALE.md                 ✍ 팩 자료 선택 근거 (maintenance)
 ```
 
 ## 작업 방법

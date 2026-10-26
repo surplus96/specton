@@ -52,6 +52,7 @@
 - `common`: 명명·타입·공통 규칙 (공공데이터 공통표준 8차, 2025-11 기준)
 - `inventory`(재고·자재) 먼저, `maintenance`(설비) 이어서. 공통 코드는 그대로 두고 팩만 바꾼다.
 - manifest에 이름·버전·출처·origin·승인 상태를 기록한다.
+- 팩 값의 근거와 출처는 [common 근거](../domain_packs/common/RATIONALE.md), [maintenance 근거](../domain_packs/maintenance/RATIONALE.md)에 둔다.
 - 미지원 도메인의 자동 외부 검색은 후속 확장(EXT-01)이다.
 - 개발용 합성 요구사항(재고 INV-xxx, 설비 MNT-xxx)은 팩 보완·few-shot에만 쓰고 공개 저장소에 올리지 않는다. 정답 ERD·DDL을 평가 입력에 함께 넣지 않는다.
 - 팩의 `patterns.yaml`에 있는 `development set assumption Axx`는 개발용 세트 문서의 가정 번호다. 에이전트 ID(A01~A09)와 다르다.
