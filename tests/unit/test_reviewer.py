@@ -6,6 +6,7 @@ from specton.config import Settings
 from specton.contracts import DesignState, Entity, FindingDraft, Function, Requirement
 from specton.llm.errors import LLMTimeoutError
 from specton.llm.stub import refusal, reply, stub_client
+from specton.nodes.common import COMMON_RULES, unwrap_data
 from specton.review.perspective import Perspective
 from specton.review.reviewer import (
     CombinedReviewOutput,
@@ -114,7 +115,8 @@ class TestParallel:
 
         system, user = transport.sent[0].messages
         assert "A05 점검 항목" in system.content and "A05 오탐 기준" in system.content
-        data = json.loads(user.content.removeprefix("<data>\n").removesuffix("\n</data>"))
+        assert COMMON_RULES in system.content
+        data = json.loads(unwrap_data(user.content))
         assert list(data) == ["requirements", "entities"]
 
 
