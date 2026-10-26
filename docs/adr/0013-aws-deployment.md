@@ -21,6 +21,19 @@ AWS에 Docker 컨테이너로 배포하기로 했다. 시연 목적이며 운영
 | ECS Fargate | 관리형·확장성 | ECR·IAM 설정 부담 | 기간 대비 과함 |
 | App Runner | 간단한 배포 | 신규 고객 미수용 | 사용 불가 |
 
+## 검토 근거
+
+조사일 2026-10-23. 공개 자료 기준이다.
+
+| 후보 | 메모 |
+|---|---|
+| EC2 1대 + Docker Compose | 로컬 compose를 그대로 사용. 가장 단순 |
+| Lightsail | 월 고정 요금이라 비용 예측이 쉬움. Compose 지원 여부는 문서 확인 필요 |
+| ECS Fargate (Express Mode) | 관리형·확장성. ECR 이미지 빌드·IAM 설정 부담 |
+| App Runner | 2026-04-30부터 신규 고객 미수용 → 제외 |
+
+출처: [App Runner 종료](https://encore.dev/articles/end-of-app-runner) · [App Runner 대안 2026](https://encore.dev/articles/app-runner-alternatives-2026)
+
 ## 결과
 
 - 좋아지는 점: 로컬 compose를 거의 그대로 쓴다.
