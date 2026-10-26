@@ -1,0 +1,38 @@
+name: Change request
+description: 승인된 요구사항·계약·평가 정답·범위의 변경 요청 (docs/13-risks-changes.md)
+labels: ["type:task"]
+body:
+  - type: textarea
+    id: change
+    attributes:
+      label: 변경 내용
+      description: 변경 전 → 변경 후
+    validations:
+      required: true
+  - type: input
+    id: evidence
+    attributes:
+      label: 근거
+      description: 저장소 안에서 확인 가능한 근거 (요구사항·리뷰·평가 결과·이슈)
+      placeholder: REQ-06, PR #48 리뷰, 평가 결과 #20
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: 영향 범위
+      description: REQ, 에이전트, 계약(specton/contracts/), API, TC, 도메인 팩, 이슈. 계약이 바뀌면 contract-change 라벨을 붙인다
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 대안
+      description: 검토한 다른 방법과 고르지 않은 이유
+  - type: textarea
+    id: verification
+    attributes:
+      label: 재검증
+      description: 다시 실행할 테스트·평가
+    validations:
+      required: true

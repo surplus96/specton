@@ -16,6 +16,8 @@ Specton의 설계 기준 문서다. 구현에 필요한 내용은 모두 이 폴
 | [10 문서 입출력·도메인 팩](10-io-and-packs.md) | Excel·CSV·PDF·HWPX 처리, 팩, 출력 규격 | 초안 |
 | [11 배포·운영·보안](11-deployment-security.md) | 실행 환경, 격리 DB, 장애 대응, 보안, 릴리스 | 초안 |
 | [12 테스트 케이스](12-test-cases.md) | TC-F·N·A 36개 시나리오·기대 결과 | 초안 |
+| [13 위험·변경 관리](13-risks-changes.md) | 위험 목록·완화 방법, 변경 요청 절차 | 초안 |
+| [14 확장 기능](14-extensions.md) | EXT-01~03 처리 흐름·검증·결정표 (MVP 범위 밖) | 초안 |
 | [api/openapi.json](api/openapi.json) | 실행 제어 API 계약 초안 (OpenAPI 3.1.1) | 초안 |
 | [adr/](adr/README.md) | 결정 기록 ADR-0001~0014 | 제안 |
 
