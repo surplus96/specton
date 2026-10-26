@@ -29,7 +29,7 @@
 | R5 | `specton/codegen/`(Mermaid), `specton/export/`(PDF), `frontend/`, 배포 구성 |
 
 - 에이전트 노드와 few-shot(`domain_packs/<pack>/examples/A0x.yaml`)은 해당 에이전트 담당이 소유한다.
-- `.github/CODEOWNERS`가 위 범위대로 PR 리뷰어를 자동 지정한다.
+- 위 범위는 작업 담당 기준이다. 구현 단계 동안 PR 리뷰는 모든 경로를 R1(@surplus96)이 맡는다(`.github/CODEOWNERS`). 리뷰를 역할별로 나눌 때 CODEOWNERS에 경로별 담당을 다시 넣는다.
 
 ## 역할 간 인계
 
