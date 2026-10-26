@@ -26,7 +26,7 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 | `GET /runs/{id}/artifacts/{kind}` | `format`, `revision` | 200 파일 | 404, 409 미생성/다른 버전, 422 형식 불가 |
 | `GET /health` | — | 200 기동 상태 (구현됨) | — |
 
-계약 초안: [api/openapi.json](api/openapi.json) (OpenAPI 3.1.1). 스키마는 `Error`, `Interrupt`, `RunStatus`, `RunSummary`, `RunView`, `ResumeRequest`, `ExtractionResponse`, `RequirementsResponse`, `ReviewResponse`.
+계약 초안: [api/openapi.json](api/openapi.json) (OpenAPI 3.1.1). Pydantic 구현은 `specton/contracts/api.py`이며 `tests/unit/test_contracts_api.py`가 필드·필수 항목·열거값이 같은지 대조한다. 스키마는 `Error`, `ErrorCode`, `SseEvent`, `SseEventData`, `Interrupt`, `RunStatus`, `RunSummary`, `RunView`, `ResumeRequest`, `ExtractionResponse`, `RequirementsResponse`, `ReviewResponse`.
 
 - 초안은 계약 동결(ADR-0009) 때 확정한다. 바꿀 때는 이 문서와 같은 PR에서 고친다.
 - 구현 후에는 FastAPI가 생성하는 `/openapi.json`과 초안을 대조해 차이를 없앤다.
@@ -70,13 +70,75 @@ event: interrupt
 data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토 대기","payload":{"interrupt_id":"int-example"}}
 ```
 
+## 상태 응답 예시
+
+`GET /runs/{id}` — 최종 검토 대기:
+
+```json
+{
+  "run_id": "6f1c2d1e-8a3b-4f6e-9a47-2b5d0c7e1a90",
+  "status": "awaiting_review",
+  "revision": 2,
+  "stage": "review",
+  "interrupt": {"interrupt_id": "int-example", "kind": "review", "message": "최종 검토 대기"},
+  "error": null
+}
+```
+
+`GET /runs/{id}` — 실패 (`error.code`는 `ErrorCode` 값):
+
+```json
+{
+  "run_id": "6f1c2d1e-8a3b-4f6e-9a47-2b5d0c7e1a90",
+  "status": "failed",
+  "revision": 1,
+  "stage": "analysing",
+  "interrupt": null,
+  "error": {"code": "INTERNAL", "message": "분석 단계에서 실행 오류가 발생했습니다.", "run_id": "6f1c2d1e-8a3b-4f6e-9a47-2b5d0c7e1a90", "retryable": true}
+}
+```
+
+요구사항 확인 `resume` 본문:
+
+```json
+{
+  "interrupt_id": "int-req-1",
+  "expected_revision": 1,
+  "response": {
+    "kind": "requirements",
+    "answers": [{"req_id": "REQ-03", "action": "split", "texts": ["주문을 취소한다", "취소 사유를 저장한다"]}]
+  }
+}
+```
+
 ## 오류 형식
 
 ```json
 {"code": "RUN_REVISION_CONFLICT", "message": "다른 revision입니다.", "run_id": "…", "retryable": false}
 ```
 
-- `code`/`message`/`run_id`/`retryable`로 통일한다. 코드 값 목록은 계약 동결 때 정한다 (위 `code`는 예시).
+- `code`/`message`/`run_id`/`retryable`로 통일한다. 코드 값은 `ErrorCode`(ADR-0009)다.
+
+| 코드 | 언제 | HTTP | 다시 시도 |
+|---|---|---|---|
+| `RUN_NOT_FOUND` | 없는 실행이거나 접근 권한 없음 | 404 | 아니오 |
+| `RUN_REVISION_CONFLICT` | 다른 revision 기준 요청 | 409 | 최신 상태 조회 후 |
+| `INTERRUPT_STALE` | 이미 응답했거나 오래된 확인 요청에 답함 | 409 | 최신 상태 조회 후 |
+| `EVENT_REPLAY_EXPIRED` | SSE 재연결 시 이벤트 보존 범위를 벗어남 | 409 | 상태 조회 후 |
+| `ARTIFACT_NOT_READY` | 산출물이 아직 생성되지 않음 | 409 | 예 |
+| `ARTIFACT_FORMAT_UNSUPPORTED` | 허용하지 않는 kind·format 조합 | 422 | 아니오 |
+| `UPLOAD_TOO_LARGE` | 파일 크기 한도 초과 | 413 | 아니오 |
+| `UNSUPPORTED_MEDIA_TYPE` | 지원하지 않는 파일 형식 | 415 | 아니오 |
+| `PACK_UNSUPPORTED` | 없는 도메인 팩 선택 | 422 | 아니오 |
+| `INVALID_RESPONSE` | resume 답변 형식이 틀림 | 422 | 아니오 |
+| `LLM_REFUSED` | 실행 실패: 모델이 응답을 거절함 (`LLMRefusalError`) | 실행 상태 | 아니오, 입력 확인 |
+| `LLM_OUTPUT_INVALID` | 실행 실패: 재요청 후에도 출력 형식 위반 (`LLMContractError`) | 실행 상태 | 예 |
+| `LLM_UNAVAILABLE` | 실행 실패: LLM 타임아웃·API 오류 (`LLMTimeoutError`, `LLMAPIError`) | 실행 상태 | 예, 잠시 후 |
+| `BUDGET_EXCEEDED` | 실행 실패: 토큰·시간 예산 초과 (`LLMBudgetExceededError`) | 실행 상태 | 아니오, 입력 축소 |
+| `EXTRACTION_FAILED` | 실행 실패: 문서 추출 실패 (빈 PDF, 암호화, 손상) | 실행 상태 | 아니오, 다른 파일 |
+| `INTERNAL` | 그 밖의 서버 오류 | 500 / 실행 상태 | 경우에 따라 |
+
+- "실행 상태"는 HTTP 오류가 아니라 실패한 실행의 `GET /runs/{id}` 응답 `error` 필드와 SSE `error` 이벤트로 전달된다는 뜻이다.
 - 비동기 실행 중 오류는 `GET /runs/{id}`와 SSE `error` 이벤트로 전달한다.
 
 ## 산출물 형식

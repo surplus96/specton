@@ -250,7 +250,7 @@
         ],
         "responses": {
           "200": {
-            "description": "id/event/data SSE. 종류·payload는 docs/06-api.md 참고",
+            "description": "id/event/data SSE. 각 이벤트의 논리 구조는 SseEvent 스키마, 종류·payload는 docs/06-api.md 참고",
             "content": {
               "text/event-stream": {
                 "schema": {
@@ -666,7 +666,8 @@
         "additionalProperties": false,
         "properties": {
           "code": {
-            "type": "string"
+            "type": "string",
+            "description": "ErrorCode 스키마의 값을 쓴다."
           },
           "message": {
             "type": "string"
@@ -998,6 +999,89 @@
           "revision",
           "section",
           "items"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "description": "오류 code 값 (ADR-0009). Error.code는 확장 가능성 때문에 문자열로 받는다. 실행 실패 원인 코드는 RunStatus.error에 담긴다.",
+        "enum": [
+          "RUN_NOT_FOUND",
+          "RUN_REVISION_CONFLICT",
+          "INTERRUPT_STALE",
+          "EVENT_REPLAY_EXPIRED",
+          "ARTIFACT_NOT_READY",
+          "ARTIFACT_FORMAT_UNSUPPORTED",
+          "UPLOAD_TOO_LARGE",
+          "UNSUPPORTED_MEDIA_TYPE",
+          "PACK_UNSUPPORTED",
+          "INVALID_RESPONSE",
+          "LLM_REFUSED",
+          "LLM_OUTPUT_INVALID",
+          "LLM_UNAVAILABLE",
+          "BUDGET_EXCEEDED",
+          "EXTRACTION_FAILED",
+          "INTERNAL"
+        ]
+      },
+      "SseEventData": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "SSE data 본문. 원문 전체와 비밀값은 넣지 않는다.",
+        "properties": {
+          "run_id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "run_id",
+          "revision",
+          "message"
+        ]
+      },
+      "SseEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "SSE 한 건의 논리 구조. 전송 형식은 id/event/data 줄이며 id는 run 안에서 단조 증가한다.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "status",
+              "interrupt",
+              "artifact",
+              "error",
+              "completed",
+              "cancelled"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/SseEventData"
+          }
+        },
+        "required": [
+          "id",
+          "event",
+          "data"
         ]
       }
     },
