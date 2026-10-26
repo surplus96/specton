@@ -17,6 +17,7 @@
 | DesignState | `requirements`, `functions`, `entities`, `relationships`, `artifacts`, `findings`, `iteration` | `run_id`, `revision`, `status`, `interrupt_id`, 문서·팩·프롬프트·모델 버전, 병렬 가지 결과 |
 
 - 추가 필드를 모두 LLM 출력에 넣지 않는다. 실행 메타데이터·버전·ID·필터 결과는 코드가 채운다.
+- 계약 모델은 불변이다. 값을 바꿀 때는 `evolve(...)`로 새 객체를 만든다. `model_copy(update=...)`는 검증을 건너뛰므로 쓰지 않는다.
 - 계약의 텍스트 필드는 앞뒤 공백을 지운다. 단, 추출한 원문(`RawRequirement.text`)은 `SourceText` 타입으로 앞뒤 공백·줄바꿈까지 그대로 보존한다.
 - LLM 출력 모델(예: FindingDraft)과 저장 모델(Finding)을 나눈다. `id`·`source`·`fingerprint`·`iteration`은 코드가 붙인다.
 - `source_ref`는 **구조체**로 둔다 (ADR-0009). 문자열 인코딩은 파서마다 형식이 달라지고 비교·검증이 어렵다.
@@ -62,7 +63,7 @@ NFR이면 `nfr_category`를 반드시 채우고(애매하면 `other`), FR이면 
 | `usability` | 화면 사용 편의·접근성·표시 언어 | 모든 화면은 한국어로 표시한다 |
 | `other` | 위 6개에 들지 않는 비기능 (호환성·법규 준수 등) | 기존 ERP의 CSV 내보내기 파일을 읽을 수 있다 |
 
-- **데이터 정합성은 FR로 분류한다.** 값 범위·필수 입력·중복 금지·참조 관계("재고 수량은 0 이상", "품목 코드는 중복될 수 없다")는 데이터 모델의 제약으로 구현되므로 A03·A04가 처리한다.
+- **데이터 정합성은 FR로 분류한다.** 값 범위·필수 입력·중복 금지·참조 관계("재고 수량은 0 이상", "품목 코드는 중복될 수 없다")는 데이터 모델의 제약으로 구현되므로 A03·A04가 처리한다. 필수 입력은 `nullable=false`, 중복 금지는 `is_unique`, 참조 관계는 `Relationship`으로 표현하고, 값 범위는 #15에서 표현 방식을 정한다.
 - 한 문장에 기능과 비기능이 섞이면 A01이 분할한다.
 
 ### 우선순위 표현 (제안, ADR-0006)
@@ -85,6 +86,7 @@ priority_source: explicit | inferred | unspecified
 | 기능·엔티티·관계 ID | 코드 규칙에 따름 | 코드 (LLM 금지) |
 
 - 재작업 때 같은 의미의 객체는 ID를 유지하고, 신규·삭제를 기록한다.
+- ID는 종류별로 실행 안에서 고유하다. 속성 ID는 엔티티가 달라도 겹치면 안 된다 (`find_trace_issues`가 검사).
 - Function·Entity·Attribute·Relationship의 `req_ids`는 필수이며 현재 revision에 실재하는 REQ만 허용한다.
 - N:M 분해로 생긴 테이블·속성은 원래 관계의 `req_ids`와 파생 근거를 이어받는다.
 
@@ -93,7 +95,7 @@ priority_source: explicit | inferred | unspecified
 - 허용 SQL 타입: `char`, `varchar`, `text`, `numeric`, `integer`, `bigint`, `boolean`, `date`, `time`, `timestamp`, `timestamptz` (`SqlType`). 팩 생성기가 이 목록으로 `domain_packs/common/domains.yaml`의 `allowed_sql_types`를 만들고, 테스트가 둘이 같은지 대조한다.
 - 도메인 → PostgreSQL 매핑은 공통표준 도메인 기준이며, 타입 프로필 `strict`(표준 저장 형식)와 `pg_native`(PostgreSQL 고유 타입) 중 선택한다. 현재 초안은 `strict` (ADR-0009).
 - 미지원 타입을 조용히 `text`로 바꾸지 않는다.
-- 속성 제약 표현(`check`)은 계약에 두지 않는다. LLM 출력에는 넣지 않고, 허용 범위(AST·연산)는 규칙 검사(#15)에서 정한 뒤 저장 모델에 추가한다.
+- 중복 금지는 `is_unique`로 표시한다 (PK는 `is_key`). 값 범위 등 그 밖의 제약 표현(`check`)은 계약에 두지 않는다. LLM 출력에는 넣지 않고, 허용 범위(AST·연산)는 규칙 검사(#15)에서 정한 뒤 저장 모델에 추가한다. 그때까지 값 범위 요구는 속성의 `req_ids`로만 연결된다.
 
 ## 플랫폼 저장 모델 (후보)
 

@@ -119,6 +119,7 @@ def _duplicate_issues(state: DesignState) -> Iterator[TraceIssue]:
         ("requirement", tuple(r.id for r in state.requirements)),
         ("function", tuple(f.id for f in state.functions)),
         ("entity", tuple(e.id for e in state.entities)),
+        ("attribute", tuple(a.id for e in state.entities for a in e.attributes)),
         ("relationship", tuple(r.id for r in state.relationships)),
     )
     for object_kind, ids in groups:

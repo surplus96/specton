@@ -79,8 +79,9 @@ class AttributeDraft(Contract):
     precision: int | None = Field(default=None, ge=1)
     scale: int | None = Field(default=None, ge=0)
     is_key: bool = False
+    is_unique: bool = False  # 중복 금지 (PK가 아닌 업무 키)
     nullable: bool = True
-    # 제약 표현(check)은 두지 않는다. LLM이 SQL을 만들지 않도록 출력에서 빼고,
+    # 값 범위 등 제약 표현(check)은 두지 않는다. LLM이 SQL을 만들지 않도록 출력에서 빼고,
     # 허용 범위(AST·연산)는 규칙 검사(#15)에서 정한 뒤 저장 모델에 추가한다.
     req_ids: tuple[ReqId, ...] = Field(min_length=1)
 

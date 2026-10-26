@@ -1,7 +1,7 @@
 """계약 공통 요소: 기본 모델, 열거형, ID 형식, 원문 위치 (05 문서)."""
 
 from enum import StrEnum
-from typing import Annotated, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
@@ -11,10 +11,14 @@ class Contract(BaseModel):
 
     원문을 그대로 담는 필드는 `SourceText`로 선언해 공백 제거에서 뺀다.
 
-    값을 바꿀 때는 `model_copy(update=...)`로 새 객체를 만든다. 목록 필드는 tuple이다.
+    값을 바꿀 때는 `evolve(...)`로 새 객체를 만든다. 목록 필드는 tuple이다.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", str_strip_whitespace=True)
+
+    def evolve(self, **changes: Any) -> Self:
+        """값을 바꾼 새 객체. `model_copy(update=...)`와 달리 계약 검증을 다시 거친다."""
+        return self.model_validate({**self.model_dump(), **changes})
 
 
 # 내부 요구사항 ID는 코드가 부여한다. 기능·엔티티·관계 ID 규칙은 #12(모델 정리)가 정하므로

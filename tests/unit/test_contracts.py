@@ -109,12 +109,21 @@ class TestImmutability:
         assert isinstance(state.functions[0].req_ids, tuple)
         assert isinstance(state.entities[0].attributes, tuple)
 
-    def test_update_returns_a_new_object(self) -> None:
+    def test_evolve_returns_a_new_object(self) -> None:
         state = _state()
 
-        updated = state.model_copy(update={"revision": 1})
+        updated = state.evolve(revision=1)
 
         assert (state.revision, updated.revision) == (0, 1)
+
+    def test_evolve_revalidates_changes(self) -> None:
+        with pytest.raises(ValidationError, match="FR"):
+            _req().evolve(nfr_category="security")
+
+    def test_evolve_stores_collections_as_tuples(self) -> None:
+        updated = DesignState(run_id="run-1").evolve(requirements=[_req()])
+
+        assert isinstance(updated.requirements, tuple)
 
 
 class TestSourceRef:
@@ -262,6 +271,12 @@ class TestAttribute:
         with pytest.raises(ValidationError):
             AttributeDraft(name="x", data_type="numeric", precision=5, scale=6, req_ids=["REQ-01"])
 
+    def test_unique_flag_defaults_to_false(self) -> None:
+        plain = AttributeDraft(name="x", data_type="integer", req_ids=["REQ-01"])
+        unique = AttributeDraft(name="x", data_type="integer", is_unique=True, req_ids=["REQ-01"])
+
+        assert (plain.is_unique, unique.is_unique) == (False, True)
+
     def test_key_cannot_be_nullable(self) -> None:
         with pytest.raises(ValidationError):
             AttributeDraft(
@@ -352,6 +367,7 @@ class TestTraceIntegrity:
         function = Function.model_construct(
             id="FUNC-01", name="a", description="b", req_ids=[], entity_ops=[]
         )
+        # 검증을 일부러 건너뛴 객체를 넣으므로 evolve 대신 model_copy를 쓴다.
         state = _state().model_copy(update={"functions": (function,)})
 
         issues = find_trace_issues(state)
@@ -360,7 +376,7 @@ class TestTraceIntegrity:
 
     def test_dangling_entity_references_are_found(self) -> None:
         dangling_op = EntityOp(entity_id="ENT-404", operations=["C"])
-        function = _function().model_copy(update={"entity_ops": (dangling_op,)})
+        function = _function().evolve(entity_ops=(dangling_op,))
         relationship = Relationship(
             id="REL-01",
             parent="ENT-01",
@@ -377,7 +393,7 @@ class TestTraceIntegrity:
         assert [i.kind for i in issues] == ["unknown_entity_ref", "unknown_entity_ref"]
 
     def test_unknown_parent_requirement_is_found(self) -> None:
-        child = _req("REQ-02").model_copy(update={"parent_id": "REQ-99"})
+        child = _req("REQ-02").evolve(parent_id="REQ-99")
         state = _state(requirements=[_req(), child])
 
         issues = find_trace_issues(state)
@@ -387,10 +403,19 @@ class TestTraceIntegrity:
         ]
 
     def test_known_parent_requirement_is_not_reported(self) -> None:
-        child = _req("REQ-02").model_copy(update={"parent_id": "REQ-01"})
+        child = _req("REQ-02").evolve(parent_id="REQ-01")
 
         assert find_trace_issues(_state(requirements=[_req(), child])) == []
 
     def test_duplicate_ids_are_found(self) -> None:
         state = _state(functions=[_function(), _function()])
         assert [i.kind for i in find_trace_issues(state)] == ["duplicate_id"]
+
+    def test_duplicate_attribute_ids_across_entities_are_found(self) -> None:
+        state = _state(entities=[_entity("ENT-01"), _entity("ENT-02")])
+
+        issues = find_trace_issues(state)
+
+        assert [(i.kind, i.object_kind, i.object_id) for i in issues] == [
+            ("duplicate_id", "attribute", "ATTR-01")
+        ]
