@@ -30,7 +30,65 @@
 - LLM 응답에 ID를 만들게 하지 않는다. 참조 가능한 REQ·기능 ID는 코드가 허용 목록으로 넘긴다.
 - 구조화 출력 검증 실패는 구체 오류를 담아 **최대 2회** 재요청한다.
 - 거절·API 타임아웃·출력 계약 실패·근거 부족을 구분한다. 빈 성공 응답으로 바꾸지 않는다.
-- 단계별 모델·프롬프트 버전을 기록한다. 모델 배정은 설계(A01~A04) 상위 모델, 검토·라우터(A05~A09) 저가 모델 제안 (ADR-0007).
+- 단계별 모델·프롬프트 버전을 기록한다. 모델은 설계(A01~A04) `gpt-6.1-sol`, 검토·라우터(A05~A09) `gpt-6-luna` (ADR-0007).
+
+### 공통 LLM client 사용법
+
+노드는 `LLMClient`를 **인자로 주입받는다**. 실제 client는 그래프가 `openai_client(get_settings())`로 한 번 만들어 넘기고, 테스트에서는 `stub_client`를 넣는다. 노드는 `openai` 패키지나 `openai_transport`를 직접 import하지 않는다.
+
+```python
+from specton.config import get_settings
+from specton.llm.client import LLMClient
+from specton.llm.types import LLMRequest, Message
+
+
+def analyze(client: LLMClient, source_text: str) -> A01Output:
+    settings = get_settings()
+    request = LLMRequest(
+        stage="A01",
+        prompt_version="a01-v1",
+        model=settings.design_model,  # 검토·라우터는 settings.review_model
+        messages=(
+            Message(role="system", content=SYSTEM_PROMPT),
+            Message(role="user", content=source_text),
+        ),
+        max_output_tokens=settings.max_output_tokens,
+        reasoning_effort=settings.design_reasoning_effort,
+    )
+    return client.complete(request, A01Output).output
+```
+
+- `complete()`는 출력 모델(`A01Output`)로 검증된 결과만 돌려준다. 형식이 틀리면 오류 내용을 담아 최대 2회 재요청하고, 그래도 틀리면 `LLMContractError`를 던진다.
+- 실패는 종류별 예외다: `LLMRefusalError`(거절, 재요청 안 함), `LLMTimeoutError`, `LLMAPIError`, `LLMContractError`, `LLMBudgetExceededError`. 모두 `LLMError`를 상속하고 `calls`에 실패까지의 호출 기록이 있다. 빈 결과로 바꾸지 말고 그대로 올린다.
+- 호출 기록(`result.calls`)에는 단계·프롬프트 버전·모델·시도 번호·토큰·시간이 남는다. 원문과 키는 남지 않는다.
+- 실행 토큰 예산은 그래프가 남은 양을 `complete(..., token_budget=남은_토큰)`으로 넘겨 지킨다.
+
+**노드 테스트 (실제 API 없이)**
+
+```python
+from specton.llm.stub import refusal, reply, stub_client
+
+
+def test_a01_returns_classified_requirements() -> None:
+    client, transport = stub_client(reply(A01Output(...)))
+
+    output = analyze(client, "재고 입고 시 수량을 기록한다")
+
+    assert output == A01Output(...)
+    assert len(transport.sent) == 1  # LLM 호출 횟수
+
+
+def test_a01_retries_on_invalid_output() -> None:
+    client, transport = stub_client(reply("{}"), reply(A01Output(...)))
+
+    analyze(client, "...")
+
+    assert len(transport.sent) == 2
+```
+
+- `reply(모델 객체)`는 정상 응답, `reply("문자열")`은 형식이 틀린 응답, `refusal()`은 거절이다. 예외 객체(`LLMTimeoutError("...")`)를 넣으면 그 오류가 난다.
+- 준비한 응답보다 많이 호출하면 stub이 `AssertionError`로 실패한다.
+- 공통 client 자체의 동작은 `tests/unit/test_llm_client.py`, OpenAI 호출 부분은 `tests/unit/test_openai_transport.py`에서 검증한다.
 
 ### 프롬프트·문맥
 
