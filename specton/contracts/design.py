@@ -80,8 +80,8 @@ class AttributeDraft(Contract):
     scale: int | None = Field(default=None, ge=0)
     is_key: bool = False
     nullable: bool = True
-    # 자유 SQL은 허용하지 않는다. 허용 표현(AST·연산 범위)은 규칙 검사(#15)와 함께 정한다.
-    check: str | None = None
+    # 제약 표현(check)은 두지 않는다. LLM이 SQL을 만들지 않도록 출력에서 빼고,
+    # 허용 범위(AST·연산)는 규칙 검사(#15)에서 정한 뒤 저장 모델에 추가한다.
     req_ids: list[ReqId] = Field(min_length=1)
 
     @model_validator(mode="after")

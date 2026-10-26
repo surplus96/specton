@@ -158,6 +158,15 @@ class TestLlmOutputBoundary:
         with pytest.raises(ValidationError):
             AttributeDraft(name="x", data_type="jsonb", req_ids=["REQ-01"])
 
+    def test_llm_output_cannot_carry_free_sql_check(self) -> None:
+        with pytest.raises(ValidationError):
+            AttributeDraft(
+                name="qty",
+                data_type="integer",
+                req_ids=["REQ-01"],
+                check="qty > 0; DROP TABLE item",
+            )
+
     def test_req_ids_must_not_be_empty(self) -> None:
         with pytest.raises(ValidationError):
             FunctionDraft(name="a", description="b", req_ids=[])
