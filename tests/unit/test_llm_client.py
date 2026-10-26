@@ -3,6 +3,7 @@ from collections.abc import Callable, Iterator
 import pytest
 from pydantic import BaseModel
 
+from specton.contracts.api import ErrorCode
 from specton.llm.client import LLMClient
 from specton.llm.errors import (
     LLMAPIError,
@@ -148,3 +149,19 @@ def test_stub_fails_loudly_when_called_more_than_prepared() -> None:
 def test_negative_retry_count_is_rejected() -> None:
     with pytest.raises(ValueError):
         LLMClient(StubTransport([]), max_structured_retries=-1)
+
+
+@pytest.mark.parametrize(
+    ("error", "code"),
+    [
+        (LLMRefusalError, "LLM_REFUSED"),
+        (LLMTimeoutError, "LLM_UNAVAILABLE"),
+        (LLMAPIError, "LLM_UNAVAILABLE"),
+        (LLMContractError, "LLM_OUTPUT_INVALID"),
+        (LLMBudgetExceededError, "BUDGET_EXCEEDED"),
+        (LLMError, "INTERNAL"),
+    ],
+)
+def test_each_error_maps_to_an_api_error_code(error: type[LLMError], code: str) -> None:
+    assert error.code == code
+    assert code in {c.value for c in ErrorCode}
