@@ -56,7 +56,7 @@ class BranchResult(Contract):
     revision: int = Field(ge=0)
     ok: bool
     error_code: str | None = None
-    findings: list[Finding] = Field(default_factory=list)
+    findings: tuple[Finding, ...] = ()
 
 
 class DesignState(Contract):
@@ -68,12 +68,12 @@ class DesignState(Contract):
     status: RunState = RunState.QUEUED
     interrupt_id: str | None = None
     versions: VersionInfo = Field(default_factory=VersionInfo)
-    requirements: list[Requirement] = Field(default_factory=list)
-    functions: list[Function] = Field(default_factory=list)
-    entities: list[Entity] = Field(default_factory=list)
-    relationships: list[Relationship] = Field(default_factory=list)
-    artifacts: list[ArtifactRef] = Field(default_factory=list)
-    findings: list[Finding] = Field(default_factory=list)
+    requirements: tuple[Requirement, ...] = ()
+    functions: tuple[Function, ...] = ()
+    entities: tuple[Entity, ...] = ()
+    relationships: tuple[Relationship, ...] = ()
+    artifacts: tuple[ArtifactRef, ...] = ()
+    findings: tuple[Finding, ...] = ()
     branch_results: dict[str, BranchResult] = Field(default_factory=dict)
     updated_at: datetime | None = None
 

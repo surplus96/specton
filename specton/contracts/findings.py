@@ -41,8 +41,8 @@ class FindingDraft(Contract):
 
     kind: NonEmptyText
     severity: Severity
-    targets: list[FindingTarget] = Field(min_length=1)
-    evidence: list[Evidence] = Field(min_length=1)
+    targets: tuple[FindingTarget, ...] = Field(min_length=1)
+    evidence: tuple[Evidence, ...] = Field(min_length=1)
     suggestion: NonEmptyText
     target_stage: TargetStage | None = None  # 모르면 null. 코드가 해석하지 못하면 A09가 판단
 

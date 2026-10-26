@@ -43,14 +43,14 @@ class FunctionDraft(_PriorityMixin):
     name: NonEmptyText
     description: NonEmptyText
     priority_rationale: str | None = None
-    req_ids: list[ReqId] = Field(min_length=1)
+    req_ids: tuple[ReqId, ...] = Field(min_length=1)
 
 
 class EntityOp(Contract):
     """기능이 엔티티에 하는 조작. A03가 채우기 전 Function.entity_ops는 비어 있다."""
 
     entity_id: EntityId
-    operations: list[Crud] = Field(min_length=1)
+    operations: tuple[Crud, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
     def _unique_ops(self) -> Self:
@@ -61,7 +61,7 @@ class EntityOp(Contract):
 
 class Function(FunctionDraft):
     id: ObjectId  # 코드가 부여
-    entity_ops: list[EntityOp] = Field(default_factory=list)
+    entity_ops: tuple[EntityOp, ...] = ()
 
 
 class CrudExemption(Contract):
@@ -82,7 +82,7 @@ class AttributeDraft(Contract):
     nullable: bool = True
     # 제약 표현(check)은 두지 않는다. LLM이 SQL을 만들지 않도록 출력에서 빼고,
     # 허용 범위(AST·연산)는 규칙 검사(#15)에서 정한 뒤 저장 모델에 추가한다.
-    req_ids: list[ReqId] = Field(min_length=1)
+    req_ids: tuple[ReqId, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
     def _check_type_params(self) -> Self:
@@ -107,9 +107,9 @@ class EntityDraft(Contract):
 
     name: NonEmptyText
     description: NonEmptyText
-    attributes: list[AttributeDraft] = Field(min_length=1)
-    req_ids: list[ReqId] = Field(min_length=1)
-    crud_exemptions: list[CrudExemption] = Field(default_factory=list)
+    attributes: tuple[AttributeDraft, ...] = Field(min_length=1)
+    req_ids: tuple[ReqId, ...] = Field(min_length=1)
+    crud_exemptions: tuple[CrudExemption, ...] = ()
 
 
 class EntityOpDraft(Contract):
@@ -117,14 +117,14 @@ class EntityOpDraft(Contract):
 
     function_id: ObjectId
     entity_name: NonEmptyText
-    operations: list[Crud] = Field(min_length=1)
+    operations: tuple[Crud, ...] = Field(min_length=1)
 
 
 class EntityDesignDraft(Contract):
     """A03 출력 전체."""
 
-    entities: list[EntityDraft] = Field(min_length=1)
-    entity_ops: list[EntityOpDraft] = Field(default_factory=list)
+    entities: tuple[EntityDraft, ...] = Field(min_length=1)
+    entity_ops: tuple[EntityOpDraft, ...] = ()
 
 
 class Attribute(AttributeDraft):
@@ -136,9 +136,9 @@ class Entity(Contract):
     pack: NonEmptyText  # 사용한 도메인 팩 ID
     name: NonEmptyText
     description: NonEmptyText
-    attributes: list[Attribute] = Field(min_length=1)
-    req_ids: list[ReqId] = Field(min_length=1)
-    crud_exemptions: list[CrudExemption] = Field(default_factory=list)
+    attributes: tuple[Attribute, ...] = Field(min_length=1)
+    req_ids: tuple[ReqId, ...] = Field(min_length=1)
+    crud_exemptions: tuple[CrudExemption, ...] = ()
 
 
 class RelationshipDraft(Contract):
@@ -150,7 +150,7 @@ class RelationshipDraft(Contract):
     optional: bool
     identifying: bool = False
     rationale: NonEmptyText
-    req_ids: list[ReqId] = Field(min_length=1)
+    req_ids: tuple[ReqId, ...] = Field(min_length=1)
 
 
 class Relationship(Contract):
@@ -161,5 +161,5 @@ class Relationship(Contract):
     optional: bool
     identifying: bool = False
     rationale: NonEmptyText
-    req_ids: list[ReqId] = Field(min_length=1)
+    req_ids: tuple[ReqId, ...] = Field(min_length=1)
     # 참조 키 선택·복합 키 표현은 모델 정리(#12)에서 정한다.

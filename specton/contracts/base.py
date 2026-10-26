@@ -7,9 +7,12 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 
 class Contract(BaseModel):
-    """모든 계약 모델의 기반. 알 수 없는 필드는 거절하고 앞뒤 공백을 제거한다."""
+    """모든 계약 모델의 기반. 불변이며, 알 수 없는 필드는 거절하고 앞뒤 공백을 제거한다.
 
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    값을 바꿀 때는 `model_copy(update=...)`로 새 객체를 만든다. 목록 필드는 tuple이다.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", str_strip_whitespace=True)
 
 
 # 내부 요구사항 ID는 코드가 부여한다. 기능·엔티티·관계 ID 규칙은 #12(모델 정리)가 정하므로

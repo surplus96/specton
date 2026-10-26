@@ -77,6 +77,28 @@ def _state(**overrides: object) -> DesignState:
     return DesignState.model_validate({**base, **overrides})
 
 
+class TestImmutability:
+    def test_fields_cannot_be_reassigned(self) -> None:
+        state = _state()
+
+        with pytest.raises(ValidationError):
+            state.revision = 99  # type: ignore[misc]
+
+    def test_collections_are_tuples(self) -> None:
+        state = _state()
+
+        assert isinstance(state.requirements, tuple)
+        assert isinstance(state.functions[0].req_ids, tuple)
+        assert isinstance(state.entities[0].attributes, tuple)
+
+    def test_update_returns_a_new_object(self) -> None:
+        state = _state()
+
+        updated = state.model_copy(update={"revision": 1})
+
+        assert (state.revision, updated.revision) == (0, 1)
+
+
 class TestSourceRef:
     def test_each_kind_requires_its_locator(self) -> None:
         assert SourceRef(kind="csv", row=3).display() == "3행"
@@ -275,16 +297,15 @@ class TestTraceIntegrity:
         function = Function.model_construct(
             id="FUNC-01", name="a", description="b", req_ids=[], entity_ops=[]
         )
-        state = _state()
-        state.functions = [function]
+        state = _state().model_copy(update={"functions": (function,)})
 
         issues = find_trace_issues(state)
 
         assert [(i.kind, i.object_id) for i in issues] == [("missing_req_ids", "FUNC-01")]
 
     def test_dangling_entity_references_are_found(self) -> None:
-        function = _function()
-        function.entity_ops = [EntityOp(entity_id="ENT-404", operations=["C"])]
+        dangling_op = EntityOp(entity_id="ENT-404", operations=["C"])
+        function = _function().model_copy(update={"entity_ops": (dangling_op,)})
         relationship = Relationship(
             id="REL-01",
             parent="ENT-01",

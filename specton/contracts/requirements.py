@@ -35,12 +35,12 @@ class QualityIssue(Contract):
 class RequirementDraft(Contract):
     """A01 LLM 출력. ID와 버전은 코드가 붙인다."""
 
-    source_block_ids: list[NonEmptyText] = Field(min_length=1)
+    source_block_ids: tuple[NonEmptyText, ...] = Field(min_length=1)
     text: NonEmptyText
     type: RequirementType
     nfr_category: NfrCategory | None = None
     parent_hint: str | None = None  # 분할 전 요구의 단서. 실제 parent_id는 코드가 연결한다
-    quality_issues: list[QualityIssue] = Field(default_factory=list)
+    quality_issues: tuple[QualityIssue, ...] = ()
 
 
 class Requirement(Contract):
@@ -54,5 +54,5 @@ class Requirement(Contract):
     original_text: NonEmptyText  # 사용자 수정 전 분석 결과. 수정본과 구분한다
     type: RequirementType
     nfr_category: NfrCategory | None = None
-    quality_issues: list[QualityIssue] = Field(default_factory=list)
+    quality_issues: tuple[QualityIssue, ...] = ()
     analysis_version: int = Field(ge=1)

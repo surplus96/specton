@@ -76,18 +76,18 @@ class ExtractionEdit(Contract):
 class ExtractionResponse(Contract):
     kind: Literal["extraction"]
     confirmed: bool
-    edits: list[ExtractionEdit]
+    edits: tuple[ExtractionEdit, ...]
 
 
 class RequirementAnswer(Contract):
     req_id: NonEmptyText
     action: Literal["keep", "edit", "split"]
-    texts: list[str]
+    texts: tuple[str, ...]
 
 
 class RequirementsResponse(Contract):
     kind: Literal["requirements"]
-    answers: list[RequirementAnswer]
+    answers: tuple[RequirementAnswer, ...]
 
 
 class ReviewResponse(Contract):
@@ -113,8 +113,8 @@ class RunView(Contract):
     run_id: UUID
     revision: int = Field(ge=0)
     section: Literal["extraction", "requirements", "design", "review"]
-    items: list[dict[str, Any]]
-    artifacts: list[dict[str, Any]] = Field(default_factory=list)
+    items: tuple[dict[str, Any], ...]
+    artifacts: tuple[dict[str, Any], ...] = ()
 
 
 class SseEventType(StrEnum):
