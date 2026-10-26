@@ -11,7 +11,8 @@
 ## 결정
 
 - [05 데이터 계약](../05-data-contracts.md), [06 API](../06-api.md), [api/openapi.json](../api/openapi.json)을 기준으로 계약을 동결한다. ADR-0006을 반영한다.
-- `source_ref` 표현(문자열 인코딩 또는 구조체)을 동결 때 정한다.
+- `source_ref` 표현은 **구조체**(`kind`별 `sheet`/`row`/`page`/`block`/`section`/`paragraph`/`table`/`cell`)로 제안한다. 화면 표기는 코드가 만든다. 동결 때 확정한다.
+- 계약 구현은 `specton/contracts/`의 Pydantic 모델이며 LLM 출력(`*Draft`)과 저장 모델을 나눈다 ([05](../05-data-contracts.md)).
 - 도메인 팩:
 
 | 항목 | 제안 |

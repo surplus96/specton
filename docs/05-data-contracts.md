@@ -1,6 +1,7 @@
 # 데이터 계약
 
-> 상태: **초안** (계약 동결 전)
+> 상태: **초안** (Pydantic 구현 완료, 2인 승인 후 동결)
+> 구현: `specton/contracts/` (`base`·`requirements`·`design`·`findings`·`state`·`api`)
 > 변경 규칙: `specton/contracts/` 변경은 `contract-change` 라벨과 2인 승인 ([CONTRIBUTING](../CONTRIBUTING.md))
 
 ## 단계 간 모델
@@ -17,7 +18,31 @@
 
 - 추가 필드를 모두 LLM 출력에 넣지 않는다. 실행 메타데이터·버전·ID·필터 결과는 코드가 채운다.
 - LLM 출력 모델(예: FindingDraft)과 저장 모델(Finding)을 나눈다. `id`·`source`·`fingerprint`·`iteration`은 코드가 붙인다.
-- `source_ref`를 문자열로 인코딩할지 구조체로 바꿀지는 계약 검토에서 정한다 (ADR-0009).
+- `source_ref`는 **구조체**로 제안한다 (ADR-0009, 검토에서 확정). 문자열 인코딩은 파서마다 형식이 달라지고 비교·검증이 어렵다.
+
+| kind | 필수 필드 | 선택 필드 |
+|---|---|---|
+| `xlsx` | `sheet`, `row` | |
+| `csv` | `row` | |
+| `pdf` | `page`, `block` | |
+| `hwpx` | `section`, `paragraph` | `table`+`cell` (표 안일 때 함께) |
+
+- 화면 표기는 `SourceRef.display()`가 만든다. 저장·비교는 구조체로 한다.
+
+### LLM 출력 모델과 저장 모델
+
+| 단계 | LLM 출력 (`*Draft`) | 저장 모델 | 코드가 채우는 필드 |
+|---|---|---|---|
+| A01 | `RequirementDraft` (원문 블록 ID로 연결) | `Requirement` | `id`, `source_id`, `source_ref`, `parent_id`, `original_text`, `analysis_version` |
+| A02 | `FunctionDraft` | `Function` | `id`, `entity_ops`(A03 전까지 비움) |
+| A03 | `EntityDesignDraft` (`EntityDraft`·`AttributeDraft`·`EntityOpDraft`) | `Entity`, `Attribute`, `EntityOp` | `id`, `pack`, 엔티티 이름 → ID 해석 |
+| A04 | `RelationshipDraft` (엔티티 이름으로 부모·자식 지정) | `Relationship` | `id`, 이름 → 엔티티 ID 해석, FK 파생 |
+| A05~A08 | `FindingDraft` | `Finding` | `id`, `source`, `reviewer_id`/`rule_code`, `fingerprint`, `iteration` |
+
+- LLM 출력에는 ID·버전·FK 속성을 두지 않는다. 모든 Draft는 알 수 없는 필드를 거절한다.
+- `Attribute`도 `req_ids`가 필수다 (REQ-21).
+- `Function.priority`가 null이면 `priority_source`는 `unspecified`, 값이 있으면 `explicit` 또는 `inferred`여야 한다 (ADR-0006).
+- 추적 무결성은 `find_trace_issues(DesignState)`가 검사한다 (TC-N01). req_ids 누락, 없는 REQ·엔티티 참조, ID 중복을 모두 모아 돌려주며 최종 승인 전에 목록이 비어야 한다.
 
 ### 우선순위 표현 (제안, ADR-0006)
 

@@ -26,7 +26,7 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 | `GET /runs/{id}/artifacts/{kind}` | `format`, `revision` | 200 파일 | 404, 409 미생성/다른 버전, 422 형식 불가 |
 | `GET /health` | — | 200 기동 상태 (구현됨) | — |
 
-계약 초안: [api/openapi.json](api/openapi.json) (OpenAPI 3.1.1). 스키마는 `Error`, `Interrupt`, `RunStatus`, `RunSummary`, `RunView`, `ResumeRequest`, `ExtractionResponse`, `RequirementsResponse`, `ReviewResponse`.
+계약 초안: [api/openapi.json](api/openapi.json) (OpenAPI 3.1.1). Pydantic 구현은 `specton/contracts/api.py`이며 `tests/unit/test_contracts_api.py`가 필드·필수 항목·열거값이 같은지 대조한다. 스키마는 `Error`, `ErrorCode`, `SseEvent`, `SseEventData`, `Interrupt`, `RunStatus`, `RunSummary`, `RunView`, `ResumeRequest`, `ExtractionResponse`, `RequirementsResponse`, `ReviewResponse`.
 
 - 초안은 계약 동결(ADR-0009) 때 확정한다. 바꿀 때는 이 문서와 같은 PR에서 고친다.
 - 구현 후에는 FastAPI가 생성하는 `/openapi.json`과 초안을 대조해 차이를 없앤다.
@@ -70,13 +70,54 @@ event: interrupt
 data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토 대기","payload":{"interrupt_id":"int-example"}}
 ```
 
+## 상태 응답 예시
+
+`GET /runs/{id}` — 최종 검토 대기:
+
+```json
+{
+  "run_id": "6f1c2d1e-8a3b-4f6e-9a47-2b5d0c7e1a90",
+  "status": "awaiting_review",
+  "revision": 2,
+  "stage": "review",
+  "interrupt": {"interrupt_id": "int-example", "kind": "review", "message": "최종 검토 대기"},
+  "error": null
+}
+```
+
+`GET /runs/{id}` — 실패 (`error.code`는 `ErrorCode` 값):
+
+```json
+{
+  "run_id": "6f1c2d1e-8a3b-4f6e-9a47-2b5d0c7e1a90",
+  "status": "failed",
+  "revision": 1,
+  "stage": "analysing",
+  "interrupt": null,
+  "error": {"code": "INTERNAL", "message": "분석 단계에서 실행 오류가 발생했습니다.", "run_id": "6f1c2d1e-8a3b-4f6e-9a47-2b5d0c7e1a90", "retryable": true}
+}
+```
+
+요구사항 확인 `resume` 본문:
+
+```json
+{
+  "interrupt_id": "int-req-1",
+  "expected_revision": 1,
+  "response": {
+    "kind": "requirements",
+    "answers": [{"req_id": "REQ-03", "action": "split", "texts": ["주문을 취소한다", "취소 사유를 저장한다"]}]
+  }
+}
+```
+
 ## 오류 형식
 
 ```json
 {"code": "RUN_REVISION_CONFLICT", "message": "다른 revision입니다.", "run_id": "…", "retryable": false}
 ```
 
-- `code`/`message`/`run_id`/`retryable`로 통일한다. 코드 값 목록은 계약 동결 때 정한다 (위 `code`는 예시).
+- `code`/`message`/`run_id`/`retryable`로 통일한다. 코드 값 후보는 `ErrorCode`: `RUN_NOT_FOUND`, `RUN_REVISION_CONFLICT`, `INTERRUPT_STALE`, `EVENT_REPLAY_EXPIRED`, `ARTIFACT_NOT_READY`, `ARTIFACT_FORMAT_UNSUPPORTED`, `UPLOAD_TOO_LARGE`, `UNSUPPORTED_MEDIA_TYPE`, `PACK_UNSUPPORTED`, `INVALID_RESPONSE`, `INTERNAL`. 목록은 계약 동결 때 확정한다.
 - 비동기 실행 중 오류는 `GET /runs/{id}`와 SSE `error` 이벤트로 전달한다.
 
 ## 산출물 형식
