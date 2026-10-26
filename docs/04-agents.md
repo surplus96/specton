@@ -89,7 +89,8 @@ def run(
     drafts = result.output.functions
     ids = assign_ids("FUNC", len(drafts))
     functions = tuple(
-        Function.model_validate({**d.model_dump(), "id": i}) for d, i in zip(drafts, ids, strict=True)
+        Function.model_validate({**d.model_dump(), "id": i})
+        for d, i in zip(drafts, ids, strict=True)
     )
     return NodeRun(output=functions, calls=result.calls)
 ```
