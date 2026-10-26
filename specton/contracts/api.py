@@ -16,7 +16,7 @@ from specton.contracts.state import RunState
 
 
 class ErrorCode(StrEnum):
-    """오류 코드 후보. 목록은 계약 동결 때 확정한다 (06 문서)."""
+    """오류 코드 (06 문서, ADR-0009). 응답의 `Error.code`는 확장을 위해 문자열로 받는다."""
 
     RUN_NOT_FOUND = "RUN_NOT_FOUND"
     RUN_REVISION_CONFLICT = "RUN_REVISION_CONFLICT"
@@ -28,6 +28,12 @@ class ErrorCode(StrEnum):
     UNSUPPORTED_MEDIA_TYPE = "UNSUPPORTED_MEDIA_TYPE"
     PACK_UNSUPPORTED = "PACK_UNSUPPORTED"
     INVALID_RESPONSE = "INVALID_RESPONSE"
+    # 실행 실패 원인 (`RunStatus.error`). specton.llm 예외·문서 추출 실패와 대응한다.
+    LLM_REFUSED = "LLM_REFUSED"
+    LLM_OUTPUT_INVALID = "LLM_OUTPUT_INVALID"
+    LLM_UNAVAILABLE = "LLM_UNAVAILABLE"
+    BUDGET_EXCEEDED = "BUDGET_EXCEEDED"
+    EXTRACTION_FAILED = "EXTRACTION_FAILED"
     INTERNAL = "INTERNAL"
 
 

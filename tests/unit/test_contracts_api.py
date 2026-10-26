@@ -176,6 +176,18 @@ def test_sse_event_type_is_limited_to_documented_kinds() -> None:
         )
 
 
+def test_error_codes_cover_run_failure_causes() -> None:
+    run_failures = {
+        "LLM_REFUSED",
+        "LLM_OUTPUT_INVALID",
+        "LLM_UNAVAILABLE",
+        "BUDGET_EXCEEDED",
+        "EXTRACTION_FAILED",
+    }
+
+    assert run_failures <= {c.value for c in ErrorCode}
+
+
 def test_sse_event_types_and_error_codes_match_openapi() -> None:
     generated = SseEvent.model_json_schema()
     ref = generated["properties"]["event"]["$ref"].split("/")[-1]

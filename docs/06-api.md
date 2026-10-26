@@ -117,7 +117,28 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 {"code": "RUN_REVISION_CONFLICT", "message": "다른 revision입니다.", "run_id": "…", "retryable": false}
 ```
 
-- `code`/`message`/`run_id`/`retryable`로 통일한다. 코드 값 후보는 `ErrorCode`: `RUN_NOT_FOUND`, `RUN_REVISION_CONFLICT`, `INTERRUPT_STALE`, `EVENT_REPLAY_EXPIRED`, `ARTIFACT_NOT_READY`, `ARTIFACT_FORMAT_UNSUPPORTED`, `UPLOAD_TOO_LARGE`, `UNSUPPORTED_MEDIA_TYPE`, `PACK_UNSUPPORTED`, `INVALID_RESPONSE`, `INTERNAL`. 목록은 계약 동결 때 확정한다.
+- `code`/`message`/`run_id`/`retryable`로 통일한다. 코드 값은 `ErrorCode`(ADR-0009)다.
+
+| 코드 | 언제 | HTTP | 다시 시도 |
+|---|---|---|---|
+| `RUN_NOT_FOUND` | 없는 실행이거나 접근 권한 없음 | 404 | 아니오 |
+| `RUN_REVISION_CONFLICT` | 다른 revision 기준 요청 | 409 | 최신 상태 조회 후 |
+| `INTERRUPT_STALE` | 이미 응답했거나 오래된 확인 요청에 답함 | 409 | 최신 상태 조회 후 |
+| `EVENT_REPLAY_EXPIRED` | SSE 재연결 시 이벤트 보존 범위를 벗어남 | 409 | 상태 조회 후 |
+| `ARTIFACT_NOT_READY` | 산출물이 아직 생성되지 않음 | 409 | 예 |
+| `ARTIFACT_FORMAT_UNSUPPORTED` | 허용하지 않는 kind·format 조합 | 422 | 아니오 |
+| `UPLOAD_TOO_LARGE` | 파일 크기 한도 초과 | 413 | 아니오 |
+| `UNSUPPORTED_MEDIA_TYPE` | 지원하지 않는 파일 형식 | 415 | 아니오 |
+| `PACK_UNSUPPORTED` | 없는 도메인 팩 선택 | 422 | 아니오 |
+| `INVALID_RESPONSE` | resume 답변 형식이 틀림 | 422 | 아니오 |
+| `LLM_REFUSED` | 실행 실패: 모델이 응답을 거절함 (`LLMRefusalError`) | 실행 상태 | 아니오, 입력 확인 |
+| `LLM_OUTPUT_INVALID` | 실행 실패: 재요청 후에도 출력 형식 위반 (`LLMContractError`) | 실행 상태 | 예 |
+| `LLM_UNAVAILABLE` | 실행 실패: LLM 타임아웃·API 오류 (`LLMTimeoutError`, `LLMAPIError`) | 실행 상태 | 예, 잠시 후 |
+| `BUDGET_EXCEEDED` | 실행 실패: 토큰·시간 예산 초과 (`LLMBudgetExceededError`) | 실행 상태 | 아니오, 입력 축소 |
+| `EXTRACTION_FAILED` | 실행 실패: 문서 추출 실패 (빈 PDF, 암호화, 손상) | 실행 상태 | 아니오, 다른 파일 |
+| `INTERNAL` | 그 밖의 서버 오류 | 500 / 실행 상태 | 경우에 따라 |
+
+- "실행 상태"는 HTTP 오류가 아니라 실패한 실행의 `GET /runs/{id}` 응답 `error` 필드와 SSE `error` 이벤트로 전달된다는 뜻이다.
 - 비동기 실행 중 오류는 `GET /runs/{id}`와 SSE `error` 이벤트로 전달한다.
 
 ## 산출물 형식
