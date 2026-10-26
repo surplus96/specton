@@ -21,6 +21,8 @@ ReqId = Annotated[str, StringConstraints(pattern=r"^REQ-\d{2,}$")]
 EntityId = Annotated[str, StringConstraints(min_length=1, max_length=64)]
 ObjectId = Annotated[str, StringConstraints(min_length=1, max_length=64)]
 NonEmptyText = Annotated[str, StringConstraints(min_length=1)]
+# 표 안 셀 위치. 엑셀 셀 주소 형식(열 문자 + 1부터 시작하는 행 번호)이다.
+CellAddress = Annotated[str, StringConstraints(pattern=r"^[A-Z]+[1-9][0-9]*$")]
 
 
 class Priority(StrEnum):
@@ -116,7 +118,7 @@ class SourceRef(Contract):
     section: int | None = Field(default=None, ge=0)
     paragraph: int | None = Field(default=None, ge=0)
     table: int | None = Field(default=None, ge=0)
-    cell: str | None = None
+    cell: CellAddress | None = None
 
     @model_validator(mode="after")
     def _check_locator(self) -> Self:

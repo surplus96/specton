@@ -13,10 +13,11 @@ from specton.contracts import (
     FunctionDraft,
     Relationship,
     Requirement,
+    RequirementDraft,
     SourceRef,
     find_trace_issues,
 )
-from specton.contracts.base import RequirementType
+from specton.contracts.base import NfrCategory, RequirementType
 
 
 def _src() -> SourceRef:
@@ -33,6 +34,22 @@ def _req(req_id: str = "REQ-01") -> Requirement:
         type=RequirementType.FR,
         analysis_version=1,
     )
+
+
+def _classified(
+    model: type[Requirement | RequirementDraft], **fields: object
+) -> Requirement | RequirementDraft:
+    """분류(type·nfr_category)만 바꿔 저장 모델 또는 LLM 출력 모델을 만든다."""
+    required: dict[type, dict[str, object]] = {
+        Requirement: {
+            "id": "REQ-01",
+            "source_ref": _src(),
+            "original_text": "변경 이력을 남긴다",
+            "analysis_version": 1,
+        },
+        RequirementDraft: {"source_block_ids": ["B-1"]},
+    }
+    return model.model_validate({**required[model], "text": "변경 이력을 남긴다", **fields})
 
 
 def _attr(attr_id: str = "ATTR-01", req_ids: list[str] | None = None) -> Attribute:
@@ -103,8 +120,8 @@ class TestSourceRef:
     def test_each_kind_requires_its_locator(self) -> None:
         assert SourceRef(kind="csv", row=3).display() == "3행"
         assert SourceRef(kind="pdf", page=2, block=0).display() == "2쪽 블록0"
-        hwpx = SourceRef(kind="hwpx", section=0, paragraph=4, table=1, cell="2행1열")
-        assert hwpx.display() == "구역0 문단4 표1 2행1열"
+        hwpx = SourceRef(kind="hwpx", section=0, paragraph=4, table=1, cell="B2")
+        assert hwpx.display() == "구역0 문단4 표1 B2"
 
     @pytest.mark.parametrize(
         "kwargs",
@@ -120,9 +137,33 @@ class TestSourceRef:
         with pytest.raises(ValidationError):
             SourceRef.model_validate(kwargs)
 
+    @pytest.mark.parametrize("cell", ["2행1열", "b2", "B0", "2B"])
+    def test_cell_must_be_a_spreadsheet_address(self, cell: str) -> None:
+        with pytest.raises(ValidationError):
+            SourceRef(kind="hwpx", section=0, paragraph=4, table=1, cell=cell)
+
     def test_round_trips_through_json(self) -> None:
         ref = _src()
         assert SourceRef.model_validate_json(ref.model_dump_json()) == ref
+
+
+class TestNfrCategory:
+    @pytest.mark.parametrize("model", [Requirement, RequirementDraft])
+    def test_fr_cannot_carry_nfr_category(
+        self, model: type[Requirement | RequirementDraft]
+    ) -> None:
+        with pytest.raises(ValidationError, match="FR"):
+            _classified(model, type="FR", nfr_category="security")
+
+    @pytest.mark.parametrize("model", [Requirement, RequirementDraft])
+    def test_nfr_requires_category(self, model: type[Requirement | RequirementDraft]) -> None:
+        with pytest.raises(ValidationError, match="NFR"):
+            _classified(model, type="NFR")
+
+    def test_nfr_with_category_is_accepted(self) -> None:
+        req = _classified(Requirement, type="NFR", nfr_category="audit")
+
+        assert req.nfr_category is NfrCategory.AUDIT
 
 
 class TestPriority:

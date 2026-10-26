@@ -1,6 +1,8 @@
 """입력 원문과 요구사항 (A01 출력, 05 문서)."""
 
-from pydantic import Field
+from typing import Self
+
+from pydantic import Field, model_validator
 
 from specton.contracts.base import (
     Contract,
@@ -11,6 +13,14 @@ from specton.contracts.base import (
     RequirementType,
     SourceRef,
 )
+
+
+def _check_nfr_category(type_: RequirementType, category: NfrCategory | None) -> None:
+    """NFR은 분류가 있어야 하고 FR은 분류를 두지 않는다 (05 문서)."""
+    if type_ is RequirementType.NFR and category is None:
+        raise ValueError("NFR 요구사항에는 nfr_category가 필요합니다 (애매하면 other)")
+    if type_ is RequirementType.FR and category is not None:
+        raise ValueError("FR 요구사항에는 nfr_category를 두지 않습니다")
 
 
 class RawRequirement(Contract):
@@ -42,6 +52,11 @@ class RequirementDraft(Contract):
     parent_hint: str | None = None  # 분할 전 요구의 단서. 실제 parent_id는 코드가 연결한다
     quality_issues: tuple[QualityIssue, ...] = ()
 
+    @model_validator(mode="after")
+    def _check_category(self) -> Self:
+        _check_nfr_category(self.type, self.nfr_category)
+        return self
+
 
 class Requirement(Contract):
     """저장 모델. `id`·`source_id`·`source_ref`·`parent_id`·`analysis_version`은 코드가 채운다."""
@@ -56,3 +71,8 @@ class Requirement(Contract):
     nfr_category: NfrCategory | None = None
     quality_issues: tuple[QualityIssue, ...] = ()
     analysis_version: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def _check_category(self) -> Self:
+        _check_nfr_category(self.type, self.nfr_category)
+        return self

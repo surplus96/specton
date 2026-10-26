@@ -49,7 +49,7 @@
 
 ### 비기능 분류 (`NfrCategory`)
 
-`type`이 NFR인 요구사항에만 `nfr_category`를 채운다. FR이면 `null`로 둔다.
+NFR이면 `nfr_category`를 반드시 채우고(애매하면 `other`), FR이면 `null`로 둔다. `Requirement`와 `RequirementDraft`의 검증이 둘 다 강제한다.
 
 | 값 | 뜻 | 예 |
 |---|---|---|
