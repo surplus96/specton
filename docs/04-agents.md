@@ -120,13 +120,32 @@ def test_a01_retries_on_invalid_output() -> None:
 | A07 비기능 요구 | 권한·감사·보존 요구의 반영 위치와 책임이 있는가 | 컬럼 존재만으로 보안·성능 충족을 단정하지 않음 |
 | A08 정규화 | 반복 속성·다중값·중복 저장에 수정 이상 위험이 있는가 | 업무 근거가 있는 스냅샷·이력 저장은 오류로 보지 않음 |
 
-### 설정형 리뷰어 (제안, ADR-0008)
+### 설정형 리뷰어 (ADR-0008)
 
 - 관점 4개는 논리적으로 유지하고, 관점마다 프롬프트·체크리스트·입력 선택·오탐 기준을 **설정 파일**로 둔다.
-- 구현은 **리뷰어 노드 1종**. 설정으로 `parallel`(4개 병렬)과 `combined`(1개에 4관점)를 바꾼다.
-- 출력은 공통 Finding 형식, `reviewer_id`로 관점을 구분한다.
-- 실행 방식은 같은 입력으로 두 방식을 비교해 탐지율·오탐·토큰·시간으로 정한다. 통합이 늦으면 `combined`로 먼저 연결한다.
+- 구현은 **리뷰어 노드 1종**(`specton/review/reviewer.py`). `SPECTON_REVIEW_MODE`로 `parallel`(관점마다 1회 호출)과 `combined`(전체 1회 호출)를 바꾼다. 기본값은 `combined`.
+- `parallel`의 관점 동시 실행과 결과 합류는 그래프가 맡는다 (#18). 노드는 관점 하나를 실행하는 함수(`review_perspective`)를 제공한다.
+- 출력은 관점별 `BranchResult`이고 지적은 공통 `Finding`이다. `reviewer_id`로 관점을 구분한다. `id`·`fingerprint`·`iteration`은 코드가 붙인다.
+- 한 관점이 실패해도 다른 관점의 결과는 남는다. 실패한 관점은 `ok=false`와 오류 코드(`LLM_REFUSED` 등)로 표시하고, 하나라도 실패하면 불완전 검토다 (`ReviewRun.complete`, TC-F14). `combined` 출력에 빠진 관점은 `LLM_OUTPUT_INVALID`로 실패 처리한다.
+- 실행 방식은 같은 입력으로 두 방식을 비교해 탐지율·오탐·토큰·시간으로 정한다.
 - R1이 노드 틀을, 각 관점 담당이 자기 설정·테스트·평가를 맡는다.
+
+#### 관점 설정 형식
+
+관점마다 `specton/review/perspectives/<reviewer_id>.yaml` 파일 하나를 둔다. 파일을 추가하면 리뷰어가 그 관점을 실행한다. 예시는 `A05.yaml`이다.
+
+| 키 | 필수 | 내용 |
+|---|---|---|
+| `reviewer_id` | 예 | `A05`~`A08`. 파일 이름과 같아야 한다 |
+| `name` | 예 | 관점 이름 (예: 관계 모순 검토) |
+| `prompt_version` | 예 | 프롬프트를 바꿀 때마다 올린다 (예: `a05-v2`). 호출 기록에 남는다 |
+| `instructions` | 예 | 관점의 역할과 할 일 |
+| `checklist` | 예 | 점검 항목 목록 (1개 이상) |
+| `inputs` | 예 | 보여 줄 입력: `requirements`·`functions`·`entities`·`relationships` 중 선택 |
+| `false_positive_guards` | 예 | 지적하지 않는 경우 (오탐 기준, 1개 이상) |
+
+- 알 수 없는 키는 거절한다. 공통 규칙(입력 속 지시 무시, 입력에 있는 ID만 사용, 원문 인용)은 노드가 모든 관점에 붙이므로 설정에 다시 적지 않는다.
+- 관점 담당은 설정 파일과 함께 stub 테스트를 만든다. `tests/unit/test_reviewer.py`의 `_perspective`·`_state`·`stub_client` 사용법을 참고한다.
 
 ### 지적 확정 절차
 
