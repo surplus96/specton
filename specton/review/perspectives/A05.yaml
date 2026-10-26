@@ -1,0 +1,13 @@
+# A05 관계 모순 검토. 설정 형식 예시이며 내용은 #9에서 채운다.
+# 형식 설명: docs/04-agents.md "관점 설정 형식"
+reviewer_id: A05
+name: 관계 모순 검토
+prompt_version: a05-v1
+instructions: |
+  관계의 방향·개수(카디널리티)·필수 여부가 원문 요구사항과 모순되는지 검토한다.
+checklist:
+  - 관계의 카디널리티가 요구사항의 수량 표현과 맞는가
+  - optional(필수 여부)이 요구사항의 필수 조건과 맞는가
+inputs: [requirements, entities, relationships]
+false_positive_guards:
+  - 같은 요구를 충족하는 다른 관계 표현은 지적하지 않는다
