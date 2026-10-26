@@ -321,6 +321,21 @@ class TestTraceIntegrity:
 
         assert [i.kind for i in issues] == ["unknown_entity_ref", "unknown_entity_ref"]
 
+    def test_unknown_parent_requirement_is_found(self) -> None:
+        child = _req("REQ-02").model_copy(update={"parent_id": "REQ-99"})
+        state = _state(requirements=[_req(), child])
+
+        issues = find_trace_issues(state)
+
+        assert [(i.kind, i.object_kind, i.object_id) for i in issues] == [
+            ("unknown_req_id", "requirement", "REQ-02")
+        ]
+
+    def test_known_parent_requirement_is_not_reported(self) -> None:
+        child = _req("REQ-02").model_copy(update={"parent_id": "REQ-01"})
+
+        assert find_trace_issues(_state(requirements=[_req(), child])) == []
+
     def test_duplicate_ids_are_found(self) -> None:
         state = _state(functions=[_function(), _function()])
         assert [i.kind for i in find_trace_issues(state)] == ["duplicate_id"]
