@@ -43,14 +43,17 @@ class _Output(BaseModel):
 
 
 class ReviewOutput(_Output):
-    """parallel 방식의 LLM 출력. 관점 하나의 지적."""
+    """parallel 방식의 LLM 출력. 관점 하나의 지적.
 
-    findings: tuple[FindingDraft, ...] = ()
+    findings는 필수다. 기본값을 두면 형식이 틀린 응답("{}")이 "지적 없음"으로 통과한다.
+    """
+
+    findings: tuple[FindingDraft, ...]
 
 
 class PerspectiveFindings(_Output):
     reviewer_id: str
-    findings: tuple[FindingDraft, ...] = ()
+    findings: tuple[FindingDraft, ...]
 
 
 class CombinedReviewOutput(_Output):
