@@ -1,0 +1,64 @@
+name: board-status
+
+# 보드 기본 자동화가 못 하는 이동을 맡는다 (CONTRIBUTING "작업 흐름").
+# - 브랜치 생성(`<type>/<이슈번호>-요약` 첫 push): 이슈 카드 Backlog·Todo → In Progress
+# - PR 열림·Draft 해제·리뷰 재요청: PR 카드 → In Review (Draft는 In Progress), 재요청이면 연결 이슈도 In Review
+# 개인 계정 보드는 GITHUB_TOKEN으로 수정할 수 없어 project 권한 토큰(Secret PROJECT_TOKEN)을 쓴다.
+# 토큰이 없거나 실패해도 PR·병합을 막지 않는다 (필수 검사가 아니다).
+
+on:
+  create:
+  pull_request:
+    types: [opened, ready_for_review, converted_to_draft, review_requested]
+
+permissions:
+  contents: read
+
+env:
+  OWNER: surplus96
+  PROJECT_NUMBER: 1
+  REPO: ${{ github.repository }}
+  GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+
+jobs:
+  branch-started:
+    if: github.event_name == 'create' && github.event.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Move the issue card to In Progress
+        env:
+          BRANCH: ${{ github.event.ref }}
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then echo "::notice::PROJECT_TOKEN이 없어 건너뜁니다"; exit 0; fi
+          if [[ ! "$BRANCH" =~ ^[a-z]+/([0-9]+)- ]]; then
+            echo "브랜치 이름에 이슈 번호가 없어 건너뜁니다: $BRANCH"
+            exit 0
+          fi
+          .github/scripts/board-status.sh "${BASH_REMATCH[1]}" "In Progress" Backlog Todo
+
+  pull-request:
+    # fork PR은 Secret을 읽을 수 없으므로 같은 저장소 브랜치만 처리한다
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Move the PR card
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          ACTION: ${{ github.event.action }}
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then echo "::notice::PROJECT_TOKEN이 없어 건너뜁니다"; exit 0; fi
+          if [[ "$DRAFT" == "true" ]]; then
+            .github/scripts/board-status.sh "$PR" "In Progress"
+            exit 0
+          fi
+          .github/scripts/board-status.sh "$PR" "In Review"
+          if [[ "$ACTION" == "review_requested" ]]; then
+            for issue in $(gh pr view "$PR" --repo "$REPO" --json closingIssuesReferences --jq '.closingIssuesReferences[].number'); do
+              .github/scripts/board-status.sh "$issue" "In Review" "In Progress"
+            done
+          fi
