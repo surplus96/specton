@@ -2,7 +2,7 @@
 
 > 상태: **초안** (Pydantic 구현 완료, 2인 승인 후 동결)
 > 구현: `specton/contracts/` (`base`·`requirements`·`design`·`findings`·`state`·`api`)
-> 변경 규칙: `specton/contracts/` 변경은 `contract-change` 라벨과 2인 승인 ([CONTRIBUTING](../CONTRIBUTING.md))
+> 변경 규칙: `specton/contracts/` 변경은 `contract-change` 라벨과 2인 승인. R1 작성 PR의 예외는 [CONTRIBUTING](../CONTRIBUTING.md)
 
 ## 단계 간 모델
 
