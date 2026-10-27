@@ -1,8 +1,8 @@
 # ADR-0010: 검토 심각도
 
-- 날짜: 2026-10-23
-- 상태: 제안
-- 결정자: 팀 설계로 (회의에서 승인·수정·보류)
+- 날짜: 2026-10-23 (승인 2026-10-27)
+- 상태: 승인
+- 결정자: 팀 설계로 (#9 착수 시 R1 승인)
 
 ## 배경
 
@@ -13,6 +13,7 @@
 - 규칙 위반은 `critical`(차단). LLM 지적은 `major`/`minor`.
 - 자동 재작업은 `critical`과 `major`만. `minor`는 참고 의견으로 HITL 2에 표시한다.
 - 미해결 `critical`이 있으면 승인 완료로 표시하지 않는다.
+- 구현 (#9): `specton/review/rework.py`의 `AUTO_REWORK_SEVERITIES`. LLM 출력(`FindingDraft`)의 `critical`을 막는 계약 변경은 별도 이슈로 한다.
 
 ## 검토한 대안
 
