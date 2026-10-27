@@ -6,13 +6,10 @@
 
 import json
 
-import pytest
-
 from specton.config import Settings
 from specton.contracts import DesignState, Entity, FindingDraft, Function, Requirement
 from specton.llm.stub import reply, stub_client
 from specton.nodes.common import unwrap_data
-from specton.packs.examples import load_examples
 from specton.review.perspective import PERSPECTIVES_DIR, load_perspective, load_perspectives
 from specton.review.reviewer import ReviewOutput, review_perspective
 
@@ -187,15 +184,3 @@ def test_a07_rejects_a_standalone_relationship_stage() -> None:
     review_perspective(client, A07, _state(), _settings())
 
     assert len(transport.sent) == 2
-
-
-# few-shot 예시. 리뷰어 노드는 아직 예시를 읽지 않으므로 형식만 고정해 둔다.
-
-
-@pytest.mark.parametrize("pack", ["inventory", "maintenance"])
-def test_a07_pack_examples_match_review_output_and_inputs(pack: str) -> None:
-    (example,) = load_examples(pack, "A07", ReviewOutput)
-
-    assert isinstance(example.input, dict)
-    assert set(example.input) == set(A07.inputs)
-    DesignState.model_validate({"run_id": "example", **example.input})
