@@ -195,6 +195,15 @@ def test_a02_raises_refusal() -> None:
 - 알 수 없는 키는 거절한다. 공통 규칙(입력 속 지시 무시, 입력에 있는 ID만 사용, 원문 인용)은 노드가 모든 관점에 붙이므로 설정에 다시 적지 않는다.
 - 관점 담당은 설정 파일과 함께 stub 테스트를 만든다. `tests/unit/test_reviewer.py`의 `_perspective`·`_state`·`stub_client` 사용법을 참고한다.
 
+#### 관점 few-shot 예시
+
+관점마다 `domain_packs/<pack>/examples/<reviewer_id>.yaml`에 예시를 둔다 (#69). 형식은 설계 노드 예시와 같다.
+
+- `input`: 그 관점의 `inputs`에 적은 부분만 담은 매핑. 예: `{requirements: [...], functions: [...], entities: [...]}`
+- `output`: `ReviewOutput` 모양 `{findings: [...]}`. 지적이 없는 예시는 `findings: []`. 지적의 `severity`는 `major`·`minor`만 쓴다 (ADR-0010)
+- 리뷰어는 `pack`을 받으면 예시를 넣는다. `parallel`은 대화 쌍으로, `combined`는 관점 블록 안에 "예시 n 입력 / 지적"으로 넣는다. 예시 수만큼 입력 토큰이 늘어나므로 관점당 1~2건을 권장한다.
+- 예시 원문 사용 기준은 [07 테스트·평가](07-testing-eval.md#평가-데이터)를 따른다.
+
 ### 지적 확정 절차
 
 1. Pydantic으로 형식·허용값 검사
