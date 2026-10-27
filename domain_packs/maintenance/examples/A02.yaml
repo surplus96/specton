@@ -5,22 +5,36 @@ agent: A02
 role: function_design
 status: draft
 examples:
-- source_id: MNT-021,MNT-022
+- source_id: MNT-009,MNT-011,MNT-021,MNT-022
   input:
     requirements:
     - id: REQ-01
+      type: FR
+      nfr_category: null
+      text: 보전 담당자는 설비, 접수 일시, 신고자 사내 식별값, 증상, 우선순위로 고장 건을 등록한다. 한 접수는 한 설비에 대한 것이며 하나 이상의 보전 작업으로 나누어 처리할 수 있다. 접수 번호는 고유해야 한다.
+    - id: REQ-02
+      type: FR
+      nfr_category: null
+      text: 작업 담당 기술자를 지정할 경우 배정 시점에 해당 담당팀에 유효하게 소속된 기술자여야 한다. 작업은 한 팀과 최대 한 기술자에게 배정한다. 담당 변경 사유와 변경자를 기록한다.
+    - id: REQ-03
       type: NFR
       nfr_category: security
       text: 웹 브라우저로 접속하며 보전 담당자는 접수·계획·배정을, 기술자는 본인에게 배정된 작업의 수행 결과를, 승인 담당자는 검토·종료를 수행한다. 인증과 역할 배정은 기존 사내 인증 체계를 사용한다.
-    - id: REQ-02
+    - id: REQ-04
       type: NFR
       nfr_category: audit
       text: 설비·계획·팀 소속·작업의 변경은 사내 계정 식별값, 일시, 변경 전후 값과 사유로 추적할 수 있어야 한다. 일반 사용자는 변경 이력과 확정된 수행 기록을 삭제할 수 없어야 한다.
   output:
     functions:
-    - name: 권한·감사
-      description: 역할별로 허용된 작업만 수행하게 하고, 설비·계획·소속·작업의 변경 이력을 변경자·일시·전후 값·사유와 함께 보존한다. 일반 사용자는 이력을 삭제할 수 없다.
+    - name: 고장 접수
+      description: 보전 담당자만 설비별 고장 건을 고유 접수 번호로 등록·조회·수정하고, 한 접수를 여러 보전 작업으로 나눌 수 있다. 접수 변경은 변경자·일시·변경 전후 값·사유로 기록하고 일반 사용자는 이력을 삭제할 수 없다.
       priority: null
       priority_source: unspecified
       priority_rationale: null
-      req_ids: [REQ-01, REQ-02]
+      req_ids: [REQ-01, REQ-03, REQ-04]
+    - name: 작업 배정
+      description: 보전 담당자만 작업을 한 팀과 그 팀에 유효하게 소속된 최대 한 명의 기술자에게 배정한다. 배정 변경은 변경자·일시·변경 전후 값·사유로 기록하고 일반 사용자는 이력을 삭제할 수 없다.
+      priority: null
+      priority_source: unspecified
+      priority_rationale: null
+      req_ids: [REQ-02, REQ-03, REQ-04]

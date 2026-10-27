@@ -9,7 +9,13 @@ from specton.config import Settings
 from specton.contracts import DesignState, FunctionDraft, Requirement
 from specton.llm.errors import LLMContractError, LLMRefusalError, LLMTimeoutError
 from specton.llm.stub import refusal, reply, stub_client
-from specton.nodes.a02_functions import PROMPT_VERSION, A02Output, input_data, run
+from specton.nodes.a02_functions import (
+    PROMPT_VERSION,
+    SYSTEM_PROMPT,
+    A02Output,
+    input_data,
+    run,
+)
 from specton.nodes.common import unwrap_data
 from specton.packs.examples import load_examples
 
@@ -220,6 +226,46 @@ def test_inferred_priority_without_rationale_is_rejected() -> None:
     assert "priority_rationale" in transport.sent[1].messages[-1].content
 
 
+def test_rationale_that_is_not_a_quote_of_its_requirement_is_rejected() -> None:
+    made_up = _raw(
+        [
+            {
+                "name": "수불 취소",
+                "description": "확정 수불을 취소한다",
+                "req_ids": ["REQ-02"],
+                "priority": "Must",
+                "priority_source": "inferred",
+                "priority_rationale": "취소는 업무상 매우 중요하다",
+            }
+        ]
+    )
+    client, transport = stub_client(reply(made_up), reply(_valid_output()))
+
+    run(client, _state(), _settings(), pack="inventory")
+
+    assert "인용이 아닙니다" in transport.sent[1].messages[-1].content
+
+
+def test_rationale_quoting_another_functions_requirement_is_rejected() -> None:
+    wrong_source = _raw(
+        [
+            {
+                "name": "창고 관리",
+                "description": "창고를 관리한다",
+                "req_ids": ["REQ-01"],
+                "priority": "Must",
+                "priority_source": "inferred",
+                "priority_rationale": "확정 수불은 한 번만 취소할 수 있다.",
+            }
+        ]
+    )
+    client, transport = stub_client(reply(wrong_source), reply(_valid_output()))
+
+    run(client, _state(), _settings(), pack="inventory")
+
+    assert len(transport.sent) == 2
+
+
 def test_priority_value_without_source_is_rejected() -> None:
     guessed = _raw(
         [{"name": "창고 관리", "description": "a", "req_ids": ["REQ-01"], "priority": "Must"}]
@@ -259,6 +305,17 @@ def test_no_requirements_fails_before_calling_the_llm() -> None:
     assert transport.sent == ()
 
 
+# 프롬프트
+
+
+def test_prompt_does_not_promise_unimplemented_unlinked_marking() -> None:
+    assert "미연결은 코드가 표시" not in SYSTEM_PROMPT
+
+
+def test_prompt_attaches_nfr_to_business_functions() -> None:
+    assert "비기능 요구는 따로 모아 기능을 만들지 않는다" in SYSTEM_PROMPT
+
+
 # few-shot 예시
 
 
@@ -273,3 +330,13 @@ def test_pack_examples_match_the_output_model_and_input_shape(pack: str) -> None
         assert all(set(r) == expected_keys for r in example.input["requirements"])
         known = {r["id"] for r in example.input["requirements"]}
         assert {i for f in example.output.functions for i in f.req_ids} <= known
+
+
+@pytest.mark.parametrize("pack", ["inventory", "maintenance"])
+def test_pack_examples_never_make_an_nfr_only_function(pack: str) -> None:
+    """few-shot은 본보기다. 비기능 요구만 모은 기능을 보여 주면 모델이 그대로 따라 한다."""
+    for example in load_examples(pack, "A02", A02Output):
+        assert isinstance(example.input, dict)
+        types = {r["id"]: r["type"] for r in example.input["requirements"]}
+        for function in example.output.functions:
+            assert any(types[r] == "FR" for r in function.req_ids), function.name

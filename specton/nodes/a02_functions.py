@@ -2,11 +2,13 @@
 
 확인된 요구사항을 기능으로 나누거나 묶고, 기능마다 설명·우선순위·근거·req_ids를 받는다.
 - 기능 ID는 코드가 붙인다. CRUD(`entity_ops`)는 A03가 채우므로 출력에 없다.
-- req_ids는 이번 입력에 있는 요구사항만 허용한다. 어기면 공통 client가 재요청한다.
+- req_ids는 이번 입력에 있는 요구사항만, 우선순위 근거는 그 요구 문장의 인용만 허용한다.
+  어기면 공통 client가 재요청한다.
 - 우선순위는 명시값만 `explicit`, 추정은 `inferred`(근거 필수), 없으면 null (ADR-0006).
   우선순위로 기능을 빼지 않는다.
 """
 
+from collections.abc import Mapping
 from typing import Any, Self
 
 from pydantic import Field, model_validator
@@ -27,7 +29,9 @@ SYSTEM_PROMPT = """\
 - 성격이 다른 작업(예: 등록과 취소, 처리와 조회)은 기능을 나눈다.
 - 기능마다 name(짧은 명사형), description(무엇을 어떤 조건으로 하는지 1~2문장), req_ids를 쓴다.
 - req_ids에는 그 기능이 충족하는 요구사항의 id만 입력에서 골라 적는다.
-- 기능에 연결할 수 없는 요구사항은 억지로 기능을 만들어 붙이지 않는다. 미연결은 코드가 표시한다.
+- 기능에 연결할 수 없는 요구사항은 억지로 기능을 만들어 붙이지 않는다.
+- 권한·감사·보존 같은 비기능 요구는 따로 모아 기능을 만들지 않는다. 그 요구가 제약하는 업무 기능의
+  description에 조건을 쓰고 req_ids에 함께 적는다.
 
 우선순위(MoSCoW: Must, Should, Could, Won't):
 - 요구사항 문장에 우선순위가 명시돼 있으면 그 값을 priority에, priority_source는 explicit로 쓴다.
@@ -82,7 +86,7 @@ def run(
         data=input_data(state),
         examples=load_examples(pack, "A02", A02Output),
     )
-    output_model = _with_known_requirements(frozenset(r.id for r in state.requirements))
+    output_model = _checked_against({r.id: r.text for r in state.requirements})
     result = client.complete(request, output_model, token_budget=token_budget)
     drafts = result.output.functions
     ids = assign_ids("FUNC", len(drafts))
@@ -106,16 +110,31 @@ def input_data(state: DesignState) -> dict[str, Any]:
     }
 
 
-def _with_known_requirements(allowed: frozenset[str]) -> type[A02Output]:
-    """이번 입력의 REQ만 허용하는 출력 모델. 형식 검증과 함께 재요청 대상이 된다."""
+def _checked_against(texts: Mapping[str, str]) -> type[A02Output]:
+    """이번 입력으로 검사하는 출력 모델. 어기면 형식 오류처럼 재요청 대상이 된다.
 
-    class KnownRequirementsA02Output(A02Output):
+    - req_ids는 입력에 있는 요구사항만 허용한다.
+    - priority_rationale은 그 기능이 참조한 요구사항 문장을 그대로 인용해야 한다.
+    """
+
+    class CheckedA02Output(A02Output):
         @model_validator(mode="after")
-        def _check_known_requirements(self) -> Self:
+        def _check_against_input(self) -> Self:
             referenced = {req_id for f in self.functions for req_id in f.req_ids}
-            unknown = sorted(referenced - allowed)
+            unknown = sorted(referenced - texts.keys())
             if unknown:
                 raise ValueError(f"입력에 없는 요구사항을 참조했습니다: {', '.join(unknown)}")
+            unquoted = [
+                f.name
+                for f in self.functions
+                if f.priority_rationale
+                and not any(f.priority_rationale in texts[r] for r in f.req_ids)
+            ]
+            if unquoted:
+                raise ValueError(
+                    "priority_rationale이 참조한 요구사항 문장의 인용이 아닙니다: "
+                    + ", ".join(unquoted)
+                )
             return self
 
-    return KnownRequirementsA02Output
+    return CheckedA02Output
