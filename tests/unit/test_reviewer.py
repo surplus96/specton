@@ -127,6 +127,17 @@ class TestParallel:
         assert len(transport.sent) == 2
         assert run.results[0].ok
 
+    def test_critical_from_the_llm_is_retried(self) -> None:
+        critical = _draft().model_dump(mode="json") | {"severity": "critical"}
+        bad = json.dumps({"findings": [critical]}, ensure_ascii=False)
+        client, transport = stub_client(reply(bad), reply(ReviewOutput(findings=(_draft(),))))
+
+        run = run_review(client, [A05], _state(), _settings("parallel"))
+
+        assert len(transport.sent) == 2
+        assert run.results[0].findings[0].severity == "major"
+        assert "major·minor" in transport.sent[0].messages[0].content
+
 
 class TestCombined:
     def test_calls_once_and_splits_findings_by_reviewer(self) -> None:

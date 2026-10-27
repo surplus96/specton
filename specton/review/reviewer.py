@@ -33,6 +33,7 @@ SECTION_ORDER: tuple[InputSection, ...] = ("requirements", "functions", "entitie
 REVIEW_RULES = """\
 너는 데이터 모델 설계 검토자다. 아래 관점으로 설계를 검토하고 문제만 지적한다.
 - targets에는 문제가 있는 설계 요소의 id를, evidence에는 근거 요구사항 문장을 넣는다.
+- severity는 major·minor만 쓴다. 요구를 어겨 고쳐야 하면 major, 개선 의견이면 minor다.
 - 문제가 없으면 findings를 비운다."""
 
 COMBINED_RULE = "- 관점마다 reviewer_id로 결과를 나누고, 모든 관점을 빠짐없이 돌려준다."
