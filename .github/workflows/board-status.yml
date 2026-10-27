@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Move the issue card to In Progress
         env:
           BRANCH: ${{ github.event.ref }}
@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Move the PR card
         env:
           PR: ${{ github.event.pull_request.number }}
