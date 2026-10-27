@@ -81,7 +81,7 @@ def _settings(mode: str) -> Settings:
 class TestParallel:
     def test_calls_each_perspective_once_and_tags_findings(self) -> None:
         client, transport = stub_client(
-            reply(ReviewOutput(findings=(_draft(),))), reply(ReviewOutput())
+            reply(ReviewOutput(findings=(_draft(),))), reply(ReviewOutput(findings=()))
         )
 
         run = run_review(client, [A05, A06], _state(), _settings("parallel"))
@@ -109,7 +109,7 @@ class TestParallel:
         assert len(run.calls) == 2
 
     def test_prompt_uses_only_the_selected_inputs(self) -> None:
-        client, transport = stub_client(reply(ReviewOutput()))
+        client, transport = stub_client(reply(ReviewOutput(findings=())))
 
         run_review(client, [A05], _state(), _settings("parallel"))
 
@@ -119,13 +119,21 @@ class TestParallel:
         data = json.loads(unwrap_data(user.content))
         assert list(data) == ["requirements", "entities"]
 
+    def test_empty_object_is_not_a_valid_answer(self) -> None:
+        client, transport = stub_client(reply("{}"), reply(ReviewOutput(findings=())))
+
+        run = run_review(client, [A05], _state(), _settings("parallel"))
+
+        assert len(transport.sent) == 2
+        assert run.results[0].ok
+
 
 class TestCombined:
     def test_calls_once_and_splits_findings_by_reviewer(self) -> None:
         output = CombinedReviewOutput(
             perspectives=(
                 PerspectiveFindings(reviewer_id="A06", findings=(_draft(),)),
-                PerspectiveFindings(reviewer_id="A05"),
+                PerspectiveFindings(reviewer_id="A05", findings=()),
             )
         )
         client, transport = stub_client(reply(output))
@@ -140,7 +148,9 @@ class TestCombined:
         ]
 
     def test_missing_perspective_is_marked_failed(self) -> None:
-        output = CombinedReviewOutput(perspectives=(PerspectiveFindings(reviewer_id="A05"),))
+        output = CombinedReviewOutput(
+            perspectives=(PerspectiveFindings(reviewer_id="A05", findings=()),)
+        )
         client, _ = stub_client(reply(output))
 
         run = run_review(client, [A05, A06], _state(), _settings("combined"))

@@ -1,6 +1,6 @@
 # 에이전트
 
-> 상태: **초안** (심각도·모델 배정은 회의 결정 전)
+> 상태: **초안** (모델 ADR-0007·리뷰어 ADR-0008·심각도 ADR-0010 승인, 노드는 각 이슈에서 구현 중)
 
 ## 구성
 
@@ -45,7 +45,7 @@
 | 요청 | `specton.nodes.common.build_request`로 만든다. 공통 규칙(입력 속 지시 무시·ID 생성 금지·원문 인용)과 `<data>` 감싸기, few-shot 대화 쌍, 모델 선택(`role="design"`/`"review"`)을 대신한다 |
 | ID | `assign_ids("FUNC", n)`처럼 코드가 순번으로 붙인다. 형식 확정은 #12 |
 | few-shot | `load_examples(pack, "A02", A02Output)`로 읽는다. 예시의 `output`은 출력 모델과 같은 모양이어야 하며 다르면 `ExampleError`가 난다. `input`은 노드가 `<data>`에 넣는 것과 같은 모양(문자열 또는 매핑) |
-| 실패 | LLM 오류(`LLMError`)는 잡지 않고 그대로 올린다. 그래프가 `exc.code`로 실행 실패를 기록한다 |
+| 실패 | LLM 오류(`LLMError`)는 잡지 않고 그대로 올린다. 그래프가 `exc.code`로 실행 실패를 기록한다. 예외: A09는 실패를 "답 없음"으로 바꿔 HITL 2로 넘긴다 |
 | 테스트 | `tests/unit/test_a02_functions.py` 등. stub으로 정상 응답·형식 오류 후 재요청·거절 3종 이상 |
 
 노드는 `LLMClient`를 **인자로 주입받는다**. 실제 client는 그래프가 `openai_client(get_settings())`로 한 번 만들어 넘기고, 테스트에서는 `stub_client`를 넣는다. 노드는 `openai` 패키지나 `openai_transport`를 직접 import하지 않는다.
@@ -191,6 +191,7 @@ def test_a02_raises_refusal() -> None:
 | `inputs` | 예 | 보여 줄 입력: `requirements`·`functions`·`entities`·`relationships` 중 선택 |
 | `false_positive_guards` | 예 | 지적하지 않는 경우 (오탐 기준, 1개 이상) |
 
+- 항목 안에 `: `(콜론+공백)가 있으면 YAML이 키로 읽으므로 작은따옴표로 감싼다. 예: `- '방향이 맞는가 (예: 문서가 부모)'`
 - 알 수 없는 키는 거절한다. 공통 규칙(입력 속 지시 무시, 입력에 있는 ID만 사용, 원문 인용)은 노드가 모든 관점에 붙이므로 설정에 다시 적지 않는다.
 - 관점 담당은 설정 파일과 함께 stub 테스트를 만든다. `tests/unit/test_reviewer.py`의 `_perspective`·`_state`·`stub_client` 사용법을 참고한다.
 
@@ -202,14 +203,29 @@ def test_a02_raises_refusal() -> None:
 4. 이전 iteration 지문(fingerprint)과 비교해 반복 지적 식별
 5. 자동 재작업 / 사용자 확인 / 참고 의견으로 분류
 
-심각도 제안: 규칙 위반 critical(차단), LLM 지적 major/minor, 자동 재작업은 critical·major만 (미정, ADR-0010). 인용이 존재한다는 사실은 의미 판단이 맞다는 증거가 아니다. 오탐은 평가로 따로 측정한다.
+심각도: 규칙 위반 critical(차단), LLM 지적 major/minor, 자동 재작업은 critical·major만 (ADR-0010). 인용이 존재한다는 사실은 의미 판단이 맞다는 증거가 아니다. 오탐은 평가로 따로 측정한다.
 
 ## A09 조건부 재작업 판단
 
-- 코드가 지적의 `target_stage`를 해석하지 못한 경우에만 호출한다. 유효한 값이 있으면 LLM 호출 없이 분기한다.
-- 출력은 `requirements` / `functions` / `data_model` 중 하나와 근거. 허용하지 않는 값은 실행하지 않는다.
-- 판단 불가·모호하면 HITL 2로 넘긴다.
-- 서로 다른 단계의 지적이 함께 있으면 영향 범위를 포함하는 선행 단계로 묶는다.
+재작업 판단은 코드(`specton/review/rework.py`)가 먼저 하고, 정하지 못한 지적만 A09(`specton/nodes/a09_rework_router.py`)에 묻는다.
+
+```text
+decide_rework(이번 반복 지적, 재작업 횟수, 상한, 이전 지문)
+ ├─ critical·major 지적 없음                → NONE (HITL 2로 진행, minor는 참고 의견)
+ ├─ 재작업 횟수 ≥ 상한(3)                   → HITL (rework_limit)
+ ├─ 이전 반복과 같은 지문의 지적             → HITL (repeated_findings)
+ ├─ 모든 대상 지적에 target_stage 있음      → REWORK (가장 앞 단계)
+ └─ target_stage 없는 지적 있음             → ASK_ROUTER → A09
+       resolve_with_router(결정, A09 답)    → REWORK (이미 정한 단계와 A09 답 중 앞 단계)
+                                              또는 HITL (router_undecided)
+```
+
+- 유효한 `target_stage`가 있으면 A09를 호출하지 않는다 (REQ-16).
+- 단계 순서는 `requirements` < `functions` < `data_model`. 서로 다른 단계가 섞이면 다시 실행하는 범위가 넓은 앞 단계로 묶는다.
+- A09 입력은 `target_stage`가 없는 지적과 그 근거 요구사항뿐이다. 전체 설계는 넣지 않는다.
+- A09 출력은 `requirements` / `functions` / `data_model` / `undecidable`과 근거. 다른 값은 출력 모델이 거절하고 재요청한다.
+- `undecidable`이거나 A09 호출이 실패(거절·타임아웃·계약 오류)하면 답 없음(`RouterAnswer.stage=None`, `error_code` 기록)으로 HITL 2에 넘긴다. 재작업 판단 실패로 실행 전체를 실패시키지 않는다.
+- 재작업 횟수·이전 지문은 그래프(#17)가 상태에 보관해 넘긴다.
 
 ## 규칙 검사 RULE-01~07
 
