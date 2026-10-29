@@ -3,14 +3,18 @@
 A03 엔티티 사이의 관계(방향·카디널리티·선택 여부·식별 여부)를 LLM이 판단한다.
 LLM은 엔티티를 이름으로 가리키고, 코드가 이름을 엔티티 ID로 바꾸고 관계 ID를 붙인다.
 FK·연결 테이블은 모델 정리(#12)가 관계에서 파생하므로 여기서 만들지 않는다.
+없는 엔티티 이름이나 입력에 없는 REQ ID를 가리키면 출력 계약 위반(`LLMContractError`)으로 올린다.
 """
 
+from collections.abc import Sequence
 from typing import Any
 
 from specton.config import Settings
 from specton.contracts import DesignState, Relationship, RelationshipDraft
 from specton.contracts.base import Contract
 from specton.llm.client import LLMClient
+from specton.llm.errors import LLMContractError
+from specton.llm.types import CallRecord
 from specton.nodes.common import NodeRun, assign_ids, build_request
 from specton.packs.examples import load_examples
 
@@ -53,6 +57,7 @@ def run(
     result = client.complete(request, A04Output, token_budget=token_budget)
     drafts = result.output.relationships
     entity_ids = {e.name: e.id for e in state.entities}
+    _check_references(drafts, entity_ids, {r.id for r in state.requirements}, result.calls)
     ids = assign_ids("REL", len(drafts))
     relationships = tuple(
         Relationship.model_validate(
@@ -66,6 +71,27 @@ def run(
         for d, i in zip(drafts, ids, strict=True)
     )
     return NodeRun(output=relationships, calls=result.calls)
+
+
+def _check_references(
+    drafts: Sequence[RelationshipDraft],
+    entity_ids: dict[str, str],
+    req_ids: set[str],
+    calls: Sequence[CallRecord],
+) -> None:
+    """관계가 입력에 있는 엔티티 이름과 REQ ID만 가리키는지 확인한다."""
+    problems = [
+        f"관계 {n}: {label} '{value}'가 입력에 없습니다"
+        for n, d in enumerate(drafts, start=1)
+        for label, values, known in (
+            ("엔티티", (d.parent_name, d.child_name), entity_ids),
+            ("REQ ID", d.req_ids, req_ids),
+        )
+        for value in dict.fromkeys(values)
+        if value not in known
+    ]
+    if problems:
+        raise LLMContractError(f"A04: 없는 참조 — {'; '.join(problems)}", calls)
 
 
 def _relationship_data(state: DesignState) -> dict[str, Any]:
