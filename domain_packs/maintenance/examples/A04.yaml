@@ -6,11 +6,23 @@ role: relationship_design
 status: draft
 examples:
 - source_id: MNT-002
-  input: 한 설비는 상위 설비를 최대 하나 가질 수 있고 하위 설비는 여러 개 가질 수 있다.
+  input:
+    entities:
+    - name: 설비
+      description: 정비 대상 설비
+      attributes:
+      - {name: 설비코드, data_type: varchar, is_key: true, nullable: false}
+      - {name: 설비명, data_type: varchar, is_key: false, nullable: false}
+    requirements:
+    - id: REQ-01
+      text: 한 설비는 상위 설비를 최대 하나 가질 수 있고 하위 설비는 여러 개 가질 수 있다.
+      type: FR
   output:
     relationships:
-    - parent: equipment
-      child: equipment
+    - parent_name: 설비
+      child_name: 설비
       cardinality: 1:N
       optional: true
       identifying: false
+      rationale: '"한 설비는 상위 설비를 최대 하나 가질 수 있고 하위 설비는 여러 개 가질 수 있다." 상위 설비가 없는 설비도 있다.'
+      req_ids: [REQ-01]

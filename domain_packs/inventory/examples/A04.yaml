@@ -4,4 +4,43 @@
 agent: A04
 role: relationship_design
 status: draft
-examples: []
+examples:
+- source_id: INV-005
+  input:
+    entities:
+    - name: 수불문서
+      description: 입고·출고 등 재고 수불 거래 문서
+      attributes:
+      - {name: 수불문서번호, data_type: varchar, is_key: true, nullable: false}
+    - name: 수불내역
+      description: 수불 문서에 등록한 품목별 수량
+      attributes:
+      - {name: 내역순번, data_type: integer, is_key: true, nullable: false}
+      - {name: 거래수량, data_type: numeric, is_key: false, nullable: false}
+    - name: 품목
+      description: 재고 관리 대상 품목
+      attributes:
+      - {name: 품목코드, data_type: varchar, is_key: true, nullable: false}
+    requirements:
+    - id: REQ-01
+      text: 하나의 수불 문서에는 하나 이상의 품목 내역을 등록한다.
+      type: FR
+    - id: REQ-02
+      text: 각 내역은 한 품목과 수량을 가지며 수량은 0보다 크고 소수 셋째 자리까지 허용한다.
+      type: FR
+  output:
+    relationships:
+    - parent_name: 수불문서
+      child_name: 수불내역
+      cardinality: 1:N
+      optional: false
+      identifying: true
+      rationale: '"하나의 수불 문서에는 하나 이상의 품목 내역을 등록한다." 내역은 문서 안의 순번으로만 식별된다.'
+      req_ids: [REQ-01]
+    - parent_name: 품목
+      child_name: 수불내역
+      cardinality: 1:N
+      optional: false
+      identifying: false
+      rationale: '"각 내역은 한 품목과 수량을 가지며" 내역마다 품목이 반드시 하나 있다.'
+      req_ids: [REQ-02]
