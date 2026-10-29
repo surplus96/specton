@@ -7,8 +7,6 @@
 한 관점이 실패해도 다른 관점의 결과는 남기고, 실패는 ok=False와 오류 코드로 표시한다.
 """
 
-import hashlib
-import json
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -23,6 +21,7 @@ from specton.llm.errors import LLMError
 from specton.llm.types import CallRecord
 from specton.nodes.common import build_request, data_block
 from specton.packs.examples import FewShot, load_examples
+from specton.review.fingerprint import fingerprint
 from specton.review.perspective import InputSection, Perspective
 
 logger = logging.getLogger(__name__)
@@ -240,14 +239,7 @@ def _to_finding(draft: FindingDraft, reviewer_id: str, iteration: int, number: i
             "id": f"{reviewer_id}-{iteration}-{number}",
             "source": FindingSource.LLM,
             "reviewer_id": reviewer_id,
-            "fingerprint": _fingerprint(reviewer_id, draft),
+            "fingerprint": fingerprint(reviewer_id, draft.kind, draft.targets),
             "iteration": iteration,
         }
     )
-
-
-def _fingerprint(reviewer_id: str, draft: FindingDraft) -> str:
-    """반복 지적을 알아보기 위한 지문. 관점·지적 종류·대상이 같으면 같다."""
-    targets = sorted(f"{t.kind}:{t.id}" for t in draft.targets)
-    key = json.dumps([reviewer_id, draft.kind, targets], ensure_ascii=False)
-    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
