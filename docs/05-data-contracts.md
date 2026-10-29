@@ -2,7 +2,7 @@
 
 > 상태: **초안** (Pydantic 구현 완료, 2인 승인 후 동결)
 > 구현: `specton/contracts/` (`base`·`requirements`·`design`·`findings`·`state`·`api`)
-> 변경 규칙: `specton/contracts/` 변경은 `contract-change` 라벨과 2인 승인 ([CONTRIBUTING](../CONTRIBUTING.md))
+> 변경 규칙: `specton/contracts/` 변경은 `contract-change` 라벨과 2인 승인. R1 작성 PR의 예외는 [CONTRIBUTING](../CONTRIBUTING.md)
 
 ## 단계 간 모델
 
@@ -45,6 +45,7 @@
 | A05~A08 | `FindingDraft` | `Finding` | `id`, `source`, `reviewer_id`/`rule_code`, `fingerprint`, `iteration` |
 
 - LLM 출력에는 ID·버전·FK 속성을 두지 않는다. 모든 Draft는 알 수 없는 필드를 거절한다.
+- `FindingDraft.severity`는 `major`·`minor`만 받는다. `critical`은 규칙 지적(`source=rule`)의 `Finding`만 쓸 수 있다 (ADR-0010).
 - `Attribute`도 `req_ids`가 필수다 (REQ-21).
 - `Function.priority`가 null이면 `priority_source`는 `unspecified`, 값이 있으면 `explicit` 또는 `inferred`여야 한다 (ADR-0006).
 - 추적 무결성은 `find_trace_issues(DesignState)`가 검사한다 (TC-N01). req_ids 누락, 없는 REQ·엔티티 참조, ID 중복을 모두 모아 돌려주며 최종 승인 전에 목록이 비어야 한다.

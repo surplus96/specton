@@ -9,7 +9,7 @@ from specton.contracts.base import Contract, NonEmptyText, ObjectId, ReqId, Sour
 
 
 class Severity(StrEnum):
-    """심각도 제안: 규칙 위반 critical, LLM 지적 major/minor (ADR-0010 미정)."""
+    """심각도 (ADR-0010): 규칙 위반만 critical(차단), LLM 지적은 major/minor."""
 
     CRITICAL = "critical"
     MAJOR = "major"
@@ -46,6 +46,13 @@ class FindingDraft(Contract):
     suggestion: NonEmptyText
     target_stage: TargetStage | None = None  # 모르면 null. 코드가 해석하지 못하면 A09가 판단
 
+    @model_validator(mode="after")
+    def _check_severity(self) -> Self:
+        # LLM 출력은 critical을 낼 수 없다. 오탐이 차단 오류가 되지 않게 한다 (ADR-0010).
+        if self.severity is Severity.CRITICAL:
+            raise ValueError("LLM 지적은 critical을 쓸 수 없습니다 (major·minor만, ADR-0010)")
+        return self
+
 
 class Finding(FindingDraft):
     id: ObjectId
@@ -54,6 +61,13 @@ class Finding(FindingDraft):
     rule_code: str | None = None  # source=rule: RULE-01~07
     fingerprint: NonEmptyText
     iteration: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _check_severity(self) -> Self:
+        # FindingDraft의 같은 이름 검사를 바꾼다: 규칙 지적만 critical을 쓸 수 있다.
+        if self.severity is Severity.CRITICAL and self.source is not FindingSource.RULE:
+            raise ValueError("critical은 규칙 지적만 쓸 수 있습니다 (ADR-0010)")
+        return self
 
     @model_validator(mode="after")
     def _check_origin(self) -> Self:

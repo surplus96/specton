@@ -13,7 +13,7 @@
 - 규칙 위반은 `critical`(차단). LLM 지적은 `major`/`minor`.
 - 자동 재작업은 `critical`과 `major`만. `minor`는 참고 의견으로 HITL 2에 표시한다.
 - 미해결 `critical`이 있으면 승인 완료로 표시하지 않는다.
-- 구현 (#9): `specton/review/rework.py`의 `AUTO_REWORK_SEVERITIES`. LLM 출력(`FindingDraft`)의 `critical`을 막는 계약 변경은 별도 이슈로 한다.
+- 구현: 자동 재작업 기준은 `specton/review/rework.py`의 `AUTO_REWORK_SEVERITIES`(#9). LLM 출력(`FindingDraft`)은 `critical`을 거절하고, `Finding`은 규칙 지적만 `critical`을 허용한다(#68).
 
 ## 검토한 대안
 

@@ -1,12 +1,15 @@
 import json
+from pathlib import Path
 
 import pytest
+import yaml
 
 from specton.config import Settings
 from specton.contracts import DesignState, Entity, FindingDraft, Function, Requirement
 from specton.llm.errors import LLMTimeoutError
 from specton.llm.stub import refusal, reply, stub_client
-from specton.nodes.common import COMMON_RULES, unwrap_data
+from specton.nodes.common import COMMON_RULES, data_block, unwrap_data
+from specton.packs.examples import load_examples
 from specton.review.perspective import Perspective
 from specton.review.reviewer import (
     CombinedReviewOutput,
@@ -127,6 +130,17 @@ class TestParallel:
         assert len(transport.sent) == 2
         assert run.results[0].ok
 
+    def test_critical_from_the_llm_is_retried(self) -> None:
+        critical = _draft().model_dump(mode="json") | {"severity": "critical"}
+        bad = json.dumps({"findings": [critical]}, ensure_ascii=False)
+        client, transport = stub_client(reply(bad), reply(ReviewOutput(findings=(_draft(),))))
+
+        run = run_review(client, [A05], _state(), _settings("parallel"))
+
+        assert len(transport.sent) == 2
+        assert run.results[0].findings[0].severity == "major"
+        assert "major·minor" in transport.sent[0].messages[0].content
+
 
 class TestCombined:
     def test_calls_once_and_splits_findings_by_reviewer(self) -> None:
@@ -201,3 +215,71 @@ class TestFinding:
 
         prints = [f.fingerprint for f in run.results[0].findings]
         assert prints[0] == prints[1] != prints[2]
+
+
+def _write_example(root: Path, reviewer_id: str = "A05") -> None:
+    """임시 팩에 관점 예시 1건을 쓴다. 입력은 관점의 inputs 모양, 출력은 ReviewOutput 모양."""
+    path = root / "domain_packs" / "inventory" / "examples" / f"{reviewer_id}.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    example = {
+        "source_id": "INV-005",
+        "input": {"requirements": [{"id": "REQ-01", "text": "예시 요구"}], "entities": []},
+        "output": ReviewOutput(findings=(_draft("example_kind"),)).model_dump(mode="json"),
+    }
+    header = {"agent": reviewer_id, "role": "review", "status": "draft", "examples": [example]}
+    path.write_text(yaml.safe_dump(header, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+
+class TestFewShot:
+    def test_parallel_puts_examples_as_conversation_pairs(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _write_example(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        client, transport = stub_client(reply(ReviewOutput(findings=())))
+
+        run_review(client, [A05], _state(), _settings("parallel"), pack="inventory")
+
+        messages = transport.sent[0].messages
+        assert [m.role for m in messages] == ["system", "user", "assistant", "user"]
+        assert "example_kind" in messages[2].content
+
+    def test_combined_puts_examples_inside_each_perspective_block(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _write_example(tmp_path, "A05")
+        _write_example(tmp_path, "A06")
+        monkeypatch.chdir(tmp_path)
+        output = CombinedReviewOutput(
+            perspectives=(
+                PerspectiveFindings(reviewer_id="A05", findings=()),
+                PerspectiveFindings(reviewer_id="A06", findings=()),
+            )
+        )
+        client, transport = stub_client(reply(output))
+
+        run_review(client, [A05, A06], _state(), _settings("combined"), pack="inventory")
+
+        messages = transport.sent[0].messages
+        assert [m.role for m in messages] == ["system", "user"]
+        a05_block = messages[0].content.split("## A05")[1].split("## A06")[0]
+        assert "예시" in a05_block and "example_kind" in a05_block
+        assert (
+            data_block({"requirements": [{"id": "REQ-01", "text": "예시 요구"}], "entities": []})
+            in a05_block
+        )
+
+    def test_without_pack_no_examples_are_loaded(self) -> None:
+        client, transport = stub_client(reply(ReviewOutput(findings=())))
+
+        run_review(client, [A05], _state(), _settings("parallel"))
+
+        assert [m.role for m in transport.sent[0].messages] == ["system", "user"]
+
+
+@pytest.mark.parametrize("pack", ["inventory", "maintenance"])
+@pytest.mark.parametrize("reviewer_id", ["A05", "A06", "A07", "A08"])
+def test_pack_review_examples_match_the_review_output(pack: str, reviewer_id: str) -> None:
+    root = Path(__file__).resolve().parents[2] / "domain_packs"
+
+    load_examples(pack, reviewer_id, ReviewOutput, root=root)

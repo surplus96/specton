@@ -4,4 +4,27 @@
 agent: A02
 role: function_design
 status: draft
-examples: []
+examples:
+- source_id: INV-001,INV-002,INV-012
+  input:
+    requirements:
+    - id: REQ-01
+      type: FR
+      nfr_category: null
+      text: 창고 담당자는 창고별 고유 코드와 이름, 사업장 명칭, 사용 여부를 등록·조회·수정할 수 있어야 한다. 코드가 같은 창고는 중복 등록할 수 없다.
+    - id: REQ-02
+      type: FR
+      nfr_category: null
+      text: 창고 담당자는 부품·소모품의 고유 코드, 이름, 관리 단위, 사용 여부를 등록·조회·수정할 수 있어야 한다. 관리 단위는 품목별 하나이며 이미 거래한 품목의 단위는 변경하지 않는다.
+    - id: REQ-03
+      type: FR
+      nfr_category: null
+      text: 거래 이력이 있는 품목·창고는 삭제하지 않고 사용 중지할 수 있어야 한다. 사용 중지된 항목은 신규 거래에 선택할 수 없으며 과거 이력과 이미 확정한 거래의 취소 조회에는 남아 있어야 한다.
+  output:
+    functions:
+    - name: 창고·품목 관리
+      description: 창고 담당자가 창고와 품목의 기준 정보를 등록·조회·수정하고, 거래 이력이 있는 항목은 삭제 대신 사용 중지한다. 코드 중복과 거래 후 단위 변경을 막는다.
+      priority: null
+      priority_source: unspecified
+      priority_rationale: null
+      req_ids: [REQ-01, REQ-02, REQ-03]

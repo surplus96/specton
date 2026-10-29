@@ -7,8 +7,6 @@
 한 관점이 실패해도 다른 관점의 결과는 남기고, 실패는 ok=False와 오류 코드로 표시한다.
 """
 
-import hashlib
-import json
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -21,7 +19,9 @@ from specton.contracts import BranchResult, DesignState, Finding, FindingDraft, 
 from specton.llm.client import LLMClient
 from specton.llm.errors import LLMError
 from specton.llm.types import CallRecord
-from specton.nodes.common import build_request
+from specton.nodes.common import build_request, data_block
+from specton.packs.examples import FewShot, load_examples
+from specton.review.fingerprint import fingerprint
 from specton.review.perspective import InputSection, Perspective
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,7 @@ SECTION_ORDER: tuple[InputSection, ...] = ("requirements", "functions", "entitie
 REVIEW_RULES = """\
 너는 데이터 모델 설계 검토자다. 아래 관점으로 설계를 검토하고 문제만 지적한다.
 - targets에는 문제가 있는 설계 요소의 id를, evidence에는 근거 요구사항 문장을 넣는다.
+- severity는 major·minor만 쓴다. 요구를 어겨 고쳐야 하면 major, 개선 의견이면 minor다.
 - 문제가 없으면 findings를 비운다."""
 
 COMBINED_RULE = "- 관점마다 reviewer_id로 결과를 나누고, 모든 관점을 빠짐없이 돌려준다."
@@ -81,13 +82,16 @@ def run_review(
     state: DesignState,
     settings: Settings,
     *,
+    pack: str | None = None,
     token_budget: int | None = None,
 ) -> ReviewRun:
-    """설정의 review_mode에 따라 리뷰를 실행한다."""
+    """설정의 review_mode에 따라 리뷰를 실행한다. pack을 주면 관점별 few-shot 예시를 넣는다."""
     if settings.review_mode == "combined":
-        return review_combined(client, perspectives, state, settings, token_budget=token_budget)
+        return review_combined(
+            client, perspectives, state, settings, pack=pack, token_budget=token_budget
+        )
     runs = [
-        review_perspective(client, p, state, settings, token_budget=token_budget)
+        review_perspective(client, p, state, settings, pack=pack, token_budget=token_budget)
         for p in perspectives
     ]
     return ReviewRun(
@@ -102,9 +106,10 @@ def review_perspective(
     state: DesignState,
     settings: Settings,
     *,
+    pack: str | None = None,
     token_budget: int | None = None,
 ) -> ReviewRun:
-    """관점 하나를 검토한다 (parallel 방식의 한 가지)."""
+    """관점 하나를 검토한다 (parallel 방식의 한 가지). 예시는 대화 쌍으로 넣는다."""
     request = build_request(
         settings,
         role="review",
@@ -112,7 +117,9 @@ def review_perspective(
         prompt_version=perspective.prompt_version,
         system=f"{REVIEW_RULES}\n\n{_perspective_block(perspective)}",
         data=_review_data(state, perspective.inputs),
+        examples=_examples(pack, perspective),
     )
+
     try:
         result = client.complete(request, ReviewOutput, token_budget=token_budget)
     except LLMError as exc:
@@ -129,9 +136,14 @@ def review_combined(
     state: DesignState,
     settings: Settings,
     *,
+    pack: str | None = None,
     token_budget: int | None = None,
 ) -> ReviewRun:
-    """모든 관점을 1회 호출로 검토한다. 출력에 빠진 관점은 실패로 표시한다."""
+    """모든 관점을 1회 호출로 검토한다. 출력에 빠진 관점은 실패로 표시한다.
+
+    예시는 관점 하나의 답이라 대화 쌍으로 넣으면 "모든 관점을 돌려준다"와 어긋난다.
+    그래서 각 관점 블록 안에 입력·지적 예시로 넣는다.
+    """
     ids = [p.reviewer_id for p in perspectives]
     request = build_request(
         settings,
@@ -139,7 +151,10 @@ def review_combined(
         stage=COMBINED_STAGE,
         prompt_version=",".join(f"{p.reviewer_id}={p.prompt_version}" for p in perspectives),
         system="\n\n".join(
-            [f"{REVIEW_RULES}\n{COMBINED_RULE}", *(_perspective_block(p) for p in perspectives)]
+            [
+                f"{REVIEW_RULES}\n{COMBINED_RULE}",
+                *(_perspective_block(p, _examples(pack, p)) for p in perspectives),
+            ]
         ),
         data=_review_data(state, tuple(s for p in perspectives for s in p.inputs)),
     )
@@ -167,7 +182,16 @@ def _group_by_reviewer(
     return grouped
 
 
-def _perspective_block(perspective: Perspective) -> str:
+def _examples(pack: str | None, perspective: Perspective) -> tuple[FewShot[ReviewOutput], ...]:
+    """팩의 관점 예시(`examples/<reviewer_id>.yaml`). pack이 없으면 예시 없이 검토한다."""
+    if pack is None:
+        return ()
+    return load_examples(pack, perspective.reviewer_id, ReviewOutput)
+
+
+def _perspective_block(
+    perspective: Perspective, examples: Sequence[FewShot[ReviewOutput]] = ()
+) -> str:
     lines = [
         f"## {perspective.reviewer_id} {perspective.name}",
         perspective.instructions,
@@ -176,6 +200,13 @@ def _perspective_block(perspective: Perspective) -> str:
         "지적하지 않는 경우:",
         *(f"- {item}" for item in perspective.false_positive_guards),
     ]
+    for n, example in enumerate(examples, 1):
+        lines += [
+            f"예시 {n} 입력:",
+            data_block(example.input),
+            f"예시 {n} 지적:",
+            example.output.model_dump_json(),
+        ]
     return "\n".join(lines)
 
 
@@ -208,14 +239,7 @@ def _to_finding(draft: FindingDraft, reviewer_id: str, iteration: int, number: i
             "id": f"{reviewer_id}-{iteration}-{number}",
             "source": FindingSource.LLM,
             "reviewer_id": reviewer_id,
-            "fingerprint": _fingerprint(reviewer_id, draft),
+            "fingerprint": fingerprint(reviewer_id, draft.kind, draft.targets),
             "iteration": iteration,
         }
     )
-
-
-def _fingerprint(reviewer_id: str, draft: FindingDraft) -> str:
-    """반복 지적을 알아보기 위한 지문. 관점·지적 종류·대상이 같으면 같다."""
-    targets = sorted(f"{t.kind}:{t.id}" for t in draft.targets)
-    key = json.dumps([reviewer_id, draft.kind, targets], ensure_ascii=False)
-    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]

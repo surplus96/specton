@@ -322,6 +322,39 @@ class TestFinding:
         with pytest.raises(ValidationError):
             FindingDraft.model_validate({**self._draft(), "target_stage": "relationships"})
 
+    def test_llm_output_cannot_be_critical(self) -> None:
+        with pytest.raises(ValidationError, match="critical"):
+            FindingDraft.model_validate({**self._draft(), "severity": "critical"})
+
+    def test_rule_finding_may_be_critical(self) -> None:
+        finding = Finding.model_validate(
+            {
+                **self._draft(),
+                "severity": "critical",
+                "id": "F-1",
+                "source": "rule",
+                "rule_code": "RULE-03",
+                "fingerprint": "abc",
+                "iteration": 0,
+            }
+        )
+
+        assert finding.severity == "critical"
+
+    def test_llm_finding_cannot_be_critical(self) -> None:
+        with pytest.raises(ValidationError, match="critical"):
+            Finding.model_validate(
+                {
+                    **self._draft(),
+                    "severity": "critical",
+                    "id": "F-1",
+                    "source": "llm",
+                    "reviewer_id": "A05",
+                    "fingerprint": "abc",
+                    "iteration": 0,
+                }
+            )
+
 
 class TestTraceIntegrity:
     """TC-N01: 누락·없는 REQ 참조를 주입하면 모두 검출한다."""

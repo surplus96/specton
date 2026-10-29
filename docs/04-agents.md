@@ -195,6 +195,15 @@ def test_a02_raises_refusal() -> None:
 - 알 수 없는 키는 거절한다. 공통 규칙(입력 속 지시 무시, 입력에 있는 ID만 사용, 원문 인용)은 노드가 모든 관점에 붙이므로 설정에 다시 적지 않는다.
 - 관점 담당은 설정 파일과 함께 stub 테스트를 만든다. `tests/unit/test_reviewer.py`의 `_perspective`·`_state`·`stub_client` 사용법을 참고한다.
 
+#### 관점 few-shot 예시
+
+관점마다 `domain_packs/<pack>/examples/<reviewer_id>.yaml`에 예시를 둔다 (#69). 형식은 설계 노드 예시와 같다.
+
+- `input`: 그 관점의 `inputs`에 적은 부분만 담은 매핑. 예: `{requirements: [...], functions: [...], entities: [...]}`
+- `output`: `ReviewOutput` 모양 `{findings: [...]}`. 지적이 없는 예시는 `findings: []`. 지적의 `severity`는 `major`·`minor`만 쓴다 (ADR-0010)
+- 리뷰어는 `pack`을 받으면 예시를 넣는다. `parallel`은 대화 쌍으로, `combined`는 관점 블록 안에 "예시 n 입력 / 지적"으로 넣는다. 예시 수만큼 입력 토큰이 늘어나므로 관점당 1~2건을 권장한다.
+- 예시 원문 사용 기준은 [07 테스트·평가](07-testing-eval.md#평가-데이터)를 따른다.
+
 ### 지적 확정 절차
 
 1. Pydantic으로 형식·허용값 검사
@@ -202,6 +211,13 @@ def test_a02_raises_refusal() -> None:
 3. 규칙 지적(`source=rule`)과 LLM 지적을 구분하고, 같은 문제는 근거를 보존해 병합
 4. 이전 iteration 지문(fingerprint)과 비교해 반복 지적 식별
 5. 자동 재작업 / 사용자 확인 / 참고 의견으로 분류
+
+2·3단계는 `specton/review/merge.py`의 `merge_review(state, results, expected, rule_findings=...)`가 한다 (#18). 결과(`ReviewMerge.findings`)를 4·5단계인 `decide_rework`에 넘긴다.
+
+- 합류: 현재 revision의 결과만 받는다. 다른 revision·설정에 없는 가지·중복 결과는 오류다. 실패하거나 빠진 가지는 `failed_branches`에 남기고(`complete=False`) 성공한 가지의 지적으로 진행한다. 전체 성공으로 처리하지 않는다.
+- 근거 확인: LLM 지적의 대상(`kind:id`)이 현재 설계에 없거나, `evidence.req_id`가 없거나, 인용이 그 요구사항 문장에 없으면 제외하고 `rejected`에 사유(`unknown_target`·`unknown_req_id`·`quote_not_found`)를 남긴다. 인용은 줄바꿈·연속 공백 차이만 무시한다. 규칙 지적은 코드가 만들므로 확인하지 않는다.
+- 병합: 지문이 같은 지적만 합친다. 첫 지적을 남기고 근거는 모두 보존하며, 심각도는 가장 높게, `target_stage`는 가장 앞 단계로 한다. 규칙 지적과 LLM 지적은 대상이 같아도 따로 남긴다.
+- 지문은 `specton/review/fingerprint.py`의 `fingerprint(origin, kind, targets)`로 만든다. `origin`은 LLM 지적이면 `reviewer_id`, 규칙 지적이면 `rule_code`다. 규칙 검사(#15)도 이 함수를 쓴다.
 
 심각도: 규칙 위반 critical(차단), LLM 지적 major/minor, 자동 재작업은 critical·major만 (ADR-0010). 인용이 존재한다는 사실은 의미 판단이 맞다는 증거가 아니다. 오탐은 평가로 따로 측정한다.
 
