@@ -214,23 +214,35 @@ def test_fk_field_in_output_is_retried() -> None:
 # 없는 참조 (근거 부족)
 
 
-def test_unknown_entity_name_is_rejected() -> None:
-    client, _ = stub_client(
-        reply(A04Output(relationships=(_rel("창고", "출고", "1:N", "REQ-01"),)))
+def test_unknown_entity_name_is_sent_back_for_retry() -> None:
+    client, transport = stub_client(
+        reply(A04Output(relationships=(_rel("창고", "출고", "1:N", "REQ-01"),))),
+        reply(A04Output(relationships=(_rel("창고", "입고", "1:N", "REQ-01"),))),
     )
 
-    with pytest.raises(LLMContractError, match="엔티티 '출고'") as exc_info:
+    [rel] = _run(client).output
+
+    assert rel.child == "ENT-03"
+    assert len(transport.sent) == 2
+    assert "입력에 없는 엔티티를 참조했습니다: 출고" in transport.sent[1].messages[-1].content
+
+
+def test_unknown_entity_name_that_persists_fails_the_node() -> None:
+    wrong = reply(A04Output(relationships=(_rel("창고", "출고", "1:N", "REQ-01"),)))
+    client, transport = stub_client(wrong, wrong, wrong)
+
+    with pytest.raises(LLMContractError, match="출고") as caught:
         _run(client)
 
-    assert len(exc_info.value.calls) == 1
+    assert len(transport.sent) == 3
+    assert len(caught.value.calls) == 3
 
 
-def test_unknown_req_id_is_rejected() -> None:
-    client, _ = stub_client(
-        reply(A04Output(relationships=(_rel("창고", "입고", "1:N", "REQ-99"),)))
-    )
+def test_unknown_req_id_that_persists_fails_the_node() -> None:
+    wrong = reply(A04Output(relationships=(_rel("창고", "입고", "1:N", "REQ-99"),)))
+    client, _ = stub_client(wrong, wrong, wrong)
 
-    with pytest.raises(LLMContractError, match="REQ ID 'REQ-99'"):
+    with pytest.raises(LLMContractError, match="REQ-99"):
         _run(client)
 
 
