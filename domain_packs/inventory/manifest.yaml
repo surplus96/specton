@@ -1,6 +1,6 @@
 # 팩 정보. 실행 시 name·version이 run에 기록된다.
 name: inventory
-version: 0.1.3
+version: 0.1.4
 description: Master data and stock transactions (receipt, issue, return, disposal, adjustment, transfer) for maintenance parts and consumables
 source: 재고 요구사항 INV-001~016 (development set, not published), 공공데이터 공통표준 8차 용어, openMAINT inventory documentation
 origin: synthetic          # synthetic | public | approved

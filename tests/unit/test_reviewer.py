@@ -283,3 +283,27 @@ def test_pack_review_examples_match_the_review_output(pack: str, reviewer_id: st
     root = Path(__file__).resolve().parents[2] / "domain_packs"
 
     load_examples(pack, reviewer_id, ReviewOutput, root=root)
+
+
+@pytest.mark.parametrize("pack", ["inventory", "maintenance"])
+@pytest.mark.parametrize("reviewer_id", ["A05", "A06", "A07", "A08"])
+def test_pack_review_examples_are_grounded(pack: str, reviewer_id: str) -> None:
+    """예시 지적도 근거 확인(merge_review)을 통과해야 한다. 본보기가 버려질 지적이면 안 된다."""
+    for example in load_examples(pack, reviewer_id, ReviewOutput):
+        assert isinstance(example.input, dict)
+        texts = {r["id"]: " ".join(r["text"].split()) for r in example.input["requirements"]}
+        known = {
+            (kind, item["id"])
+            for kind, section in [
+                ("requirement", "requirements"),
+                ("function", "functions"),
+                ("entity", "entities"),
+                ("relationship", "relationships"),
+            ]
+            for item in example.input.get(section, [])
+        }
+        for finding in example.output.findings:
+            assert {(t.kind, t.id) for t in finding.targets} <= known, finding.targets
+            for evidence in finding.evidence:
+                assert evidence.req_id in texts, evidence.req_id
+                assert " ".join(evidence.quote.split()) in texts[evidence.req_id], evidence.quote

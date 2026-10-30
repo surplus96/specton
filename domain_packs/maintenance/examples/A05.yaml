@@ -4,4 +4,17 @@
 agent: A05
 role: relationship_review
 status: draft
-examples: []
+examples:
+# 지적 없음 예시: 요구사항과 맞는 자기참조 관계는 지적하지 않는다.
+- source_id: MNT-002
+  input:
+    requirements:
+    - id: REQ-01
+      text: 한 설비는 상위 설비를 최대 하나 가질 수 있고 하위 설비는 여러 개 가질 수 있다.
+      type: FR
+    entities:
+    - {id: ENT-01, name: 설비}
+    relationships:
+    - {id: REL-01, parent: ENT-01, child: ENT-01, cardinality: '1:N', optional: true, identifying: false, req_ids: [REQ-01]}
+  output:
+    findings: []
