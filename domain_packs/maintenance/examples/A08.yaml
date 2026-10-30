@@ -1,7 +1,65 @@
 # few-shot 예시 (maintenance · A08 normalization_review). 사람이 작성하는 입력 파일이다.
 # - 입력은 개발용 세트(비공개, 저장소에 올리지 않음)에서만 가져오고 source_id에 원문 ID를 적는다. 평가용 세트 문서는 넣지 않는다.
 # - output은 해당 노드의 LLM 출력 모델과 같은 모양이어야 한다. load_examples가 그 모델로 검증한다 (docs/04 "노드 작성 규칙").
+# - 요구사항 문장은 검토 전 합성 시나리오(MNT-004, MNT-015)에서 지적에 필요한 부분만 줄인 것이다. 검토 대상 엔티티는 예시를 위해 만든 가상 설계이고 기대 결과 자료를 쓰지 않았다.
+# - MNT-015 예시의 복합키는 가상 설계 가정이며 실제 키 설계는 미확정이다. findings: []는 A08 정규화 관점의 결과로, 설계 전체의 적합성을 보증하지 않는다.
 agent: A08
 role: normalization_review
 status: draft
-examples: []
+examples:
+- source_id: MNT-004
+  input:
+    requirements:
+    - id: REQ-01
+      type: FR
+      nfr_category: null
+      text: 한 기술자는 여러 팀에 소속될 수 있다. 탈퇴한 소속도 가입·탈퇴 일자를 남긴다.
+    entities:
+    - id: ENT-01
+      pack: maintenance
+      name: 기술자
+      description: 보전 작업을 수행하는 기술자
+      req_ids: [REQ-01]
+      crud_exemptions: []
+      attributes:
+      - {id: ATTR-01, name: 기술자코드, data_type: varchar, length: 10, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-02, name: 기술자명, data_type: varchar, length: 100, req_ids: [REQ-01]}
+      - {id: ATTR-03, name: 소속팀코드목록, description: 소속 팀 코드를 쉼표로 구분해 저장, data_type: varchar, length: 200, req_ids: [REQ-01]}
+  output:
+    findings:
+    - kind: multi_valued_attribute
+      severity: major
+      targets:
+      - {kind: attribute, id: ATTR-03}
+      evidence:
+      - req_id: REQ-01
+        quote: 한 기술자는 여러 팀에 소속될 수 있다.
+      - req_id: REQ-01
+        quote: 탈퇴한 소속도 가입·탈퇴 일자를 남긴다.
+      suggestion: 한 칸에 팀 코드를 모아 담으면 소속마다 가입·탈퇴 일자를 남길 수 없고 팀 하나를 고칠 때 문자열 전체를 고쳐야 한다. 소속마다 한 행을 두는 별도 엔티티로 나눈다.
+      target_stage: data_model
+- source_id: MNT-015
+  input:
+    requirements:
+    - id: REQ-01
+      type: FR
+      nfr_category: null
+      text: 작업에는 사용한 부품의 코드·이름·단위·수량·적용 단가·사용 일시·기록자를 남긴다.
+    entities:
+    - id: ENT-01
+      pack: maintenance
+      name: 사용부품실적
+      description: 작업에 사용한 부품의 기록
+      req_ids: [REQ-01]
+      crud_exemptions: []
+      attributes:
+      - {id: ATTR-01, name: 작업번호, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-02, name: 부품코드, data_type: varchar, length: 10, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-03, name: 부품명, description: 사용 실적에 남긴 이름, data_type: varchar, length: 300, req_ids: [REQ-01]}
+      - {id: ATTR-04, name: 단위명, description: 사용 실적에 남긴 단위, data_type: varchar, length: 100, req_ids: [REQ-01]}
+      - {id: ATTR-05, name: 사용수량, data_type: numeric, precision: 10, scale: 3, req_ids: [REQ-01]}
+      - {id: ATTR-06, name: 적용단가, data_type: numeric, precision: 15, req_ids: [REQ-01]}
+      - {id: ATTR-07, name: 사용일시, data_type: timestamp, req_ids: [REQ-01]}
+      - {id: ATTR-08, name: 기록자식별값, data_type: varchar, length: 50, req_ids: [REQ-01]}
+  output:
+    findings: []

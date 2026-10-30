@@ -48,9 +48,9 @@ def _reasons(pack: dict[str, Any]) -> dict[str, list[Crud]]:
     return {r: [Crud(op) for op in ops] for r, ops in pack["crud_exemption_reasons"].items()}
 
 
-def _a02_state() -> DesignState:
+def _a02_state(pack: str = "inventory") -> DesignState:
     """A02 예시의 입력·출력으로 만든 상태 (A02가 코드로 ID를 붙인 뒤의 모양)."""
-    [example] = _yaml("inventory/examples/A02.yaml")["examples"]
+    [example] = _yaml(f"{pack}/examples/A02.yaml")["examples"]
     requirements = tuple(
         Requirement(
             id=r["id"],
@@ -161,6 +161,33 @@ def test_inventory_example_output_refers_only_to_its_input() -> None:
             for c in op.operations
         }
         assert not exempt & done
+
+
+def test_maintenance_example_input_is_what_input_data_builds() -> None:
+    [example] = load_examples("maintenance", "A03", A03Output)
+    pack = example.input["pack"]
+    by_term = {t.term: t for t in load_pack_context("maintenance").terms}
+    terms = [by_term[t["term"]] for t in pack["terms"]]
+
+    built = input_data(_a02_state("maintenance"), terms=terms, exemption_reasons=_reasons(pack))
+
+    assert example.input == built
+
+
+def test_maintenance_example_passes_the_checks_for_its_own_input() -> None:
+    [example] = load_examples("maintenance", "A03", A03Output)
+    pack = example.input["pack"]
+    checked = _checked_against(
+        {f["id"] for f in example.input["functions"]},
+        {r["id"] for r in example.input["requirements"]},
+        [PackTerm.model_validate(t) for t in pack["terms"]],
+        _reasons(pack),
+    )
+
+    checked.model_validate(example.output.model_dump(mode="json"))
+    # 일반 사용자의 삭제 금지는 권한 요구다. 면제로 옮기지 않고 삭제 조작도 지어내지 않는다.
+    assert not [e.name for e in example.output.entities if e.crud_exemptions]
+    assert all(Crud.DELETE not in op.operations for op in example.output.entity_ops)
 
 
 # 출력 검증: 검사는 모두 코드가 한다. 어기면 공통 client가 재요청한다.

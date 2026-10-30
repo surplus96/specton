@@ -1,7 +1,64 @@
 # few-shot 예시 (inventory · A08 normalization_review). 사람이 작성하는 입력 파일이다.
 # - 입력은 개발용 세트(비공개, 저장소에 올리지 않음)에서만 가져오고 source_id에 원문 ID를 적는다. 평가용 세트 문서는 넣지 않는다.
 # - output은 해당 노드의 LLM 출력 모델과 같은 모양이어야 한다. load_examples가 그 모델로 검증한다 (docs/04 "노드 작성 규칙").
+# - 요구사항 문장은 개발용 세트(INV-005)의 것이고, 검토 대상 엔티티는 예시를 위해 만든 가상 설계다.
 agent: A08
 role: normalization_review
 status: draft
-examples: []
+examples:
+- source_id: INV-005
+  input:
+    requirements:
+    - id: REQ-01
+      type: FR
+      nfr_category: null
+      text: 하나의 수불 문서에는 하나 이상의 품목 내역을 등록한다.
+    - id: REQ-02
+      type: FR
+      nfr_category: null
+      text: 각 내역은 한 품목과 수량을 가지며 수량은 0보다 크고 소수 셋째 자리까지 허용한다.
+    entities:
+    - id: ENT-01
+      pack: inventory
+      name: 수불문서
+      description: 품목 내역을 묶는 수불 문서
+      req_ids: [REQ-01, REQ-02]
+      crud_exemptions: []
+      attributes:
+      - {id: ATTR-01, name: 문서번호, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-02, name: 품목코드목록, description: 문서의 품목 코드를 쉼표로 구분해 저장, data_type: varchar, length: 200, req_ids: [REQ-01]}
+  output:
+    findings:
+    - kind: multi_valued_attribute
+      severity: major
+      targets:
+      - {kind: attribute, id: ATTR-02}
+      evidence:
+      - req_id: REQ-01
+        quote: 하나의 수불 문서에는 하나 이상의 품목 내역을 등록한다.
+      suggestion: 한 문서가 품목 내역을 여러 개 가지는데 품목코드목록 한 칸에 쉼표로 담고 있어 품목 하나를 고칠 때 문자열 전체를 고쳐야 한다. 내역마다 한 행을 두는 별도 엔티티로 나눈다.
+      target_stage: data_model
+- source_id: INV-005
+  input:
+    requirements:
+    - id: REQ-01
+      type: FR
+      nfr_category: null
+      text: 하나의 수불 문서에는 하나 이상의 품목 내역을 등록한다.
+    - id: REQ-02
+      type: FR
+      nfr_category: null
+      text: 각 내역은 한 품목과 수량을 가지며 수량은 0보다 크고 소수 셋째 자리까지 허용한다.
+    entities:
+    - id: ENT-01
+      pack: inventory
+      name: 수불내역
+      description: 수불 문서에 등록하는 품목별 내역
+      req_ids: [REQ-01, REQ-02]
+      crud_exemptions: []
+      attributes:
+      - {id: ATTR-01, name: 문서번호, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-02, name: 품목코드, data_type: varchar, length: 10, is_key: true, nullable: false, req_ids: [REQ-02]}
+      - {id: ATTR-03, name: 수량, data_type: numeric, precision: 10, scale: 3, req_ids: [REQ-02]}
+  output:
+    findings: []
