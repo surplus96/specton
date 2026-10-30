@@ -1,27 +1,30 @@
-# 규칙 검사 설정. 심각도는 ADR-0010 결정 후 채운다.
+# 규칙 검사 설정 (#15). 규칙 지적은 source=rule이고 rule_code에 아래 id를 쓴다 (docs/04 "규칙 검사").
+# severity: 규칙 위반은 critical (ADR-0010). null은 아직 정하지 않은 값이다.
+# target_stage: 자동 재작업 복귀 단계 (requirements | functions | data_model). null은 #15에서 정한다.
 rules:
-  RULE-01: id_reference_validity
-  RULE-02: requirement_traceability
-  RULE-03: pk_type_constraint
-  RULE-04: relationship_fk_consistency
-  RULE-05: naming_duplication
-  RULE-06: crud_consistency
-  RULE-07: ddl_parse_execute
+  - { id: RULE-01, name: id_reference_validity,       severity: critical, target_stage: null }
+  - { id: RULE-02, name: requirement_traceability,    severity: critical, target_stage: null }
+  - { id: RULE-03, name: pk_type_constraint,          severity: critical, target_stage: null }
+  - { id: RULE-04, name: relationship_fk_consistency, severity: critical, target_stage: null }
+  - { id: RULE-05, name: naming_duplication,          severity: critical, target_stage: null }
+  - { id: RULE-06, name: crud_consistency,            severity: critical, target_stage: null }
+  - { id: RULE-07, name: ddl_parse_execute,           severity: critical, target_stage: null }
 
 # 데이터 표준 준수 검사. 공식 산식·기준값은 공개 자료에서 확인하지 못해 항목은 프로젝트 정의(project)다.
+# 심각도는 #15 착수 전에 정한다. critical로 두면 미등록 단어 하나로도 최종 승인이 막힌다.
 standard_compliance:
   checks:
-    - { id: SC-01, name: unregistered_word,          action: finding }  # 사전에 없는 단어
-    - { id: SC-02, name: missing_classifier,         action: finding }  # 마지막 단어가 분류어가 아님
-    - { id: SC-03, name: classifier_domain_mismatch, action: finding }  # 분류어의 도메인 분류와 다른 도메인
-    - { id: SC-04, name: forbidden_synonym,          action: finding }  # 금칙어 사용 (이음동의어는 경고)
-    - { id: SC-05, name: official_term_conflict,     action: finding }  # 공식 용어와 이름은 같고 약어·도메인이 다름
-    - { id: SC-06, name: type_length_mismatch,       action: finding }  # 도메인과 다른 타입·길이
+    - { id: SC-01, name: unregistered_word,          severity: null, target_stage: null }  # 사전에 없는 단어
+    - { id: SC-02, name: missing_classifier,         severity: null, target_stage: null }  # 마지막 단어가 분류어가 아님
+    - { id: SC-03, name: classifier_domain_mismatch, severity: null, target_stage: null }  # 분류어의 도메인 분류와 다른 도메인
+    - { id: SC-04, name: forbidden_synonym,          severity: null, target_stage: null }  # 금칙어 사용 (이음동의어는 경고)
+    - { id: SC-05, name: official_term_conflict,     severity: null, target_stage: null }  # 공식 용어와 이름은 같고 약어·도메인이 다름
+    - { id: SC-06, name: type_length_mismatch,       severity: null, target_stage: null }  # 도메인과 다른 타입·길이
   compliance_rate: compliant_columns / diagnosed_columns * 100   # project 정의, 항목별로 함께 보고
 
-# CRUD 면제 사유. 엔티티에 이 사유가 있으면 RULE-06이 U·D 누락을 허용한다.
+# CRUD 면제 사유와 사유별로 면제되는 조작. 엔티티의 CrudExemption이 이 목록 밖이면 RULE-06이 지적한다.
 crud_exemption_reasons:
-  - immutable_ledger
-  - soft_delete
+  immutable_ledger: [U, D]   # 확정 원장: 수정·삭제 대신 역분개
+  soft_delete: [D]           # 삭제 대신 사용여부 N. 사용여부 변경(U)은 필요하다
 
 # 법정 점검 근거 (참고): 고시 제17조 연 1회 이상 표준화 수준 점검, 제18조 시정요구 후 3개월 내 조치
