@@ -1,0 +1,41 @@
+name: pr-activity
+
+# PR 진행을 연결 이슈에 댓글로 남기고 팀에 알린다 (CONTRIBUTING "알림·기록").
+# - 리뷰 요청(PR 열림·Draft 해제·재요청), 리뷰 제출(승인·변경 요청), 병합, 병합 없이 닫힘
+# - 같은 내용을 실행 요약에 남기고, Secret SLACK_WEBHOOK_URL이 있으면 Slack에도 보낸다
+# 실패해도 PR·병합을 막지 않는다 (필수 검사가 아니다).
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, review_requested, closed]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  record:
+    # fork PR은 쓰기 토큰을 받지 못하므로 같은 저장소 브랜치만 처리한다. Draft는 기록하지 않는다
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository
+      && (github.event.action == 'closed' || !github.event.pull_request.draft)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - name: Record the PR event
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          ACTOR: ${{ github.actor }}
+          REVIEW_STATE: ${{ github.event.review.state }}
+          REVIEW_URL: ${{ github.event.review.html_url }}
+          REQUESTED_REVIEWER: ${{ github.event.requested_reviewer.login }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: .github/scripts/pr-activity.sh
