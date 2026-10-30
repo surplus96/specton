@@ -1,6 +1,6 @@
 # 팩 정보. 실행 시 name·version이 run에 기록된다.
 name: common
-version: 0.1.0
+version: 0.1.1
 description: Shared naming, standard words, standard domains, and rule settings based on the Korean public data common standard
 source: 공공데이터 공통표준 8차 (2025-11, data.go.kr 15156439·15156379·15156442), 행정안전부고시 제2025-19호, PostgreSQL 18 docs
 origin: public             # synthetic | public | approved
