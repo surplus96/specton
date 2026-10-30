@@ -93,6 +93,7 @@ PR의 진행은 `pr-activity` 워크플로(`.github/workflows/pr-activity.yml`)�
    - **Request changes:** 고쳐야 할 것이 있음. 카드가 In Progress로 돌아간다
    - **Comment:** 질문만 있고 판단은 보류
 5. **작성자:** 수정해서 push하고, 각 댓글에 답한 뒤 대화를 **Resolve**한다. 새 커밋이 올라오면 기존 승인은 취소되므로 R1이 다시 승인한다.
+   - `main`이 앞서 나가 브랜치 갱신이 필요하면 **작성자가 Update branch**를 한다. R1이 갱신하면 작성자 외 변경으로 추가 승인이 필요해져 R1 승인만으로 병합할 수 없다 (#79).
 6. **R1:** 승인·CI 통과·대화 해결이 끝나면 **Squash and merge**. 커밋 제목은 PR 제목 + `(#PR번호)` 그대로 두고, 본문의 체크박스·빈 항목은 정리한다.
 
 ### 리뷰 점검표
