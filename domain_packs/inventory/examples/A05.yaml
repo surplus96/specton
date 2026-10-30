@@ -4,4 +4,31 @@
 agent: A05
 role: relationship_review
 status: draft
-examples: []
+examples:
+- source_id: INV-005
+  input:
+    requirements:
+    - id: REQ-01
+      text: 하나의 수불 문서에는 하나 이상의 품목 내역을 등록한다.
+      type: FR
+    - id: REQ-02
+      text: 각 내역은 한 품목과 수량을 가지며 수량은 0보다 크고 소수 셋째 자리까지 허용한다.
+      type: FR
+    entities:
+    - {id: ENT-01, name: 수불문서}
+    - {id: ENT-02, name: 수불내역}
+    - {id: ENT-03, name: 품목}
+    relationships:
+    - {id: REL-01, parent: ENT-01, child: ENT-02, cardinality: '1:N', optional: false, identifying: true, req_ids: [REQ-01]}
+    - {id: REL-02, parent: ENT-03, child: ENT-02, cardinality: '1:N', optional: true, identifying: false, req_ids: [REQ-02]}
+  output:
+    findings:
+    - kind: optional_mismatch
+      severity: major
+      targets:
+      - {kind: relationship, id: REL-02}
+      evidence:
+      - req_id: REQ-02
+        quote: 각 내역은 한 품목과 수량을 가지며
+      suggestion: 내역마다 품목이 반드시 하나 있으므로 품목 → 수불내역 관계의 optional을 false로 바꾼다.
+      target_stage: data_model

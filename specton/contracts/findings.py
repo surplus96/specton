@@ -58,7 +58,7 @@ class Finding(FindingDraft):
     id: ObjectId
     source: FindingSource
     reviewer_id: str | None = None  # source=llm: A05~A08 등 관점
-    rule_code: str | None = None  # source=rule: RULE-01~07
+    rule_code: str | None = None  # source=rule: RULE-01~07, 표준 준수 SC-01~06 (04 문서)
     fingerprint: NonEmptyText
     iteration: int = Field(ge=0)
 

@@ -1,5 +1,7 @@
 import json
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any, ClassVar
 
 import pytest
 import yaml
@@ -283,3 +285,96 @@ def test_pack_review_examples_match_the_review_output(pack: str, reviewer_id: st
     root = Path(__file__).resolve().parents[2] / "domain_packs"
 
     load_examples(pack, reviewer_id, ReviewOutput, root=root)
+
+
+@pytest.mark.parametrize("pack", ["inventory", "maintenance"])
+@pytest.mark.parametrize("reviewer_id", ["A05", "A06", "A07", "A08"])
+def test_pack_review_examples_are_grounded(pack: str, reviewer_id: str) -> None:
+    """예시 지적도 근거 확인(merge_review)을 통과해야 한다. 본보기가 버려질 지적이면 안 된다."""
+    for example in load_examples(pack, reviewer_id, ReviewOutput):
+        assert isinstance(example.input, dict)
+        assert _grounding_problems(example.input, example.output.findings) == []
+
+
+def _grounding_problems(data: dict[str, Any], findings: Sequence[FindingDraft]) -> list[str]:
+    """merge_review의 근거 확인과 같은 기준으로 예시 지적을 검사한다.
+
+    대상은 입력의 요구사항·기능·엔티티·속성·관계여야 한다. 인용은 `req_id`가 있으면 그 문장,
+    없으면 아무 요구사항 문장에 있어야 한다. 줄바꿈·연속 공백 차이만 무시한다.
+    """
+    sections = {
+        "requirement": data.get("requirements", []),
+        "function": data.get("functions", []),
+        "entity": data.get("entities", []),
+        "attribute": [a for e in data.get("entities", []) for a in e.get("attributes", [])],
+        "relationship": data.get("relationships", []),
+    }
+    known = {(kind, item["id"]) for kind, items in sections.items() for item in items}
+    texts = {r["id"]: " ".join(r["text"].split()) for r in sections["requirement"]}
+    problems = [
+        f"없는 대상 {t.kind}:{t.id}"
+        for f in findings
+        for t in f.targets
+        if (t.kind, t.id) not in known
+    ]
+    for f in findings:
+        for e in f.evidence:
+            if e.req_id is not None and e.req_id not in texts:
+                problems.append(f"없는 요구사항 {e.req_id}")
+                continue
+            pool = [texts[e.req_id]] if e.req_id is not None else list(texts.values())
+            if not any(" ".join(e.quote.split()) in text for text in pool):
+                problems.append(f"인용 없음 {e.req_id}: {e.quote}")
+    return problems
+
+
+def _example_finding(target: dict[str, str], evidence: dict[str, str | None]) -> FindingDraft:
+    return FindingDraft.model_validate(
+        {
+            "kind": "k",
+            "severity": "major",
+            "targets": [target],
+            "evidence": [evidence],
+            "suggestion": "s",
+        }
+    )
+
+
+class TestGroundingProblems:
+    DATA: ClassVar[dict[str, Any]] = {
+        "requirements": [{"id": "REQ-01", "text": "재고 조정 시  변경자와\n사유를 남긴다"}],
+        "entities": [{"id": "ENT-01", "attributes": [{"id": "ATTR-01"}]}],
+    }
+
+    def test_quote_without_req_id_may_come_from_any_requirement(self) -> None:
+        finding = _example_finding(
+            {"kind": "entity", "id": "ENT-01"}, {"req_id": None, "quote": "변경자와 사유를"}
+        )
+
+        assert _grounding_problems(self.DATA, [finding]) == []
+
+    def test_attribute_inside_an_entity_is_a_known_target(self) -> None:
+        finding = _example_finding(
+            {"kind": "attribute", "id": "ATTR-01"}, {"req_id": "REQ-01", "quote": "사유를 남긴다"}
+        )
+
+        assert _grounding_problems(self.DATA, [finding]) == []
+
+    def test_unknown_target_and_missing_quote_are_reported(self) -> None:
+        finding = _example_finding(
+            {"kind": "relationship", "id": "REL-09"}, {"req_id": "REQ-01", "quote": "삭제한다"}
+        )
+
+        assert _grounding_problems(self.DATA, [finding]) == [
+            "없는 대상 relationship:REL-09",
+            "인용 없음 REQ-01: 삭제한다",
+        ]
+
+    def test_missing_requirements_section_reports_instead_of_crashing(self) -> None:
+        finding = _example_finding(
+            {"kind": "entity", "id": "ENT-01"}, {"req_id": "REQ-01", "quote": "사유"}
+        )
+
+        assert _grounding_problems({"entities": self.DATA["entities"]}, [finding]) == [
+            "없는 요구사항 REQ-01"
+        ]
