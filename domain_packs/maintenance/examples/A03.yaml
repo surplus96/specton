@@ -1,7 +1,101 @@
 # few-shot 예시 (maintenance · A03 entity_attribute_crud). 사람이 작성하는 입력 파일이다.
 # - 입력은 개발용 세트(비공개, 저장소에 올리지 않음)에서만 가져오고 source_id에 원문 ID를 적는다. 평가용 세트 문서는 넣지 않는다.
 # - output은 해당 노드의 LLM 출력 모델과 같은 모양이어야 한다. load_examples가 그 모델로 검증한다 (docs/04 "노드 작성 규칙").
+# - requirements와 functions는 maintenance A02 예시와 같은 사례다. 요구사항 문장은 검토 전 합성 시나리오 원문이고 output에는 기대 결과 자료를 쓰지 않았다.
+# - "일반 사용자는 삭제할 수 없다"는 권한 요구라 변경이력의 CRUD 면제로 옮기지 않는다. crud_exemptions에는 역할 구분이 없다.
+# - 설비·팀·기술자는 이 요구사항에서 참조만 하므로 키 속성만 둔다. 팀코드·기술자코드·변경이력번호와 식별값·변경값의 타입은 팩에 용어가 없어 정한 예시 가정이다.
 agent: A03
 role: entity_attribute_crud
 status: draft
-examples: []
+examples:
+- source_id: MNT-009,MNT-011,MNT-021,MNT-022
+  input:
+    requirements:
+    - id: REQ-01
+      type: FR
+      nfr_category: null
+      text: 보전 담당자는 설비, 접수 일시, 신고자 사내 식별값, 증상, 우선순위로 고장 건을 등록한다. 한 접수는 한 설비에 대한 것이며 하나 이상의 보전 작업으로 나누어 처리할 수 있다. 접수 번호는 고유해야 한다.
+    - id: REQ-02
+      type: FR
+      nfr_category: null
+      text: 작업 담당 기술자를 지정할 경우 배정 시점에 해당 담당팀에 유효하게 소속된 기술자여야 한다. 작업은 한 팀과 최대 한 기술자에게 배정한다. 담당 변경 사유와 변경자를 기록한다.
+    - id: REQ-03
+      type: NFR
+      nfr_category: security
+      text: 웹 브라우저로 접속하며 보전 담당자는 접수·계획·배정을, 기술자는 본인에게 배정된 작업의 수행 결과를, 승인 담당자는 검토·종료를 수행한다. 인증과 역할 배정은 기존 사내 인증 체계를 사용한다.
+    - id: REQ-04
+      type: NFR
+      nfr_category: audit
+      text: 설비·계획·팀 소속·작업의 변경은 사내 계정 식별값, 일시, 변경 전후 값과 사유로 추적할 수 있어야 한다. 일반 사용자는 변경 이력과 확정된 수행 기록을 삭제할 수 없어야 한다.
+    functions:
+    - id: FUNC-01
+      name: 고장 접수
+      description: 보전 담당자만 설비별 고장 건을 고유 접수 번호로 등록·조회·수정하고, 한 접수를 여러 보전 작업으로 나눌 수 있다. 접수 변경은 변경자·일시·변경 전후 값·사유로 기록하고 일반 사용자는 이력을 삭제할 수 없다.
+      req_ids: [REQ-01, REQ-03, REQ-04]
+    - id: FUNC-02
+      name: 작업 배정
+      description: 보전 담당자만 작업을 한 팀과 그 팀에 유효하게 소속된 최대 한 명의 기술자에게 배정한다. 배정 변경은 변경자·일시·변경 전후 값·사유로 기록하고 일반 사용자는 이력을 삭제할 수 없다.
+      req_ids: [REQ-02, REQ-03, REQ-04]
+    pack:
+      terms:
+      - {term: 설비코드, data_type: varchar, length: 10}
+      - {term: 고장접수번호, data_type: varchar, length: 20}
+      - {term: 접수일시, data_type: timestamp}
+      - {term: 증상내용, data_type: varchar, length: 1000}
+      - {term: 우선순위, data_type: numeric, precision: 10}
+      - {term: 작업번호, data_type: varchar, length: 20}
+      - {term: 변경사유, data_type: varchar, length: 4000}
+      - {term: 변경일시, data_type: timestamp}
+      crud_exemption_reasons:
+        immutable_ledger: [U, D]
+        soft_delete: [D]
+  output:
+    entities:
+    - name: 설비
+      description: 고장 접수의 대상 설비
+      req_ids: [REQ-01]
+      attributes:
+      - {name: 설비코드, data_type: varchar, length: 10, is_key: true, nullable: false, req_ids: [REQ-01]}
+    - name: 고장접수
+      description: 설비의 고장 신고 건
+      req_ids: [REQ-01]
+      attributes:
+      - {name: 고장접수번호, description: 고유한 접수 번호, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {name: 접수일시, data_type: timestamp, req_ids: [REQ-01]}
+      - {name: 신고자식별값, description: 신고자의 사내 식별값, data_type: varchar, length: 50, req_ids: [REQ-01]}
+      - {name: 증상내용, data_type: varchar, length: 1000, req_ids: [REQ-01]}
+      - {name: 우선순위, data_type: numeric, precision: 10, req_ids: [REQ-01]}
+    - name: 보전작업
+      description: 고장 접수를 나누어 처리하는 작업
+      req_ids: [REQ-01, REQ-02]
+      attributes:
+      - {name: 작업번호, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-01, REQ-02]}
+    - name: 팀
+      description: 작업을 배정받는 담당팀
+      req_ids: [REQ-02]
+      attributes:
+      - {name: 팀코드, data_type: varchar, length: 10, is_key: true, nullable: false, req_ids: [REQ-02]}
+    - name: 기술자
+      description: 작업을 배정받는 담당 기술자
+      req_ids: [REQ-02]
+      attributes:
+      - {name: 기술자코드, data_type: varchar, length: 10, is_key: true, nullable: false, req_ids: [REQ-02]}
+    - name: 변경이력
+      description: 접수와 작업 배정의 변경 기록
+      req_ids: [REQ-02, REQ-04]
+      attributes:
+      - {name: 변경이력번호, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-04]}
+      - {name: 변경자식별값, description: 변경자의 사내 계정 식별값, data_type: varchar, length: 50, req_ids: [REQ-02, REQ-04]}
+      - {name: 변경일시, data_type: timestamp, req_ids: [REQ-04]}
+      - {name: 변경전값, data_type: varchar, length: 4000, req_ids: [REQ-04]}
+      - {name: 변경후값, data_type: varchar, length: 4000, req_ids: [REQ-04]}
+      - {name: 변경사유, data_type: varchar, length: 4000, req_ids: [REQ-02, REQ-04]}
+    entity_ops:
+    - {function_id: FUNC-01, entity_name: 설비, operations: [R]}
+    - {function_id: FUNC-01, entity_name: 고장접수, operations: [C, R, U]}
+    - {function_id: FUNC-01, entity_name: 보전작업, operations: [C]}
+    - {function_id: FUNC-01, entity_name: 변경이력, operations: [C]}
+    - {function_id: FUNC-02, entity_name: 보전작업, operations: [R, U]}
+    - {function_id: FUNC-02, entity_name: 팀, operations: [R]}
+    - {function_id: FUNC-02, entity_name: 기술자, operations: [R]}
+    - {function_id: FUNC-02, entity_name: 변경이력, operations: [C]}
