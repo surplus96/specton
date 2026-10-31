@@ -58,9 +58,9 @@ from specton.contracts.findings import (
 )
 from specton.contracts.requirements import (
     QualityIssue,
-    RawRequirement,
     Requirement,
     RequirementDraft,
+    SourceRequirement,
 )
 from specton.contracts.state import (
     ArtifactRef,
@@ -104,7 +104,6 @@ __all__ = [
     "Priority",
     "PrioritySource",
     "QualityIssue",
-    "RawRequirement",
     "Relationship",
     "RelationshipDraft",
     "Requirement",
@@ -119,6 +118,7 @@ __all__ = [
     "RunView",
     "Severity",
     "SourceRef",
+    "SourceRequirement",
     "SqlType",
     "SseEvent",
     "SseEventData",

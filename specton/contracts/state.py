@@ -44,7 +44,7 @@ class VersionInfo(Contract):
 
 class ArtifactRef(Contract):
     kind: Literal["requirements", "functions", "erd", "ddl", "rtm", "review"]
-    format: Literal["md", "pdf", "mmd", "sql", "xlsx", "csv"]
+    file_format: Literal["md", "pdf", "mmd", "sql", "xlsx", "csv"]
     revision: int = Field(ge=0)
     hash: NonEmptyText
     approved: bool = False

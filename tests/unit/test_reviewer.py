@@ -42,9 +42,9 @@ A06 = _perspective("A06", "requirements", "functions")
 def _state() -> DesignState:
     req = Requirement(
         id="REQ-01",
-        source_ref={"kind": "csv", "row": 2},
+        source_ref={"file_format": "csv", "row": 2},
         text="주문을 취소할 수 있다",
-        original_text="주문을 취소할 수 있다",
+        draft_text="주문을 취소할 수 있다",
         type="FR",
         analysis_version=1,
     )

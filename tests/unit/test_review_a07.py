@@ -25,9 +25,9 @@ def _state() -> DesignState:
     """역할 속성은 있지만 역할별 허용 작업을 책임지는 기능이 없는 설계."""
     access = Requirement(
         id="REQ-01",
-        source_ref={"kind": "xlsx", "sheet": "requirements", "row": 22},
+        source_ref={"file_format": "xlsx", "sheet": "requirements", "row": 22},
         text=ACCESS_TEXT,
-        original_text=ACCESS_TEXT,
+        draft_text=ACCESS_TEXT,
         type="NFR",
         nfr_category="security",
         analysis_version=1,

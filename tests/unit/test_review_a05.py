@@ -14,9 +14,9 @@ A05 = load_perspective(PERSPECTIVES_DIR / "A05.yaml")
 def _state() -> DesignState:
     req = Requirement(
         id="REQ-01",
-        source_ref={"kind": "csv", "row": 2},
+        source_ref={"file_format": "csv", "row": 2},
         text="한 설비는 상위 설비를 최대 하나 가질 수 있다",
-        original_text="한 설비는 상위 설비를 최대 하나 가질 수 있다",
+        draft_text="한 설비는 상위 설비를 최대 하나 가질 수 있다",
         type="FR",
         analysis_version=1,
     )
