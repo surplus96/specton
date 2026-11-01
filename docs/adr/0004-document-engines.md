@@ -13,7 +13,7 @@ PDF 입력·추출, 최종 PDF 출력, HWPX/HWP 추출에 쓸 라이브러리가
 - PDF 추출: Docling(표 구조 인식·OCR 내장). 텍스트형이 느리면 pdfplumber로 보조.
 - PDF 출력: WeasyPrint(HTML/CSS → PDF) + `mermaid-cli`로 ERD를 SVG 렌더링해 삽입. ERD가 깨지면 Playwright 인쇄로 전환.
 - HWPX: `python-hwpx`(Apache-2.0). HWP 5.0: `hwp-hwpx-parser`와 `hwpkit`를 표 추출로 비교, 시간이 없으면 "HWPX로 변환해 업로드" 안내.
-- HWP 5.0·HWPX 위치 추출: `rhwp-python`(MIT) 추가 후보. .hwp를 HWPX로 바꾸지 않고 바로 읽고, 문단마다 구역·문단 번호, 표 칸마다 행·열·병합 범위를 준다. 같은 문서의 .hwp와 .hwpx에서 구역·문단 번호가 같다.
+- HWP 5.0·HWPX 위치 추출: `rhwp-python`(MIT) 추가 후보. .hwp를 HWPX로 바꾸지 않고 바로 읽고, 문단마다 구역·문단 번호, 표 칸마다 행·열·병합 범위를 준다. 같은 문서의 .hwp와 .hwpx에서 구역·문단 번호가 같았다(공공 과업지시서 1건에서 확인).
   - 쪽 번호는 렌더링으로 계산한 값이라 긴 문서에서 한글 프로그램과 달라진다. 사람용 위치 표기에는 원문 고유번호와 표 위치를 쓰고 쪽 번호는 쓰지 않는다.
 - 스캔 PDF OCR 포함 여부는 회의에서 정한다.
 - 채택 전 대표 문서 2~3건으로 1시간 실측한다.
@@ -38,7 +38,7 @@ PDF 입력·추출, 최종 PDF 출력, HWPX/HWP 추출에 쓸 라이브러리가
 | hwp-hwpx-parser | HWP·HWPX | Apache-2.0 (README) | 텍스트·표 추출. 저장소 LICENSE 재확인 필요 |
 | jakal-hwpx | HWP·HWPX | MIT | Python 3.11+, 매우 신생, 표 추출 미확인 |
 | pyhwpxlib | HWPX 생성·편집 | 상업 유료(BSL 혼합) | 추출용이 아니라 제외 |
-| rhwp-python | HWP·HWPX | MIT | Rust 엔진 rhwp의 파이썬 바인딩, Java 불필요. 문단 `section_idx`·`para_idx`, 표 칸 `row`·`col`·`row_span`·`col_span`. 쪽 수는 렌더링 계산 |
+| rhwp-python | HWP·HWPX | MIT | 매우 신생: PyPI 0.8.1 `Development Status :: 3 - Alpha`, GitHub 스타 16개(2026-11-01 확인). Rust 엔진 rhwp의 파이썬 바인딩, Java 불필요. 문단 `section_idx`·`para_idx`, 표 칸 `row`·`col`·`row_span`·`col_span`. 쪽 수는 렌더링 계산 |
 
 **PDF 추출**
 

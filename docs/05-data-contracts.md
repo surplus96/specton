@@ -18,7 +18,7 @@
 
 - 추가 필드를 모두 LLM 출력에 넣지 않는다. 실행 메타데이터·버전·ID·필터 결과는 코드가 채운다.
 - 계약 모델은 불변이다. 값을 바꿀 때는 `evolve(...)`로 새 객체를 만든다. `model_copy(update=...)`는 검증을 건너뛰므로 쓰지 않는다.
-- 이름 규칙: `source_` = 원문 그대로(코드가 복사, 해석하지 않음. 추출 확인에서 고친 값도 원문으로 보고 같은 칸에 둠) / `draft_` = LLM이 낸 값(사람 확인 전) / 접두어 없음 = 최종 또는 코드 계산값. 클래스는 맨 이름 = 저장 모델, `…Draft` = LLM 출력.
+- 이름 규칙: `source_` = 원문에서 온 값(코드가 복사, 해석하지 않음. 추출 확인에서 고친 값도 원문으로 보고 같은 칸에 둠. 앞뒤 공백까지 보존하는 칸은 `source_text`뿐이고, 나머지 `source_` 칸은 다른 텍스트 칸처럼 앞뒤 공백을 지운다) / `draft_` = LLM이 낸 값(사람 확인 전) / 접두어 없음 = 최종 또는 코드 계산값. 클래스는 맨 이름 = 저장 모델, `…Draft` = LLM 출력.
 - 응락수준·중요도 같은 원문 값은 MoSCoW 등으로 바꾸지 않고 문자열 그대로 둔다. 요구사항을 분할하면 부모 값을 그대로 쓴다.
 - 계약의 텍스트 필드는 앞뒤 공백을 지운다. 단, 추출한 원문(`SourceRequirement.source_text`)은 `SourceText` 타입으로 앞뒤 공백·줄바꿈까지 그대로 보존한다.
 - LLM 출력 모델(예: FindingDraft)과 저장 모델(Finding)을 나눈다. `id`·`source`·`fingerprint`·`iteration`은 코드가 붙인다.
@@ -40,7 +40,7 @@
 
 | 단계 | LLM 출력 (`*Draft`) | 저장 모델 | 코드가 채우는 필드 |
 |---|---|---|---|
-| A01 | `RequirementDraft` (원문 블록 ID로 연결) | `Requirement` | `id`, `source_id`, `source_ref`, `parent_id`, `draft_text`, `source_text`, `analysis_version` |
+| A01 | `RequirementDraft` (원문 블록 ID로 연결) | `Requirement` | `id`, `source_id`, `source_ref`, `parent_id`, `draft_text`, `source_text`, `source_acceptance_level`, `analysis_version` |
 | A02 | `FunctionDraft` | `Function` | `id`, `entity_ops`(A03 전까지 비움) |
 | A03 | `EntityDesignDraft` (`EntityDraft`·`AttributeDraft`·`EntityOpDraft`) | `Entity`, `Attribute`, `EntityOp` | `id`, `pack`, 엔티티 이름 → ID 해석 |
 | A04 | `RelationshipDraft` (엔티티 이름으로 부모·자식 지정) | `Relationship` | `id`, 이름 → 엔티티 ID 해석, FK 파생 |
