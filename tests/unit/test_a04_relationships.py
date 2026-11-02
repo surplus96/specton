@@ -25,9 +25,9 @@ from specton.packs.examples import load_examples
 def _requirement(req_id: str, text: str) -> Requirement:
     return Requirement(
         id=req_id,
-        source_ref={"kind": "csv", "row": 2},
+        source_ref={"file_format": "csv", "row": 2},
         text=text,
-        original_text=text,
+        draft_text=text,
         type="FR",
         analysis_version=1,
     )

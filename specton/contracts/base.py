@@ -103,9 +103,9 @@ class TargetStage(StrEnum):
 
 
 class ExtractionStatus(StrEnum):
-    OK = "ok"
-    NEEDS_REVIEW = "needs_review"
-    FAILED = "failed"
+    PASS = "pass"
+    REVIEW = "review"
+    FAIL = "fail"
 
 
 class SourceRef(Contract):
@@ -118,7 +118,7 @@ class SourceRef(Contract):
     - hwpx: section, paragraph (표 안이면 table, cell도)
     """
 
-    kind: Literal["xlsx", "csv", "pdf", "hwpx"]
+    file_format: Literal["xlsx", "csv", "pdf", "hwpx"]
     sheet: str | None = None
     row: int | None = Field(default=None, ge=1)
     page: int | None = Field(default=None, ge=1)
@@ -136,10 +136,10 @@ class SourceRef(Contract):
             "pdf": ("page", "block"),
             "hwpx": ("section", "paragraph"),
         }
-        missing = [f for f in required[self.kind] if getattr(self, f) is None]
+        missing = [f for f in required[self.file_format] if getattr(self, f) is None]
         if missing:
             raise ValueError(
-                f"{self.kind} 원문 위치에 필요한 필드가 없습니다: {', '.join(missing)}"
+                f"{self.file_format} 원문 위치에 필요한 필드가 없습니다: {', '.join(missing)}"
             )
         if (self.table is None) != (self.cell is None):
             raise ValueError("table과 cell은 함께 지정합니다")
@@ -147,7 +147,7 @@ class SourceRef(Contract):
 
     def display(self) -> str:
         """사람이 읽는 표기. 저장·비교에는 구조체를 쓴다."""
-        match self.kind:
+        match self.file_format:
             case "xlsx":
                 return f"{self.sheet}!{self.row}행"
             case "csv":

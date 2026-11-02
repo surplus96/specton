@@ -54,9 +54,9 @@ def _a02_state(pack: str = "inventory") -> DesignState:
     requirements = tuple(
         Requirement(
             id=r["id"],
-            source_ref={"kind": "csv", "row": n + 2},
+            source_ref={"file_format": "csv", "row": n + 2},
             text=r["text"],
-            original_text=r["text"],
+            draft_text=r["text"],
             type=r["type"],
             nfr_category=r["nfr_category"],
             analysis_version=1,

@@ -13,9 +13,9 @@ EXPECTED = ("A05", "A07")
 def _state() -> DesignState:
     req = Requirement(
         id="REQ-01",
-        source_ref={"kind": "csv", "row": 2},
+        source_ref={"file_format": "csv", "row": 2},
         text="수불 문서에는 하나 이상의 품목 내역을\n등록한다.",
-        original_text="수불 문서에는 하나 이상의 품목 내역을 등록한다.",
+        draft_text="수불 문서에는 하나 이상의 품목 내역을 등록한다.",
         type="FR",
         analysis_version=1,
     )

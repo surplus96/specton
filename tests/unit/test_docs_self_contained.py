@@ -121,7 +121,7 @@ def test_meeting_agenda_ids_are_detected_in_docs_and_config(path: str) -> None:
 
 
 def test_excel_cell_address_in_code_is_allowed() -> None:
-    line = 'SourceRef(kind="hwpx", section=0, paragraph=4, table=1, cell="B2")'
+    line = 'SourceRef(file_format="hwpx", section=0, paragraph=4, table=1, cell="B2")'
 
     assert not line_violations(CODE, line)
 

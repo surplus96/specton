@@ -11,18 +11,18 @@ from specton.contracts import (
     FindingDraft,
     Function,
     FunctionDraft,
-    RawRequirement,
     Relationship,
     Requirement,
     RequirementDraft,
     SourceRef,
+    SourceRequirement,
     find_trace_issues,
 )
 from specton.contracts.base import NfrCategory, RequirementType
 
 
 def _src() -> SourceRef:
-    return SourceRef(kind="xlsx", sheet="요구사항", row=5)
+    return SourceRef(file_format="xlsx", sheet="요구사항", row=5)
 
 
 def _req(req_id: str = "REQ-01") -> Requirement:
@@ -31,7 +31,7 @@ def _req(req_id: str = "REQ-01") -> Requirement:
         source_id="SFR-001",
         source_ref=_src(),
         text="주문을 취소할 수 있다",
-        original_text="주문을 취소할 수 있다",
+        draft_text="주문을 취소할 수 있다",
         type=RequirementType.FR,
         analysis_version=1,
     )
@@ -45,7 +45,7 @@ def _classified(
         Requirement: {
             "id": "REQ-01",
             "source_ref": _src(),
-            "original_text": "변경 이력을 남긴다",
+            "draft_text": "변경 이력을 남긴다",
             "analysis_version": 1,
         },
         RequirementDraft: {"source_block_ids": ["B-1"]},
@@ -128,19 +128,19 @@ class TestImmutability:
 
 class TestSourceRef:
     def test_each_kind_requires_its_locator(self) -> None:
-        assert SourceRef(kind="csv", row=3).display() == "3행"
-        assert SourceRef(kind="pdf", page=2, block=0).display() == "2쪽 블록0"
-        hwpx = SourceRef(kind="hwpx", section=0, paragraph=4, table=1, cell="B2")
+        assert SourceRef(file_format="csv", row=3).display() == "3행"
+        assert SourceRef(file_format="pdf", page=2, block=0).display() == "2쪽 블록0"
+        hwpx = SourceRef(file_format="hwpx", section=0, paragraph=4, table=1, cell="B2")
         assert hwpx.display() == "구역0 문단4 표1 B2"
 
     @pytest.mark.parametrize(
         "kwargs",
         [
-            {"kind": "xlsx", "row": 1},
-            {"kind": "pdf", "page": 1},
-            {"kind": "hwpx", "section": 0},
-            {"kind": "hwpx", "section": 0, "paragraph": 1, "table": 1},
-            {"kind": "csv", "row": 0},
+            {"file_format": "xlsx", "row": 1},
+            {"file_format": "pdf", "page": 1},
+            {"file_format": "hwpx", "section": 0},
+            {"file_format": "hwpx", "section": 0, "paragraph": 1, "table": 1},
+            {"file_format": "csv", "row": 0},
         ],
     )
     def test_incomplete_locator_is_rejected(self, kwargs: dict[str, object]) -> None:
@@ -150,7 +150,7 @@ class TestSourceRef:
     @pytest.mark.parametrize("cell", ["2행1열", "b2", "B0", "2B"])
     def test_cell_must_be_a_spreadsheet_address(self, cell: str) -> None:
         with pytest.raises(ValidationError):
-            SourceRef(kind="hwpx", section=0, paragraph=4, table=1, cell=cell)
+            SourceRef(file_format="hwpx", section=0, paragraph=4, table=1, cell=cell)
 
     def test_round_trips_through_json(self) -> None:
         ref = _src()
@@ -158,16 +158,32 @@ class TestSourceRef:
 
 
 class TestSourceText:
-    def test_raw_requirement_keeps_source_whitespace(self) -> None:
-        raw = RawRequirement(
-            document_id="DOC-1", block_id="B-1", source_ref=_src(), text="  ① 입고한다\n"
+    def test_source_requirement_keeps_source_whitespace(self) -> None:
+        raw = SourceRequirement(
+            document_id="DOC-1", block_id="B-1", source_ref=_src(), source_text="  ① 입고한다\n"
         )
 
-        assert raw.text == "  ① 입고한다\n"
+        assert raw.source_text == "  ① 입고한다\n"
 
-    def test_raw_requirement_rejects_blank_text(self) -> None:
+    def test_source_requirement_rejects_blank_text(self) -> None:
         with pytest.raises(ValidationError):
-            RawRequirement(document_id="DOC-1", block_id="B-1", source_ref=_src(), text="  \n")
+            SourceRequirement(
+                document_id="DOC-1", block_id="B-1", source_ref=_src(), source_text="  \n"
+            )
+
+    def test_source_requirement_keeps_original_columns_as_is(self) -> None:
+        raw = SourceRequirement(
+            document_id="DOC-1",
+            block_id="B-1",
+            source_ref=_src(),
+            source_text="입고를 등록한다",
+            source_acceptance_level="필수",
+            source_extra={"비고": "1차"},
+        )
+
+        assert raw.source_acceptance_level == "필수"
+        assert raw.source_extra == {"비고": "1차"}
+        assert raw.extraction_status == "pass"
 
 
 class TestNfrCategory:

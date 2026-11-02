@@ -29,9 +29,13 @@ def _req(req_id: str, text: str, *, type_: str = "FR", category: str | None = No
         {
             "id": req_id,
             "source_id": f"INV-0{req_id[-2:]}",
-            "source_ref": {"kind": "xlsx", "sheet": "requirements", "row": int(req_id[-2:]) + 1},
+            "source_ref": {
+                "file_format": "xlsx",
+                "sheet": "requirements",
+                "row": int(req_id[-2:]) + 1,
+            },
             "text": text,
-            "original_text": text,
+            "draft_text": text,
             "type": type_,
             "nfr_category": category,
             "analysis_version": 1,

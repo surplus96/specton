@@ -8,8 +8,8 @@
 
 | 모델 | 핵심 필드 | 추가·정리 후보 |
 |---|---|---|
-| RawRequirement | 원문·원문 ID·출처 | `document_id`, `source_ref`(시트/행 또는 페이지/블록), `extraction_status` |
-| Requirement | `id`, `source_id`, `source_ref`, `parent_id`, `text`, `type`, `nfr_category`, `quality_issues` | 원문과 사용자 수정본 구분, 분석 버전 |
+| SourceRequirement | `document_id`, `block_id`, `source_id`, `source_ref`, `source_text`, `source_acceptance_level`, `source_related_requirements`, `source_extra`, `extraction_status` | 수정 이력 위치(계약 칸 또는 DB 표) |
+| Requirement | `id`, `source_id`, `source_ref`, `parent_id`, `text`, `draft_text`, `source_text`, `source_acceptance_level`, `type`, `nfr_category`, `quality_issues`, `analysis_version` | — |
 | Function | `id`, `name`, `description`, `priority`, `req_ids`, `entity_ops` | `priority` nullable + 근거·확인 상태 (ADR-0006). A03 전까지 `entity_ops` 비움 |
 | Entity / Attribute | `pack`, `name`, `description`, `attributes`, `req_ids`, `crud_exemptions` / 타입·길이·정밀도·키·NULL·제약 | 허용 타입 고정, 안정적 내부 참조 키. FK는 관계에서 파생 |
 | Relationship | `id`, `parent`, `child`, `cardinality`, `optional`, `identifying`, `rationale`, `req_ids` | 참조 키 선택·복합 키 표현 |
@@ -18,7 +18,9 @@
 
 - 추가 필드를 모두 LLM 출력에 넣지 않는다. 실행 메타데이터·버전·ID·필터 결과는 코드가 채운다.
 - 계약 모델은 불변이다. 값을 바꿀 때는 `evolve(...)`로 새 객체를 만든다. `model_copy(update=...)`는 검증을 건너뛰므로 쓰지 않는다.
-- 계약의 텍스트 필드는 앞뒤 공백을 지운다. 단, 추출한 원문(`RawRequirement.text`)은 `SourceText` 타입으로 앞뒤 공백·줄바꿈까지 그대로 보존한다.
+- 이름 규칙: `source_` = 원문에서 온 값(코드가 복사, 해석하지 않음. 추출 확인에서 고친 값도 원문으로 보고 같은 칸에 둠. 앞뒤 공백까지 보존하는 칸은 `source_text`뿐이고, 나머지 `source_` 칸은 다른 텍스트 칸처럼 앞뒤 공백을 지운다) / `draft_` = LLM이 낸 값(사람 확인 전) / 접두어 없음 = 최종 또는 코드 계산값. 클래스는 맨 이름 = 저장 모델, `…Draft` = LLM 출력.
+- 응락수준·중요도 같은 원문 값은 MoSCoW 등으로 바꾸지 않고 문자열 그대로 둔다. 요구사항을 분할하면 부모 값을 그대로 쓴다.
+- 계약의 텍스트 필드는 앞뒤 공백을 지운다. 단, 추출한 원문(`SourceRequirement.source_text`)은 `SourceText` 타입으로 앞뒤 공백·줄바꿈까지 그대로 보존한다.
 - LLM 출력 모델(예: FindingDraft)과 저장 모델(Finding)을 나눈다. `id`·`source`·`fingerprint`·`iteration`은 코드가 붙인다.
 - `source_ref`는 **구조체**로 둔다 (ADR-0009). 문자열 인코딩은 파서마다 형식이 달라지고 비교·검증이 어렵다.
 
@@ -32,13 +34,13 @@
 - 사람이 원본 파일에서 바로 찾는 번호(행·쪽)는 1부터, 파서가 매기는 순서(블록·구역·문단·표)는 0부터다.
 - 화면 표기는 `SourceRef.display()`가 만든다. 저장·비교는 구조체로 한다.
 - 엑셀·CSV는 **요구사항 1건 = 1행**을 전제로 한다. 한 요구사항이 여러 행에 걸치는 양식은 입력 양식 결정(ADR-0003)에서 다룬다.
-- HWP 5.0 파일은 HWPX로 변환한 뒤 추출한다. 그래서 `kind`에 `hwp`는 없고 위치는 `hwpx` 기준으로 기록한다. 변환 방법은 ADR-0004·#24에서 정한다.
+- HWP 5.0 파일은 HWPX로 변환한 뒤 추출한다. 그래서 `file_format`에 `hwp`는 없고 위치는 `hwpx` 기준으로 기록한다. 변환 방법은 ADR-0004·#24에서 정한다.
 
 ### LLM 출력 모델과 저장 모델
 
 | 단계 | LLM 출력 (`*Draft`) | 저장 모델 | 코드가 채우는 필드 |
 |---|---|---|---|
-| A01 | `RequirementDraft` (원문 블록 ID로 연결) | `Requirement` | `id`, `source_id`, `source_ref`, `parent_id`, `original_text`, `analysis_version` |
+| A01 | `RequirementDraft` (원문 블록 ID로 연결) | `Requirement` | `id`, `source_id`, `source_ref`, `parent_id`, `draft_text`, `source_text`, `source_acceptance_level`, `analysis_version` |
 | A02 | `FunctionDraft` | `Function` | `id`, `entity_ops`(A03 전까지 비움) |
 | A03 | `EntityDesignDraft` (`EntityDraft`·`AttributeDraft`·`EntityOpDraft`) | `Entity`, `Attribute`, `EntityOp` | `id`, `pack`, 엔티티 이름 → ID 해석 |
 | A04 | `RelationshipDraft` (엔티티 이름으로 부모·자식 지정) | `Relationship` | `id`, 이름 → 엔티티 ID 해석, FK 파생 |

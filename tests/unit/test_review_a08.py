@@ -18,9 +18,9 @@ SNAPSHOT_TEXT = "확정한 거래는 거래 당시의 품목명을 그대로 보
 def _requirement(text: str) -> Requirement:
     return Requirement(
         id="REQ-01",
-        source_ref={"kind": "csv", "row": 2},
+        source_ref={"file_format": "csv", "row": 2},
         text=text,
-        original_text=text,
+        draft_text=text,
         type="FR",
         analysis_version=1,
     )
