@@ -18,7 +18,7 @@ flowchart LR
 ```
 
 - 실행기는 API와 같은 배포 단위로 시작할 수 있다. 다만 API 요청 스레드에서 장시간 작업을 동기로 수행하지 않는다.
-- 제안: 영속 run 레코드 + 작업 claim/lease로 실행기를 구동하고, 외부 메시지 큐는 두지 않는다. 프로세스가 죽으면 lease 만료와 체크포인트를 확인해 한 실행자만 재개한다. 확정은 ADR-0012.
+- 영속 run 레코드 + 작업 lease로 실행기를 구동하고, 외부 메시지 큐는 두지 않는다. 프로세스가 죽으면 lease 만료와 체크포인트를 확인해 한 실행자만 재개한다. 실행 수, lease 시간, 저장 순서, 취소 규칙은 ADR-0012.
 - 로컬은 Docker PostgreSQL, 배포는 AWS Docker 컨테이너. 같은 이미지를 쓴다 (ADR-0013).
 
 ## 실행 흐름
@@ -121,7 +121,7 @@ stateDiagram-v2
     completed --> [*]
 ```
 
-- 어느 단계에서든 `failed`, 또는 `cancel_requested` → `cancelled`로 갈 수 있다.
+- 어느 단계에서든 `failed`, 또는 `cancel_requested` → `cancelled`로 갈 수 있다. `queued`와 사람 확인 대기 중에는 바로 `cancelled`로 간다 (ADR-0012).
 - `failed` 복구는 오류 종류와 마지막 checkpoint를 명시하며 무조건 처음부터 다시 실행하지 않는다.
 - 각 단계는 `run_id`, `revision`, `iteration`, 입력 해시를 갖는다.
 - 병렬 가지는 별도 결과 필드에 기록한다. 합류는 기대 가지 집합과 같은 revision인지 확인하며, 한 가지의 실패를 빈 결과로 대체하지 않는다.
