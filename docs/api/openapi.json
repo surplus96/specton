@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.1",
   "info": {
-    "title": "Specton 실행 제어 API — 초안",
+    "title": "Specton 실행 제어 API",
     "version": "0.1.0",
-    "description": "계약 제안 초안. 구현·인증 완료 상태가 아니며 계약 동결(ADR-0009) 전 검토한다. 설명은 docs/06-api.md."
+    "description": "동결된 계약 (2026-10-26, #48, ADR-0009). 서버 구현은 진행 중이며 변경은 contract-change로 한다. 설명은 docs/06-api.md."
   },
   "security": [
     {
