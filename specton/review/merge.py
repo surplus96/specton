@@ -14,7 +14,7 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from specton.contracts import BranchResult, DesignState, Finding
+from specton.contracts import BranchResult, DesignState, Finding, Requirement
 from specton.contracts.findings import Evidence, FindingSource, Severity
 from specton.review.rework import earliest_stage
 
@@ -64,7 +64,7 @@ def merge_review(
 
     llm_findings = [f for b in expected if b in joined for f in joined[b].findings]
     targets = _known_targets(state)
-    texts = {r.id: _normalize(r.text) for r in state.requirements}
+    texts = {r.id: _quotable_texts(r) for r in state.requirements}
     checked = [(f, _ground(f, targets, texts)) for f in llm_findings]
     rejected = tuple(RejectedFinding(f, *problem) for f, problem in checked if problem)
     for r in rejected:
@@ -111,7 +111,7 @@ def _known_targets(state: DesignState) -> frozenset[str]:
 
 
 def _ground(
-    finding: Finding, targets: frozenset[str], texts: Mapping[str, str]
+    finding: Finding, targets: frozenset[str], texts: Mapping[str, Sequence[str]]
 ) -> tuple[RejectReason, str] | None:
     """LLM 지적의 대상·근거가 현재 입력에 있는지. 문제가 있으면 첫 문제를 돌려준다."""
     if finding.source is FindingSource.RULE:
@@ -126,11 +126,19 @@ def _ground(
     return None
 
 
-def _ground_evidence(e: Evidence, texts: Mapping[str, str]) -> tuple[RejectReason, str] | None:
+def _quotable_texts(requirement: Requirement) -> tuple[str, ...]:
+    """인용 근거로 인정하는 문장: 최종 문장과 원문. 대체된 LLM 초안(`draft_text`)은 뺀다."""
+    texts = (requirement.text, requirement.source_text)
+    return tuple(_normalize(t) for t in texts if t is not None)
+
+
+def _ground_evidence(
+    e: Evidence, texts: Mapping[str, Sequence[str]]
+) -> tuple[RejectReason, str] | None:
     """인용이 근거 요구사항 문장에 그대로 있는지. req_id가 없으면 어느 요구사항이든 된다."""
     if e.req_id is not None and e.req_id not in texts:
         return "unknown_req_id", e.req_id
-    pool = [texts[e.req_id]] if e.req_id is not None else texts.values()
+    pool = texts[e.req_id] if e.req_id is not None else [t for ts in texts.values() for t in ts]
     quote = _normalize(e.quote)
     if any(quote in text for text in pool):
         return None

@@ -215,7 +215,7 @@ def test_a02_raises_refusal() -> None:
 2·3단계는 `specton/review/merge.py`의 `merge_review(state, results, expected, rule_findings=...)`가 한다 (#18). 결과(`ReviewMerge.findings`)를 4·5단계인 `decide_rework`에 넘긴다.
 
 - 합류: 현재 revision의 결과만 받는다. 다른 revision·설정에 없는 가지·중복 결과는 오류다. 실패하거나 빠진 가지는 `failed_branches`에 남기고(`complete=False`) 성공한 가지의 지적으로 진행한다. 전체 성공으로 처리하지 않는다.
-- 근거 확인: LLM 지적의 대상(`kind:id`)이 현재 설계에 없거나, `evidence.req_id`가 없거나, 인용이 그 요구사항 문장에 없으면 제외하고 `rejected`에 사유(`unknown_target`·`unknown_req_id`·`quote_not_found`)를 남긴다. 인용은 줄바꿈·연속 공백 차이만 무시한다. 규칙 지적은 코드가 만들므로 확인하지 않는다.
+- 근거 확인: LLM 지적의 대상(`kind:id`)이 현재 설계에 없거나, `evidence.req_id`가 없거나, 인용이 그 요구사항의 최종 문장(`text`)이나 원문(`source_text`)에 없으면 제외하고 `rejected`에 사유(`unknown_target`·`unknown_req_id`·`quote_not_found`)를 남긴다. 인용은 줄바꿈·연속 공백 차이만 무시한다. 규칙 지적은 코드가 만들므로 확인하지 않는다.
 - 병합: 지문이 같은 지적만 합친다. 첫 지적을 남기고 근거는 모두 보존하며, 심각도는 가장 높게, `target_stage`는 가장 앞 단계로 한다. 규칙 지적과 LLM 지적은 대상이 같아도 따로 남긴다.
 - 지문은 `specton/review/fingerprint.py`의 `fingerprint(origin, kind, targets)`로 만든다. `origin`은 LLM 지적이면 `reviewer_id`, 규칙 지적이면 `rule_code`다. 규칙 검사(#15)도 이 함수를 쓴다.
 
