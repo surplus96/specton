@@ -139,6 +139,45 @@ class TestGrounding:
 
         assert self._rejected(finding) == [("quote_not_found", "REQ-01: 품목은 삭제할 수 없다")]
 
+    @staticmethod
+    def _edited_state() -> DesignState:
+        """사용자가 문장을 고쳐 text·draft_text·source_text가 모두 다른 상태."""
+        state = _state()
+        edited = state.requirements[0].evolve(
+            text="수불 문서에는 품목 내역을 등록한다.",
+            draft_text="수불 문서는 내역을 가진다.",
+            source_text="수불 문서에는\n  하나 이상의 품목 내역을 등록한다.",
+        )
+        return state.evolve(requirements=[edited])
+
+    @pytest.mark.parametrize("req_id", ["REQ-01", None])
+    def test_accepts_quote_found_only_in_source_text(self, req_id: str | None) -> None:
+        finding = _finding(1, evidence=[{"req_id": req_id, "quote": "하나 이상의 품목 내역"}])
+
+        merged = merge_review(
+            self._edited_state(), [_branch("A05", finding), _branch("A07")], EXPECTED
+        )
+
+        assert (merged.findings, merged.rejected) == ((finding,), ())
+
+    def test_accepts_quote_from_final_text_when_source_text_differs(self) -> None:
+        finding = _finding(1, evidence=[{"req_id": "REQ-01", "quote": "품목 내역을 등록한다"}])
+
+        merged = merge_review(
+            self._edited_state(), [_branch("A05", finding), _branch("A07")], EXPECTED
+        )
+
+        assert merged.findings == (finding,)
+
+    def test_rejects_quote_found_only_in_superseded_draft(self) -> None:
+        finding = _finding(1, evidence=[{"req_id": "REQ-01", "quote": "내역을 가진다"}])
+
+        merged = merge_review(
+            self._edited_state(), [_branch("A05", finding), _branch("A07")], EXPECTED
+        )
+
+        assert [r.reason for r in merged.rejected] == ["quote_not_found"]
+
     def test_accepts_known_attribute_and_function_targets(self) -> None:
         finding = _finding(
             1,

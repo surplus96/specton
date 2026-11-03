@@ -126,6 +126,33 @@ class TestImmutability:
         assert isinstance(updated.requirements, tuple)
 
 
+class TestSourceRequirementsInState:
+    @staticmethod
+    def _source(text: str = "  입고를 등록한다\n") -> SourceRequirement:
+        return SourceRequirement(
+            document_id="DOC-1",
+            block_id="B-1",
+            source_ref=SourceRef(file_format="csv", row=2),
+            source_text=text,
+            extraction_status="pass",
+        )
+
+    def test_defaults_to_empty(self) -> None:
+        assert DesignState(run_id="run-1").source_requirements == ()
+
+    def test_stores_sources_as_tuple(self) -> None:
+        state = DesignState(run_id="run-1").evolve(source_requirements=[self._source()])
+
+        assert isinstance(state.source_requirements, tuple)
+
+    def test_source_text_survives_a_checkpoint_round_trip(self) -> None:
+        state = DesignState(run_id="run-1", source_requirements=[self._source()])
+
+        restored = DesignState.model_validate_json(state.model_dump_json())
+
+        assert restored.source_requirements[0].source_text == "  입고를 등록한다\n"
+
+
 class TestSourceRef:
     def test_each_kind_requires_its_locator(self) -> None:
         assert SourceRef(file_format="csv", row=3).display() == "3행"

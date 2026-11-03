@@ -10,7 +10,7 @@ from pydantic import Field
 from specton.contracts.base import Contract, NonEmptyText, ObjectId
 from specton.contracts.design import Entity, Function, Relationship
 from specton.contracts.findings import Finding
-from specton.contracts.requirements import Requirement
+from specton.contracts.requirements import Requirement, SourceRequirement
 
 
 class RunState(StrEnum):
@@ -69,6 +69,7 @@ class DesignState(Contract):
     status: RunState = RunState.QUEUED
     interrupt_id: str | None = None
     versions: VersionInfo = Field(default_factory=VersionInfo)
+    source_requirements: tuple[SourceRequirement, ...] = ()  # 추출 원문. 코드가 채운다
     requirements: tuple[Requirement, ...] = ()
     functions: tuple[Function, ...] = ()
     entities: tuple[Entity, ...] = ()
