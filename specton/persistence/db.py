@@ -37,7 +37,7 @@ def create_pool(settings: Settings, *, schema: str | None = None, open: bool = T
 
 
 def apply_schema(pool: Pool) -> None:
-    """플랫폼 저장 표를 만든다. 이미 있으면 그대로 둔다."""
+    """플랫폼 저장 표를 만든다. 이미 있는 표는 지우지 않고 빠진 칸만 더한다."""
     sql = files("specton.persistence").joinpath("schema.sql").read_text(encoding="utf-8")
     with pool.connection() as conn, conn.transaction():
         # 고정된 패키지 파일이다. 여러 문장이라 prepared statement로 보내지 않는다

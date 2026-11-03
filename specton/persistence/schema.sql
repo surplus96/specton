@@ -11,6 +11,9 @@ CREATE TABLE IF NOT EXISTS run (
         'completed', 'failed', 'cancel_requested', 'cancelled')),
     revision      integer NOT NULL DEFAULT 0 CHECK (revision >= 0),
     iteration     integer NOT NULL DEFAULT 0 CHECK (iteration >= 0),
+    stage         text,
+    interrupt     jsonb,  -- 현재 사람 확인 요청 (Interrupt). 대기 상태에서만 값이 있다
+    error         jsonb,  -- 실패 원인 (Error). failed에서만 값이 있다
     pack          text NOT NULL,
     pack_version  text,
     model_config  jsonb NOT NULL DEFAULT '{}',
@@ -18,6 +21,10 @@ CREATE TABLE IF NOT EXISTS run (
     created_at    timestamptz NOT NULL DEFAULT now(),
     updated_at    timestamptz NOT NULL DEFAULT now()
 );
+-- #108 스키마로 이미 만든 DB에도 칸을 더한다 (#110)
+ALTER TABLE run ADD COLUMN IF NOT EXISTS stage text;
+ALTER TABLE run ADD COLUMN IF NOT EXISTS interrupt jsonb;
+ALTER TABLE run ADD COLUMN IF NOT EXISTS error jsonb;
 CREATE INDEX IF NOT EXISTS run_owner_created ON run (owner_ref, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS document (
