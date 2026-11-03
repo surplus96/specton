@@ -36,7 +36,7 @@ STAGE_NODES: Mapping[TargetStage, str] = {
     TargetStage.DATA_MODEL: "a03",
 }
 # 순차 노드가 끝난 뒤의 run 상태 (03 문서 상태도). 병렬 가지와 A09는 상태를 바꾸지 않는다.
-# A09는 자동 재작업(reviewing)과 HITL 2 수정 요청(awaiting_review) 양쪽에서 오기 때문이다.
+# A09는 자동 재작업(reviewing)과 HITL 2 수정 요청(designing) 양쪽에서 오기 때문이다.
 STAGE_STATUS: Mapping[str, RunState] = {
     "parse": RunState.PARSING,
     "a01": RunState.ANALYSING,
@@ -46,6 +46,12 @@ STAGE_STATUS: Mapping[str, RunState] = {
     "normalize": RunState.DESIGNING,
     "rules": RunState.REVIEWING,
     "export": RunState.EXPORTING,
+}
+# HITL 2 답을 받은 뒤 상태. resume API(#110)가 바꾸는 상태와 같아야 실행기 저장이 되돌아가지 않는다.
+# 보류는 상태를 바꾸지 않고 다시 묻는다 (06 문서 resume).
+REVIEW_STATUS: Mapping[str, RunState] = {
+    "approve": RunState.EXPORTING,
+    "revise": RunState.DESIGNING,
 }
 
 
@@ -180,12 +186,17 @@ def _waiting(status: RunState) -> Callable[[GraphState], dict[str, Any]]:
 
 def _ask_requirements(state: GraphState) -> dict[str, Any]:
     answer = interrupt({"kind": "requirements"})
-    return {"requirements_answer": answer}
+    design = state["design"].evolve(status=RunState.DESIGNING)
+    return {"requirements_answer": answer, "design": design}
 
 
 def _ask_review(state: GraphState) -> dict[str, Any]:
     response = interrupt({"kind": "review", "hitl_reason": state.get("hitl_reason")})
-    return {"review_response": response, "revising": response.get("decision") == "revise"}
+    decision = response.get("decision")
+    update: dict[str, Any] = {"review_response": response, "revising": decision == "revise"}
+    if decision in REVIEW_STATUS:
+        update["design"] = state["design"].evolve(status=REVIEW_STATUS[decision])
+    return update
 
 
 def _merge(state: GraphState) -> dict[str, Any]:
@@ -261,4 +272,4 @@ def _next_after_review(state: GraphState) -> str:
         return "export"
     if decision == "revise":
         return "a09"
-    return END  # 보류: 내보내지 않고 끝낸다
+    return "wait_review"  # 보류: 내보내지 않고 같은 확인을 다시 기다린다

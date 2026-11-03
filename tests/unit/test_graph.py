@@ -182,15 +182,46 @@ def test_resumes_from_checkpoint_with_a_new_graph_instance() -> None:
     assert "a01" not in restarted.visited
 
 
-def test_hold_at_final_review_ends_without_export() -> None:
+def test_hold_at_final_review_keeps_waiting_without_export() -> None:
+    """보류는 같은 확인 요청으로 계속 기다린다 (06 문서 resume, #110)."""
     run = _Run()
     run.start()
     run.resume(REQUIREMENTS_OK)
 
     held = run.resume({"kind": "review", "decision": "hold", "feedback": "보류"})
 
-    assert "export" not in run.visited
+    assert _interrupt(held)["kind"] == "review"
     assert held["design"].status == "awaiting_review"
+    assert "export" not in run.visited
+
+
+@pytest.mark.parametrize(
+    ("answer", "status"),
+    [
+        (REQUIREMENTS_OK, RunState.DESIGNING),
+        (APPROVE, RunState.EXPORTING),
+        ({"kind": "review", "decision": "revise", "feedback": ""}, RunState.DESIGNING),
+    ],
+)
+def test_answer_moves_to_the_same_status_as_the_resume_api(
+    answer: Mapping[str, Any], status: RunState
+) -> None:
+    """답을 받은 확인 노드는 resume API(#110)가 바꾼 상태와 같은 상태를 남긴다.
+
+    그래야 실행기가 그 노드 뒤에 저장해도 대기 상태로 되돌아가지 않는다.
+    """
+    run = _Run({"a09": lambda state: {"router_stage": TargetStage.FUNCTIONS}})
+    run.start()
+    if answer["kind"] == "review":
+        run.resume(REQUIREMENTS_OK)
+    hitl = "hitl_requirements" if answer["kind"] == "requirements" else "hitl_review"
+
+    updates = list(
+        run.graph.stream(Command(resume=dict(answer)), run.config, stream_mode="updates")
+    )
+
+    (answered,) = [u[hitl] for u in updates if hitl in u]
+    assert answered["design"].status is status
 
 
 @pytest.mark.parametrize(
@@ -221,6 +252,36 @@ def test_automatic_rework_follows_the_state_diagram() -> None:
 
     invalid = [(a, b) for a, b in pairwise(seen) if not can_transition(a, b)]
     assert invalid == []
+    assert seen[-1] is RunState.COMPLETED
+
+
+def test_requirements_rework_follows_the_state_diagram() -> None:
+    """요구사항 단계 재작업은 A01과 HITL 1을 다시 거친다 (`reviewing → analysing`)."""
+    reviewer = _reviewer(
+        lambda d: (
+            (_finding("fp-1", TargetStage.REQUIREMENTS, d.iteration),) if d.revision == 0 else ()
+        )
+    )
+    run = _Run({"A05": reviewer})
+
+    seen = run.statuses(REQUIREMENTS_OK, REQUIREMENTS_OK, APPROVE)
+
+    invalid = [(a, b) for a, b in pairwise(seen) if not can_transition(a, b)]
+    assert invalid == []
+    assert (RunState.REVIEWING, RunState.ANALYSING) in pairwise(seen)
+    assert seen[-1] is RunState.COMPLETED
+
+
+def test_revise_to_requirements_follows_the_state_diagram() -> None:
+    """HITL 2 수정 요청을 A09가 요구사항 단계로 보내면 `designing → analysing`이다."""
+    run = _Run({"a09": lambda state: {"router_stage": TargetStage.REQUIREMENTS}})
+    revise = {"kind": "review", "decision": "revise", "feedback": "요구사항 보완"}
+
+    seen = run.statuses(REQUIREMENTS_OK, revise, REQUIREMENTS_OK, APPROVE)
+
+    invalid = [(a, b) for a, b in pairwise(seen) if not can_transition(a, b)]
+    assert invalid == []
+    assert (RunState.DESIGNING, RunState.ANALYSING) in pairwise(seen)
     assert seen[-1] is RunState.COMPLETED
 
 
