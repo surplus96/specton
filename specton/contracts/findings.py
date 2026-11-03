@@ -17,6 +17,11 @@ class Severity(StrEnum):
 
 
 class FindingSource(StrEnum):
+    """지적 출처. `rule`은 규칙 검사(RULE-01~07, 표준 준수 SC-01~06), `llm`은 리뷰어(A05~A08).
+
+    `critical`은 `rule`만 쓸 수 있다 (ADR-0010, #73).
+    """
+
     RULE = "rule"
     LLM = "llm"
 
@@ -55,6 +60,11 @@ class FindingDraft(Contract):
 
 
 class Finding(FindingDraft):
+    """지적 저장 모델. `id`·`source`·`fingerprint`·`iteration`은 코드가 붙인다.
+
+    규칙 지적은 `rule_code`(RULE·SC 코드, #87)만, LLM 지적은 `reviewer_id`만 가진다.
+    """
+
     id: ObjectId
     source: FindingSource
     reviewer_id: str | None = None  # source=llm: A05~A08 등 관점
