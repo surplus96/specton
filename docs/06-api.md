@@ -8,7 +8,7 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 
 - 응답은 UTF-8 JSON, 파일은 해당 MIME 타입, 진행 이벤트는 `text/event-stream`.
 - 장기 실행 요청은 **202**와 `run_id`를 반환한다. 202는 설계 성공을 뜻하지 않는다.
-- 서버 세션의 소유자 컨텍스트로 실행 접근을 검사한다. 세션 발급 방식은 미정 (ADR-0011).
+- 서버 세션의 소유자 컨텍스트로 실행 접근을 검사한다. 쿠키가 없으면 서버가 무작위 값을 발급해 `specton_session` 쿠키로 주고 그 값을 `owner_ref`로 쓴다. 다른 소유자의 run은 404다 (ADR-0011).
 - 상태를 바꾸는 요청은 `expected_revision`을 받아 낙관적 잠금으로 처리한다.
 - 저장소 파일 경로·비밀값·내부 예외를 응답에 넣지 않는다.
 
@@ -22,7 +22,7 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 | `GET /runs/{id}/events` | `Last-Event-ID` 선택 | 200 SSE 스트림 | 404, 409 이벤트 재조회 필요 |
 | `GET /runs/{id}/view` | `section`, `revision` 선택 | 200 화면용 JSON (추출 블록·요구사항·설계 모델·지적·산출물 목록) | 404, 409 다른 revision |
 | `POST /runs/{id}/resume` | `interrupt_id`, `expected_revision`, `response` | 202 재개 상태 | 409 오래된/이미 응답한 interrupt, 422 잘못된 답변 |
-| `POST /runs/{id}/cancel` | `expected_revision` | 202 취소 요청 상태 | 409 이미 완료/충돌 |
+| `POST /runs/{id}/cancel` | `expected_revision` | 202 취소 요청 상태 (`queued`·사람 확인 대기 중이면 바로 `cancelled`, ADR-0012) | 409 이미 완료/충돌 |
 | `GET /runs/{id}/artifacts/{kind}` | `format`, `revision` | 200 파일 | 404, 409 미생성/다른 버전, 422 형식 불가 |
 | `GET /health` | — | 200 기동 상태 (구현됨) | — |
 

@@ -1090,7 +1090,7 @@
         "type": "apiKey",
         "in": "cookie",
         "name": "specton_session",
-        "description": "개발용 서버 세션 후보. 발급/만료 방식은 ADR-0011에서 결정. 모든 run 접근은 서버 owner 검사."
+        "description": "서버가 발급하는 세션 쿠키. 값이 owner_ref이며 만료는 없다(시연용). 모든 run 접근은 서버 owner 검사 (ADR-0011)."
       }
     }
   }
