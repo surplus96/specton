@@ -1,19 +1,14 @@
 """플랫폼 저장·lease·취소 (ADR-0012). 로컬 DB가 필요하다: `docker compose up -d db`.
 
-테스트마다 임시 schema를 만들어 쓰고 지운다. 실행: `uv run pytest -m db`
+테스트마다 임시 schema를 쓴다(conftest.py). 실행: `uv run pytest -m db`
 """
 
-from collections.abc import Iterator
-from uuid import uuid4
-
-import psycopg
 import pytest
 
-from specton.config import Settings
+from specton.contracts import Interrupt, SseEventType
 from specton.contracts import RunState as S
-from specton.contracts import SseEventType
 from specton.persistence import lease
-from specton.persistence.db import Pool, apply_schema, create_checkpointer, create_pool
+from specton.persistence.db import Pool, apply_schema, create_checkpointer
 from specton.persistence.errors import (
     InvalidTransitionError,
     LeaseLostError,
@@ -35,25 +30,8 @@ pytestmark = pytest.mark.db
 OWNER = "owner-a"
 LEASE = 60
 EXPIRED = -1  # 이미 만료된 lease를 만든다
-
-
-@pytest.fixture
-def pool() -> Iterator[Pool]:
-    settings = Settings(_env_file=None)
-    schema = f"test_{uuid4().hex[:12]}"
-    try:
-        with psycopg.connect(str(settings.app_database_url), autocommit=True) as admin:
-            admin.execute(f"CREATE SCHEMA {schema}")  # type: ignore[arg-type]
-    except psycopg.OperationalError:
-        pytest.skip("로컬 DB가 없습니다 (docker compose up -d db)")
-    p = create_pool(settings, schema=schema)
-    try:
-        apply_schema(p)
-        yield p
-    finally:
-        p.close()
-        with psycopg.connect(str(settings.app_database_url), autocommit=True) as admin:
-            admin.execute(f"DROP SCHEMA {schema} CASCADE")  # type: ignore[arg-type]
+ASK_REQ = Interrupt(interrupt_id="int-req", kind="requirements", message="요구사항 확인")
+ASK_EXT = Interrupt(interrupt_id="int-ext", kind="extraction", message="추출 확인")
 
 
 def _running(pool: Pool, holder: str = "w1") -> str:
@@ -83,6 +61,18 @@ def test_schema_can_be_applied_twice(pool: Pool) -> None:
         "run", "document", "source_block", "model_snapshot", "finding",
         "approval", "artifact", "run_event", "job_lease",
     }  # fmt: skip
+
+
+def test_schema_adds_new_run_columns_to_an_existing_table(pool: Pool) -> None:
+    """#108 스키마로 만든 DB에 다시 적용하면 run의 새 칸이 생긴다 (#110 리뷰)."""
+    with pool.connection() as conn:
+        run = create_run(conn, OWNER, "inventory")
+        conn.execute("ALTER TABLE run DROP COLUMN stage, DROP COLUMN interrupt, DROP COLUMN error")
+
+    apply_schema(pool)
+
+    with pool.connection() as conn:
+        assert get_run(conn, run.run_id, OWNER).stage is None
 
 
 def test_checkpointer_tables_are_created_in_the_same_database(pool: Pool) -> None:
@@ -138,7 +128,15 @@ def test_released_run_waits_without_a_holder(pool: Pool) -> None:
     run_id = _running(pool)
     with pool.connection() as conn:
         record_progress(conn, run_id, "w1", "cp-2", status=S.ANALYSING, revision=0)
-        record_progress(conn, run_id, "w1", "cp-3", status=S.AWAITING_REQUIREMENTS, revision=1)
+        record_progress(
+            conn,
+            run_id,
+            "w1",
+            "cp-3",
+            status=S.AWAITING_REQUIREMENTS,
+            revision=1,
+            interrupt=ASK_REQ,
+        )
         lease.release(conn, run_id, "w1")
 
         assert lease.claimable_runs(conn, 10) == []  # HITL 대기는 실행 대상이 아니다
@@ -146,6 +144,23 @@ def test_released_run_waits_without_a_holder(pool: Pool) -> None:
 
 
 # 진행 기록
+
+
+def test_interrupt_is_given_only_in_waiting_states(pool: Pool) -> None:
+    run_id = _running(pool)
+    with pool.connection() as conn:
+        with pytest.raises(ValueError):
+            record_progress(conn, run_id, "w1", "cp-2", status=S.AWAITING_INPUT, revision=0)
+        with pytest.raises(ValueError):
+            record_progress(
+                conn, run_id, "w1", "cp-2", status=S.ANALYSING, revision=0, interrupt=ASK_EXT
+            )
+
+        record_progress(
+            conn, run_id, "w1", "cp-2", status=S.AWAITING_INPUT, revision=0, interrupt=ASK_EXT
+        )
+
+        assert get_run(conn, run_id, OWNER).interrupt == ASK_EXT
 
 
 def test_progress_writes_status_revision_and_events_together(pool: Pool) -> None:
@@ -200,7 +215,7 @@ def test_event_ids_keep_increasing_and_replay_after_an_id(pool: Pool) -> None:
         )  # fmt: skip
         record_progress(
             conn, run_id, "w1", "cp-3", status=S.AWAITING_REQUIREMENTS, revision=0,
-            events=[NewEvent(SseEventType.INTERRUPT, "c")],
+            interrupt=ASK_REQ, events=[NewEvent(SseEventType.INTERRUPT, "c")],
         )  # fmt: skip
 
         assert [e.id for e in events_after(conn, run_id, OWNER, 0)] == [1, 2, 3]
@@ -229,7 +244,9 @@ def test_cancel_without_a_runner_finishes_immediately(pool: Pool, waiting: bool)
     with pool.connection() as conn:
         if waiting:
             run_id = _running(pool)
-            record_progress(conn, run_id, "w1", "cp-2", status=S.AWAITING_INPUT, revision=0)
+            record_progress(
+                conn, run_id, "w1", "cp-2", status=S.AWAITING_INPUT, revision=0, interrupt=ASK_EXT
+            )
             lease.release(conn, run_id, "w1")
         else:
             run_id = str(create_run(conn, OWNER, "inventory").run_id)

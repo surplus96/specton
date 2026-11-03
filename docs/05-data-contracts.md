@@ -1,8 +1,40 @@
 # 데이터 계약
 
-> 상태: **초안** (Pydantic 구현 완료, 2인 승인 후 동결)
+> 상태: **동결** (2026-10-26, #48). 이후 변경은 `contract-change`로 하고 재동결 절차는 없다
 > 구현: `specton/contracts/` (`base`·`requirements`·`design`·`findings`·`state`·`api`)
 > 변경 규칙: `specton/contracts/` 변경은 `contract-change` 라벨과 2인 승인. R1 작성 PR의 예외는 [CONTRIBUTING](../CONTRIBUTING.md)
+
+## 계약 현황
+
+| 구분 | 내용 |
+|---|---|
+| 주관 | R3: 계약 모델·문서 유지 |
+| 변경 확인 | R2: `contract-change` PR의 의미·문서·테스트를 확인해 코멘트 |
+| 승인 | R1 + 계약 영향을 받는 담당 1명. R1이 작성한 변경은 CONTRIBUTING의 예외 절차 |
+| 변경 요청 | 해당 이슈에 코멘트 |
+
+동결 이후 변경
+
+| PR | 내용 |
+|---|---|
+| #73 | `critical` 심각도는 규칙 지적만 (ADR-0010) |
+| #87 | 표준 준수 검사 규칙 코드 `SC-01~06` |
+| #94 | 이름 규칙 `source_`·`draft_` 통일, 원문 위치 `kind` → `file_format` |
+| #98 | `DesignState.source_requirements`, 근거 인용에 `source_text` 허용 |
+
+남은 작업: 계약 클래스 docstring (#105, API는 #95 뒤 #106), requirements·추적 검사 설명 (#107), FK 파생·참조 키 (#12), 값 범위 제약 (#15)
+
+### 모델별 `kind` 뜻
+
+| 필드 | 값 | 뜻 |
+|---|---|---|
+| `ArtifactRef.kind` | `requirements`·`functions`·`erd`·`ddl`·`rtm`·`review` | 산출물 종류. 파일 형식은 `file_format` |
+| `TraceIssue.kind` | `missing_req_ids`·`unknown_req_id`·`unknown_entity_ref`·`duplicate_id` | 추적 무결성 위반 종류. 대상 객체 종류는 `object_kind` |
+| `FindingTarget.kind` | `requirement`·`function`·`entity`·`attribute`·`relationship` | 지적 대상 객체 종류 |
+| `FindingDraft.kind` | 자유 문자열 | 지적 유형 (리뷰어가 붙인 이름) |
+| `QualityIssue.kind` | 자유 문자열 | A01 품질 경고 유형 (모호 표현 등) |
+| `Interrupt.kind` | `extraction`·`requirements`·`review` | HITL 멈춤 지점 |
+| `ExtractionResponse`·`RequirementsResponse`·`ReviewResponse`의 `kind` | 각 지점 이름 하나 | resume 응답 판별자. `Interrupt.kind`와 같은 값 (#95 결과에 따라 #106에서 확정) |
 
 ## 단계 간 모델
 
@@ -18,7 +50,7 @@
 
 - 추가 필드를 모두 LLM 출력에 넣지 않는다. 실행 메타데이터·버전·ID·필터 결과는 코드가 채운다.
 - 계약 모델은 불변이다. 값을 바꿀 때는 `evolve(...)`로 새 객체를 만든다. `model_copy(update=...)`는 검증을 건너뛰므로 쓰지 않는다.
-- 이름 규칙: `source_` = 원문에서 온 값(코드가 복사, 해석하지 않음. 추출 확인에서 고친 값도 원문으로 보고 같은 칸에 둠. 앞뒤 공백까지 보존하는 칸은 `source_text`뿐이고, 나머지 `source_` 칸은 다른 텍스트 칸처럼 앞뒤 공백을 지운다) / `draft_` = LLM이 낸 값(사람 확인 전) / 접두어 없음 = 최종 또는 코드 계산값. 클래스는 맨 이름 = 저장 모델, `…Draft` = LLM 출력.
+- 이름 규칙: `source_` = 원문에서 온 값(코드가 복사, 해석하지 않음. 추출 확인에서 고친 값도 원문으로 보고 같은 칸에 둠. 앞뒤 공백까지 보존하는 칸은 `source_text`뿐이고, 나머지 `source_` 칸은 다른 텍스트 칸처럼 앞뒤 공백을 지운다) / `draft_` = LLM이 낸 값(사람 확인 전) / 접두어 없음 = 최종 또는 코드 계산값. 클래스는 맨 이름 = 저장 모델, `…Draft` = LLM 출력. 새 필드에는 `kind`를 단독 이름으로 쓰지 않는다 (예: `file_format`, `object_kind`). 기존 `kind`의 뜻은 [모델별 `kind` 뜻](#모델별-kind-뜻).
 - 응락수준·중요도 같은 원문 값은 MoSCoW 등으로 바꾸지 않고 문자열 그대로 둔다. 요구사항을 분할하면 부모 값을 그대로 쓴다.
 - 계약의 텍스트 필드는 앞뒤 공백을 지운다. 단, 추출한 원문(`SourceRequirement.source_text`)은 `SourceText` 타입으로 앞뒤 공백·줄바꿈까지 그대로 보존한다.
 - LLM 출력 모델(예: FindingDraft)과 저장 모델(Finding)을 나눈다. `id`·`source`·`fingerprint`·`iteration`은 코드가 붙인다.
@@ -40,10 +72,10 @@
 
 | 단계 | LLM 출력 (`*Draft`) | 저장 모델 | 코드가 채우는 필드 |
 |---|---|---|---|
-| A01 | `RequirementDraft` (원문 블록 ID로 연결) | `Requirement` | `id`, `source_id`, `source_ref`, `parent_id`, `draft_text`, `source_text`, `source_acceptance_level`, `analysis_version` |
+| A01 | `RequirementDraft` (원문 블록 ID로 연결) | `Requirement` | `id`, `source_id`, `source_ref`, `parent_id`, `text`(처음에는 `draft_text`와 같은 값), `draft_text`, `source_text`, `source_acceptance_level`, `analysis_version` |
 | A02 | `FunctionDraft` | `Function` | `id`, `entity_ops`(A03 전까지 비움) |
 | A03 | `EntityDesignDraft` (`EntityDraft`·`AttributeDraft`·`EntityOpDraft`) | `Entity`, `Attribute`, `EntityOp` | `id`, `pack`, 엔티티 이름 → ID 해석 |
-| A04 | `RelationshipDraft` (엔티티 이름으로 부모·자식 지정) | `Relationship` | `id`, 이름 → 엔티티 ID 해석, FK 파생 |
+| A04 | `RelationshipDraft` (엔티티 이름으로 부모·자식 지정) | `Relationship` | `id`, 이름 → 엔티티 ID 해석 (FK 파생은 모델 정리 #12) |
 | A05~A08 | `FindingDraft` | `Finding` | `id`, `source`, `reviewer_id`/`rule_code`, `fingerprint`, `iteration` |
 
 - LLM 출력에는 ID·버전·FK 속성을 두지 않는다. 모든 Draft는 알 수 없는 필드를 거절한다.
@@ -106,7 +138,7 @@ DDL은 `specton/persistence/schema.sql`이고 이 표와 같아야 한다. 보�
 
 | 객체 | 주요 필드 | 관계·제약 |
 |---|---|---|
-| run | `run_id`, `owner_ref`, `status`, `revision`, `iteration`, `pack`, `pack_version`, `model_config`, `last_event_id`, 시각 | revision 낙관적 잠금, 상태 전이 검사. `owner_ref`는 세션 값 (ADR-0011) |
+| run | `run_id`, `owner_ref`, `status`, `revision`, `iteration`, `stage`, `interrupt`, `error`, `pack`, `pack_version`, `model_config`, `last_event_id`, 시각 | revision 낙관적 잠금, 상태 전이 검사. `owner_ref`는 세션 값 (ADR-0011). `interrupt`는 사람 확인 대기에서만, `error`는 `failed`에서만 값이 있고 `GET /runs/{id}`는 run 행만 읽는다 |
 | document | `document_id`, `run_id`, `file_name`, `file_format`, `file_hash`, `storage_ref` | run 1:N (초기 API는 1파일), 파일 경로 노출 금지. MIME은 저장하지 않고 `file_format`에서 정한다 |
 | source_block | `block_id`, `document_id`, `source_ref`, `source_text`, `extraction_status`, `payload`(SourceRequirement) | document 1:N. 수정본·제외 표시는 ADR-0015(#95) 결론에 따른다 |
 | model_snapshot | `snapshot_id`, `run_id`, `revision`, `normalized_model`, `model_hash` | UNIQUE(run_id, revision), 승인 후 불변 |

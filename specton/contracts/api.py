@@ -28,6 +28,7 @@ class ErrorCode(StrEnum):
     UNSUPPORTED_MEDIA_TYPE = "UNSUPPORTED_MEDIA_TYPE"
     PACK_UNSUPPORTED = "PACK_UNSUPPORTED"
     INVALID_RESPONSE = "INVALID_RESPONSE"
+    INVALID_REQUEST = "INVALID_REQUEST"  # resume 밖 요청의 형식 오류 (조회 조건 등)
     # 실행 실패 원인 (`RunStatus.error`). specton.llm 예외·문서 추출 실패와 대응한다.
     LLM_REFUSED = "LLM_REFUSED"
     LLM_OUTPUT_INVALID = "LLM_OUTPUT_INVALID"

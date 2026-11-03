@@ -43,6 +43,11 @@ class VersionInfo(Contract):
 
 
 class ArtifactRef(Contract):
+    """생성한 산출물 한 건. `kind`는 산출물 종류, 파일 형식은 `file_format`이다 (#94).
+
+    `approved`는 승인본 여부다. 초안과 승인본을 구분한다 (05 문서 플랫폼 저장 모델).
+    """
+
     kind: Literal["requirements", "functions", "erd", "ddl", "rtm", "review"]
     file_format: Literal["md", "pdf", "mmd", "sql", "xlsx", "csv"]
     revision: int = Field(ge=0)

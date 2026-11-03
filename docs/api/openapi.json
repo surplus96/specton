@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.1",
   "info": {
-    "title": "Specton 실행 제어 API — 초안",
+    "title": "Specton 실행 제어 API",
     "version": "0.1.0",
-    "description": "계약 제안 초안. 구현·인증 완료 상태가 아니며 계약 동결(ADR-0009) 전 검토한다. 설명은 docs/06-api.md."
+    "description": "동결된 계약 (2026-10-26, #48, ADR-0009). 서버 구현은 진행 중이며 변경은 contract-change로 한다. 설명은 docs/06-api.md."
   },
   "security": [
     {
@@ -14,7 +14,7 @@
     "/runs": {
       "post": {
         "operationId": "createRun",
-        "summary": "요구사항 문서(Excel·CSV·PDF·HWPX·HWP) 업로드·실행 등록",
+        "summary": "요구사항 문서(Excel·CSV·HWPX) 업로드·실행 등록",
         "requestBody": {
           "required": true,
           "content": {
@@ -26,7 +26,7 @@
                   "file": {
                     "type": "string",
                     "format": "binary",
-                    "description": "허용 확장자: .xlsx, .csv, .pdf, .hwpx, .hwp"
+                    "description": "허용 확장자: .xlsx, .csv, .hwpx (.hwp는 415로 HWPX 변환 안내, PDF는 이번 범위 밖)"
                   },
                   "pack": {
                     "type": "string",
@@ -1015,6 +1015,7 @@
           "UNSUPPORTED_MEDIA_TYPE",
           "PACK_UNSUPPORTED",
           "INVALID_RESPONSE",
+          "INVALID_REQUEST",
           "LLM_REFUSED",
           "LLM_OUTPUT_INVALID",
           "LLM_UNAVAILABLE",

@@ -4,6 +4,7 @@ LLM 모델·예산·한도의 기본값은 ADR-0007을 따른다.
 """
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal, Self
 
 from pydantic import Field, PostgresDsn, SecretStr, model_validator
@@ -44,6 +45,12 @@ class Settings(BaseSettings):
     lease_seconds: int = Field(default=60, gt=0)
     lease_renew_seconds: int = Field(default=20, gt=0)
     db_pool_size: int = Field(default=10, gt=0)
+
+    # 업로드 원문·산출물 저장 위치(git 제외). 응답에는 경로를 넣지 않는다 (docs/11).
+    storage_dir: Path = Path("var/storage")
+    pack_root: Path = Path("domain_packs")
+    # SSE가 새 이벤트를 확인하는 간격. 확인할 때만 DB 연결을 빌린다 (ADR-0012).
+    sse_poll_seconds: float = Field(default=1.0, gt=0)
 
     max_upload_mb: int = Field(default=20, gt=0)
     max_structured_retries: int = Field(default=2, ge=0)

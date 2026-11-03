@@ -1,4 +1,4 @@
-"""run 저장: 생성·조회·진행 기록·취소 (05 문서 "플랫폼 저장", ADR-0012).
+"""run 저장: 생성·조회·진행 기록·재개·취소 (05 문서 "플랫폼 저장", ADR-0012).
 
 진행 기록은 run 상태·revision·run_event·holder 확인을 한 트랜잭션으로 묶는다.
 잠금 순서는 항상 run → job_lease다.
@@ -13,9 +13,25 @@ from psycopg import Connection
 from psycopg.rows import DictRow
 from psycopg.types.json import Jsonb
 
-from specton.contracts import RunState, RunStatus, RunSummary, SseEvent, SseEventData, SseEventType
+from specton.contracts import (
+    Contract,
+    Error,
+    Interrupt,
+    InterruptKind,
+    ResumeRequest,
+    RunState,
+    RunStatus,
+    RunSummary,
+    SseEvent,
+    SseEventData,
+    SseEventType,
+)
 from specton.persistence.errors import (
+    BlockingFindingsError,
+    EventReplayExpiredError,
+    InterruptStaleError,
     InvalidTransitionError,
+    ResponseMismatchError,
     RevisionConflictError,
     RunNotFoundError,
 )
@@ -30,9 +46,10 @@ _FLOW: Mapping[RunState, frozenset[RunState]] = {
     S.AWAITING_INPUT: frozenset({S.ANALYSING}),
     S.ANALYSING: frozenset({S.AWAITING_REQUIREMENTS}),
     S.AWAITING_REQUIREMENTS: frozenset({S.DESIGNING}),
-    S.DESIGNING: frozenset({S.GENERATING}),
+    # 요구사항 단계로 재작업하면 A01로 돌아간다 (03 문서 재작업 복귀, #111)
+    S.DESIGNING: frozenset({S.GENERATING, S.ANALYSING}),
     S.GENERATING: frozenset({S.REVIEWING}),
-    S.REVIEWING: frozenset({S.DESIGNING, S.AWAITING_REVIEW}),
+    S.REVIEWING: frozenset({S.DESIGNING, S.AWAITING_REVIEW, S.ANALYSING}),
     S.AWAITING_REVIEW: frozenset({S.DESIGNING, S.EXPORTING}),
     S.EXPORTING: frozenset({S.COMPLETED}),
     S.CANCEL_REQUESTED: frozenset({S.CANCELLED}),
@@ -70,29 +87,56 @@ def create_run(
     *,
     pack_version: str | None = None,
     model_config: Mapping[str, Any] | None = None,
+    run_id: UUID | None = None,
 ) -> RunStatus:
-    """`queued` 상태의 run을 만든다. 실행기가 `claimable_runs`로 찾아간다."""
+    """`queued` 상태의 run을 만든다. 실행기가 `claimable_runs`로 찾아간다.
+
+    `run_id`를 주면 그 값을 쓴다 (업로드 파일을 run별 위치에 먼저 저장할 때).
+    """
     row = conn.execute(
         """
         INSERT INTO run (run_id, owner_ref, status, pack, pack_version, model_config)
         VALUES (%s, %s, 'queued', %s, %s, %s)
         RETURNING run_id, status, revision
         """,
-        (uuid4(), owner_ref, pack, pack_version, Jsonb(dict(model_config or {}))),
+        (run_id or uuid4(), owner_ref, pack, pack_version, Jsonb(dict(model_config or {}))),
     ).fetchone()
     assert row is not None
     return RunStatus(run_id=row["run_id"], status=row["status"], revision=row["revision"])
 
 
+def add_document(
+    conn: Connection[DictRow],
+    run_id: UUID,
+    *,
+    document_id: UUID,
+    file_name: str,
+    file_format: str,
+    file_hash: str,
+    storage_ref: str,
+) -> None:
+    """업로드 문서를 run에 연결한다. `storage_ref`는 저장소 안 위치이며 응답에 넣지 않는다."""
+    conn.execute(
+        """
+        INSERT INTO document (document_id, run_id, file_name, file_format, file_hash, storage_ref)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """,
+        (document_id, run_id, file_name, file_format, file_hash, storage_ref),
+    )
+
+
 def get_run(conn: Connection[DictRow], run_id: UUID, owner_ref: str) -> RunStatus:
     """소유자의 run 상태. 없거나 다른 소유자면 RunNotFoundError (ADR-0011)."""
     row = conn.execute(
-        "SELECT run_id, status, revision FROM run WHERE run_id = %s AND owner_ref = %s",
+        """
+        SELECT run_id, status, revision, stage, interrupt, error FROM run
+        WHERE run_id = %s AND owner_ref = %s
+        """,
         (run_id, owner_ref),
     ).fetchone()
     if row is None:
         raise RunNotFoundError(str(run_id))
-    return RunStatus(run_id=row["run_id"], status=row["status"], revision=row["revision"])
+    return RunStatus.model_validate(row)
 
 
 def list_runs(
@@ -119,13 +163,21 @@ def record_progress(
     status: RunState,
     revision: int,
     iteration: int | None = None,
+    stage: str | None = None,
+    interrupt: Interrupt | None = None,
+    error: Error | None = None,
     events: Sequence[NewEvent] = (),
 ) -> list[SseEvent] | None:
     """노드가 끝난 뒤 실행기가 앱 상태를 저장한다 (ADR-0012).
 
     run 상태·revision·이벤트를 한 트랜잭션으로 쓰고, lease를 가진 실행자만 쓸 수 있다.
     같은 체크포인트를 다시 저장하면 아무것도 하지 않고 None을 돌려준다(멱등).
+    `interrupt`는 사람 확인 대기 상태에서만, `error`는 `failed`에서만 준다.
     """
+    if (interrupt is not None) != (status in WAITING_STATES):
+        raise ValueError("interrupt는 사람 확인 대기 상태에서만, 그때는 반드시 줍니다")
+    if error is not None and status is not S.FAILED:
+        raise ValueError("error는 failed 상태에서만 줍니다")
     with conn.transaction():
         current = _lock_run(conn, run_id)
         if check_holder(conn, run_id, holder) == checkpoint_id:
@@ -135,10 +187,10 @@ def record_progress(
         conn.execute(
             """
             UPDATE run SET status = %s, revision = %s, iteration = COALESCE(%s, iteration),
-                updated_at = now()
+                stage = %s, interrupt = %s, error = %s, updated_at = now()
             WHERE run_id = %s
             """,
-            (status, revision, iteration, run_id),
+            (status, revision, iteration, stage, _json(interrupt), _json(error), run_id),
         )
         saved = _append_events(conn, run_id, revision, events)
         conn.execute(
@@ -171,8 +223,84 @@ def request_cancel(
         else:
             new, event = S.CANCEL_REQUESTED, NewEvent(SseEventType.STATUS, "취소 처리 중입니다")
         conn.execute(
-            "UPDATE run SET status = %s, updated_at = now() WHERE run_id = %s", (new, run_id)
+            "UPDATE run SET status = %s, interrupt = NULL, updated_at = now() WHERE run_id = %s",
+            (new, run_id),
         )
+        events = _append_events(conn, run_id, current["revision"], [event])
+    return new, events
+
+
+# 사람 확인 지점 → 답을 받은 뒤 상태 (03 문서 상태도). review는 결정에 따라 달라진다.
+_AFTER_ANSWER: Mapping[InterruptKind, RunState] = {
+    InterruptKind.EXTRACTION: S.ANALYSING,
+    InterruptKind.REQUIREMENTS: S.DESIGNING,
+}
+_AFTER_REVIEW: Mapping[str, RunState | None] = {
+    "approve": S.EXPORTING,
+    "revise": S.DESIGNING,
+    "hold": None,  # 보류: 같은 확인 요청으로 계속 기다린다
+}
+
+
+def answer_interrupt(
+    conn: Connection[DictRow], run_id: UUID, owner_ref: str, request: ResumeRequest
+) -> tuple[RunState, list[SseEvent]]:
+    """사람 확인 응답을 받아 실행을 재개한다 (06 문서 `resume`).
+
+    같은 확인 요청에는 한 번만 답할 수 있다. 오래되었거나 이미 답한 요청이면 InterruptStaleError,
+    revision이 다르면 RevisionConflictError. 답을 받으면 실행 가능한 상태로 바꿔 실행기가
+    lease를 잡아 이어 간다. 보류(hold)는 기록만 하고 계속 기다린다.
+    """
+    response = request.response
+    with conn.transaction():
+        current = _lock_run(conn, run_id, owner_ref)
+        if current["revision"] != request.expected_revision:
+            raise RevisionConflictError(str(run_id), current["revision"])
+        interrupt = current["interrupt"]
+        if (
+            current["status"] not in WAITING_STATES
+            or interrupt is None
+            or interrupt["interrupt_id"] != request.interrupt_id
+        ):
+            raise InterruptStaleError(request.interrupt_id)
+        if interrupt["kind"] != response.kind:
+            raise ResponseMismatchError(f"{interrupt['kind']} 확인에 {response.kind} 응답")
+        if response.kind == "extraction":
+            new: RunState | None = _AFTER_ANSWER[InterruptKind.EXTRACTION]
+            if not response.confirmed:
+                new = S.CANCELLED  # 확인하지 않으면 중단한다 (#95 결론에 따라 바뀔 수 있음)
+            decision = "confirm" if response.confirmed else "stop"
+        elif response.kind == "requirements":
+            new, decision = _AFTER_ANSWER[InterruptKind.REQUIREMENTS], "answer"
+        else:
+            new, decision = _AFTER_REVIEW[response.decision], response.decision
+            if decision == "approve" and _has_blocking_findings(conn, run_id, current["revision"]):
+                raise BlockingFindingsError(str(run_id))
+        if new is None:
+            events = _append_events(
+                conn, run_id, current["revision"], [NewEvent(SseEventType.STATUS, "보류했습니다")]
+            )
+            return current["status"], events
+        conn.execute(
+            """
+            INSERT INTO approval (approval_id, run_id, snapshot_id, interrupt_id, actor_ref,
+                decision, feedback, response)
+            VALUES (%s, %s, (SELECT snapshot_id FROM model_snapshot
+                             WHERE run_id = %s AND revision = %s), %s, %s, %s, %s, %s)
+            """,
+            (
+                uuid4(), run_id, run_id, current["revision"], request.interrupt_id, owner_ref,
+                decision, getattr(response, "feedback", ""), _json(response),
+            ),
+        )  # fmt: skip
+        conn.execute(
+            "UPDATE run SET status = %s, interrupt = NULL, updated_at = now() WHERE run_id = %s",
+            (new, run_id),
+        )
+        if new is S.CANCELLED:
+            event = NewEvent(SseEventType.CANCELLED, "추출 확인을 중단했습니다")
+        else:
+            event = NewEvent(SseEventType.STATUS, "답변을 받아 다시 진행합니다", stage=new.value)
         events = _append_events(conn, run_id, current["revision"], [event])
     return new, events
 
@@ -183,8 +311,16 @@ def events_after(
     """SSE 재생용: `after_id`보다 큰 이벤트를 순서대로. 짧게 읽고 연결을 돌려준다.
 
     소유자를 함께 검사한다. 없거나 다른 소유자의 run이면 RunNotFoundError (ADR-0011).
+    아직 없는 이벤트 ID를 기준으로 재생을 요청하면 EventReplayExpiredError(상태를 다시 조회).
     """
-    get_run(conn, run_id, owner_ref)
+    row = conn.execute(
+        "SELECT last_event_id FROM run WHERE run_id = %s AND owner_ref = %s",
+        (run_id, owner_ref),
+    ).fetchone()
+    if row is None:
+        raise RunNotFoundError(str(run_id))
+    if after_id > row["last_event_id"]:
+        raise EventReplayExpiredError(str(run_id))
     rows = conn.execute(
         """
         SELECT event_id, event_type, payload FROM run_event
@@ -203,7 +339,7 @@ def _lock_run(
 ) -> dict[str, Any]:
     row = conn.execute(
         """
-        SELECT status, revision FROM run
+        SELECT status, revision, interrupt FROM run
         WHERE run_id = %(run_id)s AND (%(owner)s::text IS NULL OR owner_ref = %(owner)s)
         FOR UPDATE
         """,
@@ -212,6 +348,23 @@ def _lock_run(
     if row is None:
         raise RunNotFoundError(str(run_id))
     return {**row, "status": RunState(row["status"])}
+
+
+def _has_blocking_findings(conn: Connection[DictRow], run_id: UUID, revision: int) -> bool:
+    """현재 revision 모델에 차단 오류(critical, ADR-0010)가 남아 있는지."""
+    row = conn.execute(
+        """
+        SELECT 1 FROM finding f JOIN model_snapshot s USING (snapshot_id)
+        WHERE s.run_id = %s AND s.revision = %s AND f.payload->>'severity' = 'critical'
+        LIMIT 1
+        """,
+        (run_id, revision),
+    ).fetchone()
+    return row is not None
+
+
+def _json(model: Contract | None) -> Jsonb | None:
+    return None if model is None else Jsonb(model.model_dump(mode="json"))
 
 
 def _has_live_lease(conn: Connection[DictRow], run_id: UUID) -> bool:
