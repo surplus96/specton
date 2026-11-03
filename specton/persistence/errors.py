@@ -23,3 +23,19 @@ class InvalidTransitionError(PersistenceError):
 
 class LeaseLostError(PersistenceError):
     """lease를 잃은 실행자의 기록. 다른 실행자가 이어받았을 수 있으므로 저장하지 않는다."""
+
+
+class InterruptStaleError(PersistenceError):
+    """이미 답했거나 지금 기다리는 것이 아닌 확인 요청에 답했다."""
+
+
+class ResponseMismatchError(PersistenceError):
+    """확인 요청 종류와 다른 응답 (예: 추출 확인에 검토 응답)."""
+
+
+class BlockingFindingsError(PersistenceError):
+    """차단 오류(critical)가 남아 있어 승인할 수 없다 (ADR-0010)."""
+
+
+class EventReplayExpiredError(PersistenceError):
+    """재생할 수 없는 이벤트 위치. 상태를 다시 조회한 뒤 이어 받는다."""
