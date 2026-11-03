@@ -37,5 +37,9 @@ class BlockingFindingsError(PersistenceError):
     """차단 오류(critical)가 남아 있어 승인할 수 없다 (ADR-0010)."""
 
 
+class ArtifactNotReadyError(PersistenceError):
+    """요청한 revision·형식의 산출물이 아직 없다 (PDF는 승인본만)."""
+
+
 class EventReplayExpiredError(PersistenceError):
     """재생할 수 없는 이벤트 위치. 상태를 다시 조회한 뒤 이어 받는다."""

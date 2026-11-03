@@ -1,6 +1,6 @@
 # API
 
-> 상태: **구현 중** (#16: 등록·조회·SSE·재개·취소 구현, 화면용 조회·산출물 내려받기 남음)
+> 상태: **구현 중** (#16: 엔드포인트 모두 구현. extraction 응답 형식은 ADR-0015(#95) 결론 뒤 맞춤)
 
 Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비 업무 API와 다르다. 웹은 이 API만 호출한다.
 
@@ -20,10 +20,10 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 | `GET /runs` | `status`·`limit` 선택 | 200 소유자 실행 목록 | 422 조회 조건 |
 | `GET /runs/{id}` | — | 200 상태·revision·진행·interrupt·요약 오류 | 404 없음/접근 불가 |
 | `GET /runs/{id}/events` | `Last-Event-ID` 선택 | 200 SSE 스트림 | 404, 409 이벤트 재조회 필요 |
-| `GET /runs/{id}/view` | `section`, `revision` 선택 | 200 화면용 JSON (추출 블록·요구사항·설계 모델·지적·산출물 목록) | 404, 409 다른 revision |
+| `GET /runs/{id}/view` | `section`, `revision` 선택 | 200 화면용 JSON (추출 블록·요구사항·설계 모델·지적·산출물 목록) | 404, 409 현재보다 큰 revision |
 | `POST /runs/{id}/resume` | `interrupt_id`, `expected_revision`, `response` | 202 재개 상태 | 409 오래된/이미 응답한 interrupt, 422 잘못된 답변 |
 | `POST /runs/{id}/cancel` | `expected_revision` | 202 취소 요청 상태 (`queued`·사람 확인 대기 중이면 바로 `cancelled`, ADR-0012) | 409 이미 완료/충돌 |
-| `GET /runs/{id}/artifacts/{kind}` | `format`, `revision` | 200 파일 | 404, 409 미생성/다른 버전, 422 형식 불가 |
+| `GET /runs/{id}/artifacts/{kind}` | `file_format`, `revision` | 200 파일 | 404, 409 미생성(PDF는 승인본만), 422 형식 불가 |
 | `GET /health` | — | 200 기동 상태 (구현됨) | — |
 
 계약: [api/openapi.json](api/openapi.json) (OpenAPI 3.1.1). Pydantic 구현은 `specton/contracts/api.py`이며 `tests/unit/test_contracts_api.py`가 필드·필수 항목·열거값이 같은지 대조한다. 스키마는 `Error`, `ErrorCode`, `SseEvent`, `SseEventData`, `Interrupt`, `RunStatus`, `RunSummary`, `RunView`, `ResumeRequest`, `ExtractionResponse`, `RequirementsResponse`, `ReviewResponse`.
@@ -55,6 +55,20 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 
 - 동시에 보낸 같은 응답은 하나만 적용한다. 중복·오래된 응답은 409를 돌려주며 두 번째 실행을 만들지 않는다. 클라이언트는 상태를 다시 조회한다.
 - approve가 아니면 산출물을 완료본으로 승격하지 않는다.
+
+## 화면용 조회
+
+`GET /runs/{id}/view`는 실행기(#17)가 노드 뒤 저장한 DB 표만 읽는다. 체크포인트는 읽지 않는다 (ADR-0012).
+
+| section | `items` 한 건 | 읽는 곳 |
+|---|---|---|
+| `extraction` | `SourceRequirement` | `source_block` (run의 문서 전체, revision 무관) |
+| `requirements` | `Requirement` | `model_snapshot.normalized_model.requirements` |
+| `design` | `type`(`function`·`entity`·`relationship`) + `Function`·`Entity`·`Relationship` 칸 | `normalized_model`의 `functions`·`entities`·`relationships` |
+| `review` | `Finding` | 그 revision 모델의 `finding` |
+
+- `revision`을 생략하면 현재 revision이다. 현재보다 크면 409 `RUN_REVISION_CONFLICT`.
+- 그 단계 결과가 아직 없으면 `items`는 빈 목록이다. `artifacts`는 그 revision의 `ArtifactRef` 목록이다.
 
 ## SSE
 
@@ -158,3 +172,5 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 - 다른 조합은 422.
 - 승인 전 파일은 draft 표식·메타데이터를 포함한다.
 - 요청 revision의 객체 존재·접근 권한을 확인한 뒤 `Content-Disposition`으로 안전한 파일명을 지정한다.
+- 파일명은 `specton-<kind>-r<revision>.<file_format>`, 승인 전이면 `-draft`를 붙인다. `ETag`는 산출물 해시다.
+- 쿼리 이름은 `ArtifactRef`와 같은 `file_format`이다 (#94 이름 정리, #16).
