@@ -10,7 +10,9 @@ from specton import __version__
 from specton.api.errors import install_error_handlers
 from specton.api.runs import router as runs_router
 from specton.config import Settings, get_settings
-from specton.persistence.db import Pool, apply_schema, create_pool
+from specton.graph import build_graph
+from specton.persistence.db import Pool, apply_schema, create_checkpointer, create_pool
+from specton.runner import Runner
 
 
 class HealthResponse(BaseModel):
@@ -21,7 +23,8 @@ class HealthResponse(BaseModel):
 def create_app(settings: Settings | None = None, pool: Pool | None = None) -> FastAPI:
     """앱을 만든다. `pool`을 주면 그 풀을 쓰고 열고 닫지 않는다 (테스트용).
 
-    시작 순서는 docs/11을 따른다: DB 연결 → 앱 표 준비 → API.
+    시작 순서는 docs/11을 따른다: DB 연결 → 앱 표·checkpointer 준비 → 실행기 → API.
+    중지할 때는 실행기를 먼저 멈춰 실행 중인 run을 노드 경계에서 저장하고 lease를 반납한다.
     """
     settings = settings or get_settings()
 
@@ -32,11 +35,17 @@ def create_app(settings: Settings | None = None, pool: Pool | None = None) -> Fa
             return
         owned = create_pool(settings, open=False)
         owned.open(wait=True)
+        runner: Runner | None = None
         try:
             apply_schema(owned)
-            app.state.pool = owned
+            graph = build_graph(checkpointer=create_checkpointer(owned))
+            runner = Runner(owned, graph, settings)
+            runner.start()
+            app.state.pool, app.state.runner = owned, runner
             yield
         finally:
+            if runner is not None:
+                runner.stop()
             owned.close()
 
     app = FastAPI(title="Specton", version=__version__, lifespan=lifespan)

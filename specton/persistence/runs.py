@@ -139,6 +139,29 @@ def get_run(conn: Connection[DictRow], run_id: UUID, owner_ref: str) -> RunStatu
     return RunStatus.model_validate(row)
 
 
+def load_run(conn: Connection[DictRow], run_id: UUID) -> RunStatus:
+    """실행기용 run 상태. 소유자를 검사하지 않으므로 API에서 쓰지 않는다 (#17)."""
+    row = conn.execute(
+        "SELECT run_id, status, revision, stage, interrupt, error FROM run WHERE run_id = %s",
+        (run_id,),
+    ).fetchone()
+    if row is None:
+        raise RunNotFoundError(str(run_id))
+    return RunStatus.model_validate(row)
+
+
+def answer_for(conn: Connection[DictRow], run_id: UUID, interrupt_id: str) -> dict[str, Any] | None:
+    """실행기용: 확인 요청에 받은 응답(`ResumeRequest.response`). 아직 답이 없으면 None (#17)."""
+    row = conn.execute(
+        "SELECT response FROM approval WHERE run_id = %s AND interrupt_id = %s",
+        (run_id, interrupt_id),
+    ).fetchone()
+    if row is None:
+        return None
+    response: dict[str, Any] = row["response"]
+    return response
+
+
 def list_runs(
     conn: Connection[DictRow], owner_ref: str, *, status: RunState | None = None, limit: int = 50
 ) -> list[RunSummary]:
