@@ -100,21 +100,21 @@ priority_source: explicit | inferred | unspecified
 - 미지원 타입을 조용히 `text`로 바꾸지 않는다.
 - 중복 금지는 `is_unique`로 표시한다 (PK는 `is_key`). 값 범위 등 그 밖의 제약 표현(`check`)은 계약에 두지 않는다. LLM 출력에는 넣지 않고, 허용 범위(AST·연산)는 규칙 검사(#15)에서 정한 뒤 저장 모델에 추가한다. 그때까지 값 범위 요구는 속성의 `req_ids`로만 연결된다.
 
-## 플랫폼 저장 모델 (후보)
+## 플랫폼 저장 모델
 
-저장 대상 정의이며 DDL 확정본이 아니다. 컬럼·인덱스·보존 기간은 ADR-0009·0011·0012에서 정한다.
+DDL은 `specton/persistence/schema.sql`이고 이 표와 같아야 한다. 보존 기간은 시연 계획(#23)에서 정한다.
 
 | 객체 | 주요 필드 | 관계·제약 |
 |---|---|---|
-| run | `run_id`, `owner_ref`, `status`, `revision`, `iteration`, `pack_version`, `model_config`, 시각 | revision 낙관적 잠금, 상태 전이 검사 |
-| document | `document_id`, `run_id`, `file_hash`, `media_type`, `storage_ref`, `original_name` | run 1:N (초기 API는 1파일), 파일 경로 노출 금지 |
-| source_block | `block_id`, `document_id`, `source_ref`, `text`, `extraction_status` | document 1:N, 원문·수정본 버전 보존 |
+| run | `run_id`, `owner_ref`, `status`, `revision`, `iteration`, `pack`, `pack_version`, `model_config`, `last_event_id`, 시각 | revision 낙관적 잠금, 상태 전이 검사. `owner_ref`는 세션 값 (ADR-0011) |
+| document | `document_id`, `run_id`, `file_name`, `file_format`, `file_hash`, `storage_ref` | run 1:N (초기 API는 1파일), 파일 경로 노출 금지. MIME은 저장하지 않고 `file_format`에서 정한다 |
+| source_block | `block_id`, `document_id`, `source_ref`, `source_text`, `extraction_status`, `payload`(SourceRequirement) | document 1:N. 수정본·제외 표시는 ADR-0015(#95) 결론에 따른다 |
 | model_snapshot | `snapshot_id`, `run_id`, `revision`, `normalized_model`, `model_hash` | UNIQUE(run_id, revision), 승인 후 불변 |
 | finding | `finding_id`, `snapshot_id`, `source`, `reviewer_or_rule`, `fingerprint`, `iteration`, `payload` | 모델 버전 연결, 과거 지적 보존 |
-| approval | `approval_id`, `snapshot_id`, `interrupt_id`, `actor_ref`, `decision`, `feedback`, `answered_at` | 같은 interrupt 응답 1회 |
-| artifact | `artifact_id`, `snapshot_id`, `kind`, `format`, `hash`, `storage_ref`, `approval_status` | UNIQUE(snapshot_id, kind, format), 초안/승인본 구분 |
+| approval | `approval_id`, `run_id`, `snapshot_id`, `interrupt_id`, `actor_ref`, `decision`, `feedback`, `response`, `answered_at` | UNIQUE(run_id, interrupt_id): 같은 interrupt 응답 1회. 추출·분석 확인은 모델 전이라 `snapshot_id`가 비어 있다 |
+| artifact | `artifact_id`, `snapshot_id`, `kind`, `file_format`, `hash`, `storage_ref`, `approval_status` | UNIQUE(snapshot_id, kind, file_format), 초안/승인본 구분 |
 | run_event | `run_id`, `event_id`, `event_type`, `revision`, `payload`, `created_at` | UNIQUE(run_id, event_id), SSE 재생 기준 |
-| job_lease | `run_id`, `holder`, `lease_until`, `last_checkpoint` | run당 활성 실행자 1개 |
+| job_lease | `run_id`, `holder`, `lease_until`, `last_checkpoint` | run당 활성 실행자 1개. 반납은 행을 지우지 않고 만료시켜 `last_checkpoint`를 남긴다 (ADR-0012) |
 
 - LangGraph 체크포인트 스키마는 라이브러리 관리 영역이다. 복제하지 않는다.
 - 문서·모델 본문 접근 권한은 `owner_ref`로 연결한다.
