@@ -100,7 +100,7 @@ priority_source: explicit | inferred | unspecified
 - 미지원 타입을 조용히 `text`로 바꾸지 않는다.
 - 중복 금지는 `is_unique`로 표시한다 (PK는 `is_key`). 값 범위 등 그 밖의 제약 표현(`check`)은 계약에 두지 않는다. LLM 출력에는 넣지 않고, 허용 범위(AST·연산)는 규칙 검사(#15)에서 정한 뒤 저장 모델에 추가한다. 그때까지 값 범위 요구는 속성의 `req_ids`로만 연결된다.
 
-## 플랫폼 저장 모델 (후보)
+## 플랫폼 저장 모델
 
 DDL은 `specton/persistence/schema.sql`이고 이 표와 같아야 한다. 보존 기간은 시연 계획(#23)에서 정한다.
 

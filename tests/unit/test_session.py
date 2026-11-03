@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from specton.api.session import SESSION_COOKIE, OwnerRef
+from specton.api.session import SESSION_COOKIE, SESSION_MAX_AGE, OwnerRef
 
 
 def _client() -> TestClient:
@@ -23,6 +23,14 @@ def test_issues_http_only_cookie_when_missing() -> None:
     assert header.startswith(f"{SESSION_COOKIE}=")
     assert "HttpOnly" in header
     assert "SameSite=lax" in header
+
+
+def test_session_survives_a_browser_restart() -> None:
+    """브라우저 세션 쿠키가 아니라 Max-Age가 있어야 다시 열어도 같은 owner_ref다."""
+    header = _client().get("/whoami").headers["set-cookie"]
+
+    assert f"Max-Age={SESSION_MAX_AGE}" in header
+    assert SESSION_MAX_AGE >= 365 * 24 * 60 * 60
 
 
 def test_keeps_the_issued_session() -> None:

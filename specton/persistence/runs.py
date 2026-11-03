@@ -178,9 +178,13 @@ def request_cancel(
 
 
 def events_after(
-    conn: Connection[DictRow], run_id: UUID, after_id: int, limit: int = 500
+    conn: Connection[DictRow], run_id: UUID, owner_ref: str, after_id: int, limit: int = 500
 ) -> list[SseEvent]:
-    """SSE 재생용: `after_id`보다 큰 이벤트를 순서대로. 짧게 읽고 연결을 돌려준다."""
+    """SSE 재생용: `after_id`보다 큰 이벤트를 순서대로. 짧게 읽고 연결을 돌려준다.
+
+    소유자를 함께 검사한다. 없거나 다른 소유자의 run이면 RunNotFoundError (ADR-0011).
+    """
+    get_run(conn, run_id, owner_ref)
     rows = conn.execute(
         """
         SELECT event_id, event_type, payload FROM run_event

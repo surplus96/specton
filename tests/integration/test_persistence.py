@@ -105,6 +105,8 @@ def test_other_owner_cannot_see_the_run(pool: Pool) -> None:
             get_run(conn, run.run_id, "owner-b")
         assert list_runs(conn, "owner-b") == []
         assert [r.run_id for r in list_runs(conn, OWNER)] == [run.run_id]
+        with pytest.raises(RunNotFoundError):
+            events_after(conn, run.run_id, "owner-b", 0)
 
 
 # lease
@@ -159,7 +161,7 @@ def test_progress_writes_status_revision_and_events_together(pool: Pool) -> None
             S.ANALYSING,
             1,
         )
-        assert events_after(conn, run_id, 0) == saved
+        assert events_after(conn, run_id, OWNER, 0) == saved
 
 
 def test_saving_the_same_checkpoint_again_changes_nothing(pool: Pool) -> None:
@@ -173,7 +175,7 @@ def test_saving_the_same_checkpoint_again_changes_nothing(pool: Pool) -> None:
         )
 
         assert again is None
-        assert len(events_after(conn, run_id, 0)) == 1
+        assert len(events_after(conn, run_id, OWNER, 0)) == 1
 
 
 def test_invalid_transition_is_rolled_back(pool: Pool) -> None:
@@ -186,7 +188,7 @@ def test_invalid_transition_is_rolled_back(pool: Pool) -> None:
             )  # fmt: skip
 
         assert get_run(conn, run_id, OWNER).status is S.PARSING
-        assert events_after(conn, run_id, 0) == []
+        assert events_after(conn, run_id, OWNER, 0) == []
 
 
 def test_event_ids_keep_increasing_and_replay_after_an_id(pool: Pool) -> None:
@@ -201,8 +203,8 @@ def test_event_ids_keep_increasing_and_replay_after_an_id(pool: Pool) -> None:
             events=[NewEvent(SseEventType.INTERRUPT, "c")],
         )  # fmt: skip
 
-        assert [e.id for e in events_after(conn, run_id, 0)] == [1, 2, 3]
-        assert [e.data.message for e in events_after(conn, run_id, 2)] == ["c"]
+        assert [e.id for e in events_after(conn, run_id, OWNER, 0)] == [1, 2, 3]
+        assert [e.data.message for e in events_after(conn, run_id, OWNER, 2)] == ["c"]
 
 
 # 취소 (ADR-0012 "취소")
