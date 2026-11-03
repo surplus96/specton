@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from specton.api.deps import ConnDep, PoolDep, SettingsDep
 from specton.api.errors import ApiError
 from specton.api.session import OwnerRef
-from specton.api.uploads import save_upload
+from specton.api.uploads import discard_upload, save_upload
 from specton.config import Settings
 from specton.contracts import (
     ErrorCode,
@@ -79,7 +79,12 @@ def create_run(
     """요구사항 문서를 받아 `queued` 실행을 등록한다. 실행기가 찾아가 시작한다."""
     max_bytes = settings.max_upload_mb * 1024 * 1024
     declared = request.headers.get("content-length")
-    if declared is not None and declared.isdigit() and int(declared) > max_bytes + 64 * 1024:
+    if (
+        declared is not None
+        and declared.isascii()
+        and declared.isdigit()
+        and int(declared) > max_bytes + 64 * 1024
+    ):
         raise ApiError(
             413, ErrorCode.UPLOAD_TOO_LARGE, f"파일이 {settings.max_upload_mb}MB를 넘습니다."
         )
@@ -106,7 +111,7 @@ def create_run(
                 storage_ref=stored.storage_ref,
             )
     except BaseException:
-        (settings.storage_dir / stored.storage_ref).unlink(missing_ok=True)
+        discard_upload(settings.storage_dir, stored)
         raise
     return status
 
@@ -168,7 +173,7 @@ async def stream_events(
 def _parse_event_id(value: str | None) -> int:
     if value is None or value == "":
         return 0
-    if not value.isdigit():
+    if not (value.isascii() and value.isdigit()):
         raise ApiError(
             409,
             ErrorCode.EVENT_REPLAY_EXPIRED,

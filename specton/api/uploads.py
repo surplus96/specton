@@ -5,6 +5,7 @@ MIME 내용 검사·페이지 한도는 #21에서 더한다.
 """
 
 import hashlib
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path, PurePath
 from uuid import UUID
@@ -65,9 +66,21 @@ def save_upload(
                 digest.update(chunk)
                 out.write(chunk)
     except BaseException:
-        target.unlink(missing_ok=True)
+        _discard(target)
         raise
     if size == 0:
-        target.unlink(missing_ok=True)
+        _discard(target)
         raise ApiError(422, ErrorCode.INVALID_REQUEST, "빈 파일입니다.")
     return StoredFile(file_name, file_format, digest.hexdigest(), relative.as_posix())
+
+
+def discard_upload(storage_dir: Path, stored: StoredFile) -> None:
+    """저장한 업로드를 지운다 (run 등록 실패 등)."""
+    _discard(storage_dir / stored.storage_ref)
+
+
+def _discard(target: Path) -> None:
+    """파일과, 비었으면 run 폴더까지 지운다."""
+    target.unlink(missing_ok=True)
+    with suppress(OSError):  # 다른 파일이 남아 있다
+        target.parent.rmdir()

@@ -63,6 +63,18 @@ def test_schema_can_be_applied_twice(pool: Pool) -> None:
     }  # fmt: skip
 
 
+def test_schema_adds_new_run_columns_to_an_existing_table(pool: Pool) -> None:
+    """#108 스키마로 만든 DB에 다시 적용하면 run의 새 칸이 생긴다 (#110 리뷰)."""
+    with pool.connection() as conn:
+        run = create_run(conn, OWNER, "inventory")
+        conn.execute("ALTER TABLE run DROP COLUMN stage, DROP COLUMN interrupt, DROP COLUMN error")
+
+    apply_schema(pool)
+
+    with pool.connection() as conn:
+        assert get_run(conn, run.run_id, OWNER).stage is None
+
+
 def test_checkpointer_tables_are_created_in_the_same_database(pool: Pool) -> None:
     create_checkpointer(pool)
 

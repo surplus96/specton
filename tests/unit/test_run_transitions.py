@@ -13,6 +13,8 @@ from specton.persistence.runs import can_transition
         (S.QUEUED, S.PARSING),
         (S.PARSING, S.ANALYSING),
         (S.REVIEWING, S.DESIGNING),
+        (S.REVIEWING, S.ANALYSING),  # 요구사항 단계 재작업 (#111)
+        (S.DESIGNING, S.ANALYSING),  # HITL 2 수정 요청 뒤 요구사항 단계로
         (S.AWAITING_REVIEW, S.EXPORTING),
         (S.DESIGNING, S.DESIGNING),
         (S.GENERATING, S.FAILED),

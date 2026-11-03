@@ -4,10 +4,13 @@
 """
 
 import logging
+from collections.abc import Mapping
+from uuid import UUID
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from specton.contracts import Error, ErrorCode
 from specton.persistence import errors as pe
@@ -67,16 +70,30 @@ _PERSISTENCE: dict[type[pe.PersistenceError], tuple[int, ErrorCode, str, bool]] 
 }
 
 
+# 라우팅 단계 오류 (없는 경로·틀린 메서드) → 메시지. 코드는 INVALID_REQUEST
+_HTTP_MESSAGES = {404: "없는 경로입니다.", 405: "허용하지 않는 메서드입니다."}
+
+
 def error_response(
-    status: int, code: ErrorCode, message: str, *, run_id: str | None, retryable: bool
+    status: int,
+    code: ErrorCode,
+    message: str,
+    *,
+    run_id: str | None,
+    retryable: bool,
+    headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
     body = Error(code=code.value, message=message, run_id=run_id, retryable=retryable)
-    return JSONResponse(body.model_dump(mode="json"), status_code=status)
+    return JSONResponse(body.model_dump(mode="json"), status_code=status, headers=headers)
 
 
 def _run_id(request: Request) -> str | None:
+    """경로의 run ID. UUID가 아니면 입력을 되돌려 주지 않도록 None."""
     value = request.path_params.get("id")
-    return None if value is None else str(value)
+    try:
+        return None if value is None else str(UUID(str(value)))
+    except ValueError:
+        return None
 
 
 def install_error_handlers(app: FastAPI) -> None:
@@ -96,6 +113,18 @@ def install_error_handlers(app: FastAPI) -> None:
             )
         status, code, message, retryable = mapped
         return error_response(status, code, message, run_id=_run_id(request), retryable=retryable)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+        message = _HTTP_MESSAGES.get(exc.status_code, "요청을 처리할 수 없습니다.")
+        return error_response(
+            exc.status_code,
+            ErrorCode.INVALID_REQUEST,
+            message,
+            run_id=_run_id(request),
+            retryable=False,
+            headers=exc.headers,
+        )
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:

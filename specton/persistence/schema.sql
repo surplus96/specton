@@ -21,6 +21,10 @@ CREATE TABLE IF NOT EXISTS run (
     created_at    timestamptz NOT NULL DEFAULT now(),
     updated_at    timestamptz NOT NULL DEFAULT now()
 );
+-- #108 스키마로 이미 만든 DB에도 칸을 더한다 (#110)
+ALTER TABLE run ADD COLUMN IF NOT EXISTS stage text;
+ALTER TABLE run ADD COLUMN IF NOT EXISTS interrupt jsonb;
+ALTER TABLE run ADD COLUMN IF NOT EXISTS error jsonb;
 CREATE INDEX IF NOT EXISTS run_owner_created ON run (owner_ref, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS document (

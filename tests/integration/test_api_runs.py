@@ -127,7 +127,7 @@ def test_too_large_upload_is_413_and_leaves_no_file(settings: Settings, pool: Po
         response = _create(client, ("big.csv", b"a," * (600 * 1024), "text/csv"))
 
     assert _error(response) == (413, "UPLOAD_TOO_LARGE")
-    assert not any(settings.storage_dir.rglob("*.csv"))
+    assert not any(settings.storage_dir.rglob("*"))  # 빈 run 폴더도 남기지 않는다
 
 
 def test_missing_field_is_invalid_request(client: TestClient) -> None:
@@ -162,6 +162,22 @@ def test_unknown_run_is_404_with_run_id(client: TestClient) -> None:
 
     assert _error(response) == (404, "RUN_NOT_FOUND")
     assert response.json()["run_id"] == run_id
+
+
+def test_bad_run_id_is_not_echoed_back(client: TestClient) -> None:
+    response = client.get("/runs/abc")
+
+    assert _error(response) == (422, "INVALID_REQUEST")
+    assert response.json()["run_id"] is None
+
+
+def test_routing_errors_use_the_same_format(client: TestClient) -> None:
+    missing = client.get("/nope")
+    wrong_method = client.delete("/runs")
+
+    assert _error(missing) == (404, "INVALID_REQUEST")
+    assert _error(wrong_method) == (405, "INVALID_REQUEST")
+    assert "POST" in wrong_method.headers["allow"]
 
 
 def test_list_checks_query(client: TestClient) -> None:

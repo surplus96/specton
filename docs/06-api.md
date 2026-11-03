@@ -39,7 +39,7 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 |---|---|---|
 | `extraction` | `block_id`별 수정 텍스트, `confirmed` | `confirmed=false`는 중단(`cancelled`). 응답은 approval에 그대로 저장하며, 수정본·제외 처리는 ADR-0015(#95) 결론에 따른다 |
 | `requirements` | `req_id`별 `keep`/`edit`/`split`, `texts` | split의 새 ID는 서버가 부여 |
-| `review` | `approve`/`revise`/`hold`, `feedback` | approve는 현재 revision과 차단 오류 유무 확인 |
+| `review` | `approve`/`revise`/`hold`, `feedback` | approve는 현재 revision과 차단 오류 유무 확인. hold는 SSE `status` 이벤트만 남기고 같은 확인 요청으로 계속 기다린다 (approval을 저장하지 않고 실행을 재개하지 않음) |
 
 ```json
 {
@@ -53,7 +53,7 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 }
 ```
 
-- 동시에 보낸 같은 응답은 하나만 적용한다. 중복·오래된 응답은 409와 현재 revision을 돌려주며 두 번째 실행을 만들지 않는다.
+- 동시에 보낸 같은 응답은 하나만 적용한다. 중복·오래된 응답은 409를 돌려주며 두 번째 실행을 만들지 않는다. 클라이언트는 상태를 다시 조회한다.
 - approve가 아니면 산출물을 완료본으로 승격하지 않는다.
 
 ## SSE
@@ -124,7 +124,7 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 | 코드 | 언제 | HTTP | 다시 시도 |
 |---|---|---|---|
 | `RUN_NOT_FOUND` | 없는 실행이거나 접근 권한 없음 | 404 | 아니오 |
-| `RUN_REVISION_CONFLICT` | 다른 revision 기준 요청 | 409 | 최신 상태 조회 후 |
+| `RUN_REVISION_CONFLICT` | 다른 revision 기준 요청, 지금 상태에서 할 수 없는 요청 (끝난 실행 취소 등) | 409 | 최신 상태 조회 후 |
 | `INTERRUPT_STALE` | 이미 응답했거나 오래된 확인 요청에 답함 | 409 | 최신 상태 조회 후 |
 | `EVENT_REPLAY_EXPIRED` | SSE 재연결 시 이벤트 보존 범위를 벗어남 | 409 | 상태 조회 후 |
 | `ARTIFACT_NOT_READY` | 산출물이 아직 생성되지 않음 | 409 | 예 |
@@ -132,8 +132,8 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 | `UPLOAD_TOO_LARGE` | 파일 크기 한도 초과 | 413 | 아니오 |
 | `UNSUPPORTED_MEDIA_TYPE` | 지원하지 않는 파일 형식 | 415 | 아니오 |
 | `PACK_UNSUPPORTED` | 없는 도메인 팩 선택 | 422 | 아니오 |
-| `INVALID_RESPONSE` | resume 답변 형식이 틀림 | 422 | 아니오 |
-| `INVALID_REQUEST` | 그 밖의 요청 형식이 틀림 (조회 조건·취소 본문 등) | 422 | 아니오 |
+| `INVALID_RESPONSE` | resume 답변 형식이 틀림, 확인 요청과 응답 종류가 다름, 차단 오류가 남은 채 approve | 422 | 아니오 |
+| `INVALID_REQUEST` | 그 밖의 요청 형식이 틀림 (조회 조건·취소 본문 등). 없는 경로는 404, 허용하지 않는 메서드는 405 | 422 / 404 / 405 | 아니오 |
 | `LLM_REFUSED` | 실행 실패: 모델이 응답을 거절함 (`LLMRefusalError`) | 실행 상태 | 아니오, 입력 확인 |
 | `LLM_OUTPUT_INVALID` | 실행 실패: 재요청 후에도 출력 형식 위반 (`LLMContractError`) | 실행 상태 | 예 |
 | `LLM_UNAVAILABLE` | 실행 실패: LLM 타임아웃·API 오류 (`LLMTimeoutError`, `LLMAPIError`) | 실행 상태 | 예, 잠시 후 |
