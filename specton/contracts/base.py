@@ -43,12 +43,22 @@ class Priority(StrEnum):
 
 
 class PrioritySource(StrEnum):
+    """우선순위 값의 출처 (ADR-0006).
+
+    `explicit`은 입력에 적힌 값, `inferred`는 LLM 추정값(HITL에서 확정), `unspecified`는 값 없음.
+    """
+
     EXPLICIT = "explicit"
     INFERRED = "inferred"
     UNSPECIFIED = "unspecified"
 
 
 class RequirementType(StrEnum):
+    """요구사항 유형. NFR이면 `nfr_category`가 필수이고 FR이면 null이다.
+
+    데이터 정합성(값 범위·필수 입력·중복 금지·참조 관계)은 데이터 모델 제약으로 구현하므로 FR이다.
+    """
+
     FR = "FR"
     NFR = "NFR"
 
@@ -82,6 +92,10 @@ class SqlType(StrEnum):
 
 
 class Crud(StrEnum):
+    """기능이 엔티티에 하는 조작. 모든 엔티티에 4종을 강제하지 않고, 빠지는 조작은 `CrudExemption`에
+    근거를 둔다 (04 문서).
+    """
+
     CREATE = "C"
     READ = "R"
     UPDATE = "U"
@@ -89,6 +103,8 @@ class Crud(StrEnum):
 
 
 class Cardinality(StrEnum):
+    """관계 카디널리티. N:M은 모델 정리 단계에서 코드가 연결 테이블로 분해한다 (03 문서, #12)."""
+
     ONE_TO_ONE = "1:1"
     ONE_TO_MANY = "1:N"
     MANY_TO_MANY = "N:M"
@@ -103,6 +119,11 @@ class TargetStage(StrEnum):
 
 
 class ExtractionStatus(StrEnum):
+    """원문 한 건의 추출 판정. `SourceRequirement`와 함께 코드가 채운다.
+
+    값별 판정 기준과 사람 확인 조건은 ADR-0015(제안, #95)에서 정한다.
+    """
+
     PASS = "pass"
     REVIEW = "review"
     FAIL = "fail"

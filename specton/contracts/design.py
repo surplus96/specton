@@ -24,6 +24,12 @@ from specton.contracts.base import (
 
 
 class _PriorityMixin(Contract):
+    """우선순위와 그 출처 (ADR-0006).
+
+    근거 없는 값이 섞이지 않도록 `priority`가 null이면 `priority_source`는 `unspecified`,
+    값이 있으면 `explicit` 또는 `inferred`만 허용한다.
+    """
+
     priority: Priority | None = None
     priority_source: PrioritySource = PrioritySource.UNSPECIFIED
 
@@ -60,6 +66,8 @@ class EntityOp(Contract):
 
 
 class Function(FunctionDraft):
+    """기능 저장 모델. `id`는 코드가 부여하고 `entity_ops`는 A03이 채우기 전까지 비어 있다."""
+
     id: ObjectId  # 코드가 부여
     entity_ops: tuple[EntityOp, ...] = ()
 
@@ -72,6 +80,11 @@ class CrudExemption(Contract):
 
 
 class AttributeDraft(Contract):
+    """A03 LLM 출력의 속성. 타입별 길이·정밀도 규칙과 키 속성의 NOT NULL을 검사한다.
+
+    값 범위 제약(`check`)은 두지 않는다 (#48 리뷰, ADR-0009).
+    """
+
     name: NonEmptyText
     description: str | None = None
     data_type: SqlType
@@ -129,10 +142,14 @@ class EntityDesignDraft(Contract):
 
 
 class Attribute(AttributeDraft):
+    """속성 저장 모델. `id`는 코드가 부여하며 관계·FK 파생에서 속성을 가리키는 내부 참조 키다."""
+
     id: ObjectId  # 코드가 부여. 관계·FK 파생의 안정적 내부 참조 키
 
 
 class Entity(Contract):
+    """엔티티 저장 모델. `id` 부여와 이름 → ID 해석은 코드가 하고 `pack`에 사용한 팩 ID를 남긴다."""
+
     id: EntityId
     pack: NonEmptyText  # 사용한 도메인 팩 ID
     name: NonEmptyText
@@ -155,6 +172,11 @@ class RelationshipDraft(Contract):
 
 
 class Relationship(Contract):
+    """관계 저장 모델. `parent`·`child`는 코드가 엔티티 이름을 해석한 ID다.
+
+    FK 속성은 코드가 이 관계에서 파생하며, 참조 키 선택은 모델 정리(#12)에서 정한다.
+    """
+
     id: ObjectId
     parent: EntityId
     child: EntityId
