@@ -3,7 +3,7 @@
 실행기(#17)는 없으므로, 실행기가 할 진행 기록은 저장 함수로 직접 만든다.
 """
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -15,14 +15,16 @@ from psycopg.types.json import Jsonb
 from specton.api.main import create_app
 from specton.api.session import SESSION_COOKIE
 from specton.config import Settings
-from specton.contracts import Interrupt, SseEventType
+from specton.contracts import ArtifactRef, DesignState, Interrupt, SseEventType
 from specton.contracts import RunState as S
 from specton.persistence import lease
 from specton.persistence.db import Pool
 from specton.persistence.runs import NewEvent, record_progress
+from specton.persistence.snapshots import add_artifact, save_model
 
 pytestmark = pytest.mark.db
 
+StateFactory = Callable[[str, str], DesignState]
 XLSX = ("req.xlsx", b"PK\x03\x04 fake workbook", "application/octet-stream")
 
 
@@ -345,3 +347,111 @@ def test_sse_rejects_unknown_position_and_other_owner(
         assert (r.status_code, r.read() and r.json()["code"]) == (409, "EVENT_REPLAY_EXPIRED")
     with _other(settings, pool).stream("GET", f"/runs/{run_id}/events") as r:
         assert r.status_code == 404
+
+
+# 화면용 조회 (GET /runs/{id}/view)
+
+
+def _saved(client: TestClient, pool: Pool, sample_state: StateFactory) -> str:
+    """실행기가 모델·지적을 저장한 run (revision 0)."""
+    run_id = _create(client).json()["run_id"]
+    with pool.connection() as conn:
+        row = conn.execute("SELECT document_id FROM document WHERE run_id = %s", (run_id,))
+        document_id = str(row.fetchone()["document_id"])  # type: ignore[index]
+        assert lease.acquire(conn, UUID(run_id), "w1", 60)
+        save_model(conn, UUID(run_id), "w1", sample_state(run_id, document_id))
+    return run_id
+
+
+def test_view_is_empty_before_any_result(client: TestClient) -> None:
+    run_id = _create(client).json()["run_id"]
+
+    for section in ("extraction", "requirements", "design", "review"):
+        body = client.get(f"/runs/{run_id}/view", params={"section": section}).json()
+        assert (body["revision"], body["items"], body["artifacts"]) == (0, [], [])
+
+
+def test_view_reads_saved_sections(
+    client: TestClient, pool: Pool, sample_state: StateFactory
+) -> None:
+    run_id = _saved(client, pool, sample_state)
+
+    def items(section: str) -> list[dict[str, Any]]:
+        return client.get(f"/runs/{run_id}/view", params={"section": section}).json()["items"]  # type: ignore[no-any-return]
+
+    assert [b["block_id"] for b in items("extraction")] == ["B-1"]
+    assert [r["id"] for r in items("requirements")] == ["REQ-01"]
+    assert [(d["type"], d["id"]) for d in items("design")] == [
+        ("function", "FUNC-01"),
+        ("entity", "ENT-01"),
+    ]
+    assert [f["id"] for f in items("review")] == ["A05-1-1"]
+
+
+def test_view_checks_section_revision_and_owner(
+    client: TestClient, settings: Settings, pool: Pool
+) -> None:
+    run_id = _create(client).json()["run_id"]
+    view = f"/runs/{run_id}/view"
+
+    assert _error(client.get(view, params={"section": "nope"})) == (422, "INVALID_REQUEST")
+    assert _error(client.get(view, params={"section": "design", "revision": 1})) == (
+        409,
+        "RUN_REVISION_CONFLICT",
+    )
+    assert _error(_other(settings, pool).get(view, params={"section": "design"})) == (
+        404,
+        "RUN_NOT_FOUND",
+    )
+
+
+# 산출물 내려받기 (GET /runs/{id}/artifacts/{kind})
+
+
+def _artifact(
+    settings: Settings, pool: Pool, run_id: str, ref: ArtifactRef, content: bytes
+) -> None:
+    storage_ref = f"{run_id}/artifacts/{ref.kind}.{ref.file_format}"
+    (settings.storage_dir / storage_ref).parent.mkdir(parents=True, exist_ok=True)
+    (settings.storage_dir / storage_ref).write_bytes(content)
+    with pool.connection() as conn:
+        add_artifact(conn, UUID(run_id), "w1", ref, storage_ref)
+
+
+def test_download_sends_the_file_with_a_safe_name(
+    client: TestClient, settings: Settings, pool: Pool, sample_state: StateFactory
+) -> None:
+    run_id = _saved(client, pool, sample_state)
+    _artifact(settings, pool, run_id, ArtifactRef(kind="ddl", file_format="sql", revision=0,
+              hash="abc"), b"CREATE TABLE t ();")  # fmt: skip
+
+    response = client.get(
+        f"/runs/{run_id}/artifacts/ddl", params={"file_format": "sql", "revision": 0}
+    )
+    listed = client.get(f"/runs/{run_id}/view", params={"section": "design"}).json()
+
+    assert response.status_code == 200
+    assert response.content == b"CREATE TABLE t ();"
+    assert 'filename="specton-ddl-r0-draft.sql"' in response.headers["content-disposition"]
+    assert response.headers["etag"] == '"abc"'
+    assert [(a["kind"], a["approved"]) for a in listed["artifacts"]] == [("ddl", False)]
+
+
+def test_download_rejects_bad_combinations_and_missing_files(
+    client: TestClient, settings: Settings, pool: Pool, sample_state: StateFactory
+) -> None:
+    run_id = _saved(client, pool, sample_state)
+    _artifact(settings, pool, run_id, ArtifactRef(kind="erd", file_format="pdf", revision=0,
+              hash="h"), b"%PDF")  # fmt: skip
+    url = f"/runs/{run_id}/artifacts"
+
+    def get(kind: str, file_format: str) -> Any:
+        return client.get(f"{url}/{kind}", params={"file_format": file_format, "revision": 0})
+
+    assert _error(get("ddl", "pdf")) == (422, "ARTIFACT_FORMAT_UNSUPPORTED")
+    assert _error(get("ddl", "sql")) == (409, "ARTIFACT_NOT_READY")
+    assert _error(get("erd", "pdf")) == (409, "ARTIFACT_NOT_READY")  # 초안 PDF는 내주지 않는다
+    assert get("ddl", "sql").json()["retryable"] is True
+    assert _error(
+        _other(settings, pool).get(f"{url}/ddl", params={"file_format": "sql", "revision": 0})
+    ) == (404, "RUN_NOT_FOUND")

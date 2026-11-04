@@ -71,3 +71,23 @@ def test_implemented_routes_match_the_openapi_draft() -> None:
         assert (method, path) == draft[op_id][:2], op_id
         success = {c for c in codes if c.startswith("2")}
         assert success <= draft[op_id][2], op_id
+
+
+def _query_params(spec: dict) -> dict[str, set[str]]:  # type: ignore[type-arg]
+    """operationId → 쿼리 매개변수 이름."""
+    found = {}
+    for item in spec["paths"].values():
+        for op in item.values():
+            if isinstance(op, dict) and "operationId" in op:
+                params = op.get("parameters", [])
+                found[op["operationId"]] = {p["name"] for p in params if p["in"] == "query"}
+    return found
+
+
+def test_implemented_query_params_match_the_openapi_draft() -> None:
+    """쿼리 이름이 초안과 같다 (예: 산출물 `file_format`, #16)."""
+    generated = _query_params(create_app(Settings(_env_file=None)).openapi())
+    draft = _query_params(DRAFT)
+
+    for op_id, names in generated.items():
+        assert names == draft[op_id], op_id
