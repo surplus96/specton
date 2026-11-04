@@ -9,11 +9,20 @@ from uuid import UUID
 import pytest
 
 from specton.config import Settings
-from specton.contracts import DesignState, ResumeRequest, RunState, RunStatus, SseEventType
+from specton.contracts import (
+    DesignState,
+    Finding,
+    Requirement,
+    ResumeRequest,
+    RunState,
+    RunStatus,
+    SseEventType,
+)
 from specton.graph import GraphState, Node, build_graph, initial_state
 from specton.llm.errors import LLMRefusalError
 from specton.persistence import lease
 from specton.persistence.db import Pool, create_checkpointer
+from specton.persistence.errors import BlockingFindingsError
 from specton.persistence.runs import (
     answer_interrupt,
     create_run,
@@ -21,6 +30,7 @@ from specton.persistence.runs import (
     get_run,
     request_cancel,
 )
+from specton.persistence.snapshots import get_view
 from specton.runner import Runner
 
 pytestmark = pytest.mark.db
@@ -166,6 +176,93 @@ def test_revise_asks_again_and_completes_after_approval(world: Callable[..., _Wo
     assert first is not None
     assert again.status is RunState.AWAITING_REVIEW
     assert again.interrupt is not None and again.interrupt.interrupt_id != first.interrupt_id
+    assert w.status(run_id).status is RunState.COMPLETED
+
+
+REQ = Requirement(
+    id="REQ-01",
+    source_ref={"file_format": "csv", "row": 2},
+    text="입고를 등록한다",
+    draft_text="입고를 등록한다",
+    type="FR",
+    analysis_version=1,
+)
+
+
+def _with_requirement(state: GraphState) -> Mapping[str, Any]:
+    return {"design": state["design"].evolve(requirements=(REQ,))}
+
+
+def _critical_rule(state: GraphState) -> Mapping[str, Any]:
+    """규칙 검사(#15) 자리. critical은 규칙 지적만 쓸 수 있다 (ADR-0010)."""
+    finding = Finding.model_validate(
+        {
+            "id": f"RULE-01-{state['design'].iteration}-1",
+            "source": "rule",
+            "rule_code": "RULE-01",
+            "kind": "missing_function",
+            "severity": "critical",
+            "targets": [{"kind": "requirement", "id": "REQ-01"}],
+            "evidence": [{"req_id": "REQ-01", "quote": "입고"}],
+            "suggestion": "기능을 추가한다",
+            "target_stage": None,  # A09 stub이 판단하지 못해 HITL 2로 간다
+            "fingerprint": "fp-critical",
+            "iteration": state["design"].iteration,
+        }
+    )
+    return {"rule_findings": (finding,)}
+
+
+def test_requirements_are_saved_for_the_view_before_the_requirements_check(
+    world: Callable[..., _World],
+) -> None:
+    """HITL 1에서 멈추기 전에 모델을 저장해 화면용 조회에 요구사항이 보인다 (#113)."""
+    w = world({"a01": _with_requirement})
+    run_id = w.create()
+
+    w.runner.run_pending()
+
+    with w.pool.connection() as conn:
+        view = get_view(conn, run_id, OWNER, "requirements")
+    assert w.status(run_id).status is RunState.AWAITING_REQUIREMENTS
+    assert [item["id"] for item in view.items] == ["REQ-01"]
+
+
+def test_findings_saved_before_final_review_block_approval(world: Callable[..., _World]) -> None:
+    """HITL 2 전에 지적을 저장해야 approve가 차단 오류를 검사할 수 있다 (06 문서 resume)."""
+    w = world({"a01": _with_requirement, "rules": _critical_rule})
+    run_id = w.create()
+    w.runner.run_pending()
+    w.answer(run_id, REQUIREMENTS_OK)
+    w.runner.run_pending()
+
+    with w.pool.connection() as conn:
+        view = get_view(conn, run_id, OWNER, "review")
+    assert w.status(run_id).status is RunState.AWAITING_REVIEW
+    assert [item["fingerprint"] for item in view.items] == ["fp-critical"]
+    with pytest.raises(BlockingFindingsError):
+        w.answer(run_id, APPROVE)
+
+
+def test_approval_is_linked_to_the_saved_model_and_completes(
+    world: Callable[..., _World],
+) -> None:
+    """승인은 그 revision의 저장된 모델에 연결되고, 승인 뒤 같은 모델 저장도 실패하지 않는다."""
+    w = world({"a01": _with_requirement})
+    run_id = w.create()
+    w.runner.run_pending()
+    w.answer(run_id, REQUIREMENTS_OK)
+    w.runner.run_pending()
+
+    w.answer(run_id, APPROVE)
+    w.runner.run_pending()
+
+    with w.pool.connection() as conn:
+        row = conn.execute(
+            "SELECT snapshot_id FROM approval WHERE run_id = %s AND decision = 'approve'",
+            (run_id,),
+        ).fetchone()
+    assert row is not None and row["snapshot_id"] is not None
     assert w.status(run_id).status is RunState.COMPLETED
 
 

@@ -5,6 +5,7 @@
 - lease는 노드와 별개로 `lease_renew_seconds`마다 갱신한다.
   잃으면 그 실행을 멈추고 더 저장하지 않는다.
 - 노드가 끝날 때마다 체크포인트 기준으로 `runs.record_progress`에 저장한다(멱등).
+  같은 트랜잭션에서 `snapshots.save_model`로 모델·지적을 남겨 화면용 조회가 읽는다(#113).
   노드는 DB에 쓰지 않는다.
 - 사람 확인에서 멈추면 대기 상태와 interrupt를 저장하고 lease를 반납한다.
   답은 approval에서 읽어 재개한다.
@@ -37,7 +38,7 @@ from specton.contracts import (
 from specton.contracts import SseEventType as E
 from specton.graph import GraphState, initial_state
 from specton.llm.errors import LLMError
-from specton.persistence import lease, runs
+from specton.persistence import lease, runs, snapshots
 from specton.persistence.db import Pool
 from specton.persistence.errors import InvalidTransitionError, LeaseLostError
 from specton.persistence.lease import WAITING_STATES
@@ -311,9 +312,14 @@ class _Job:
         interrupt: Interrupt | None = None,
         events: list[NewEvent],
     ) -> None:
+        """진행과 모델을 한 트랜잭션으로 저장한다.
+
+        사람 확인에서 멈출 때도 여기를 거치므로, 확인 요청 전에 그 revision 모델이 저장된다.
+        resume API의 approve가 이 모델에 연결되고 차단 오류를 검사한다.
+        """
         try:
-            with self.runner.pool.connection() as conn:
-                runs.record_progress(
+            with self.runner.pool.connection() as conn, conn.transaction():
+                saved = runs.record_progress(
                     conn,
                     self.run_id,
                     self.runner.holder,
@@ -325,6 +331,8 @@ class _Job:
                     interrupt=interrupt,
                     events=events,
                 )
+                if saved is not None:  # 같은 체크포인트를 다시 저장하면 모델도 이미 있다
+                    snapshots.save_model(conn, self.run_id, self.runner.holder, design)
         except InvalidTransitionError:
             if self._load().status is S.CANCEL_REQUESTED:
                 raise _Cancelled from None  # 저장 직전에 취소 요청이 들어왔다
