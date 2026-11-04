@@ -11,14 +11,16 @@
 - ID 칸이 실제로 세로 병합된 행들은 요구사항 1건으로 묶는다. 묶인 행의 다른 칸 값은
   위에서부터 줄바꿈으로 잇는다.
 - 수식은 실행하지 않고 엑셀에 저장된 결과값만 쓴다. 결과값이 없으면 `review`로 둔다.
+- 작성자가 숨긴 행·시트도 읽되 `review`로 둔다(왜 숨겼는지는 사람이 확인한다).
 - 행을 조용히 버리지 않는다. 원문 문장을 만들 수 없는 행은
   `ExtractionIssue`(확인 필요 1건)로 돌려준다.
 """
 
 import csv
 import io
+import zipfile
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import yaml
@@ -36,8 +38,12 @@ DEFAULT_COLUMN_MAP = Path(__file__).with_name("column_map.yaml")
 # name = 「요구사항명」(요구사항 제목·명칭, ID가 아님) / description = 「상세 내용」(요구사항 본문)
 # 조합 하나라도 모두 있으면 머리글이다. ID가 없는 조합은 명칭과 내용이 둘 다 있어야 한다.
 _REQUIRED_SETS = (("source_id", "name"), ("source_id", "description"), ("name", "description"))
-_CSV_ENCODINGS = ("utf-8-sig", "cp949")
+_CSV_ENCODINGS = ("utf-8-sig", "cp949")  # UTF-16은 BOM이 있을 때만 (_decode)
 _CSV_DELIMITERS = ",;\t|"
+# 엑셀 수식 오류값. 저장된 결과가 글자처럼 보이지만 원문 값이 아니므로 확인 필요로 둔다
+_EXCEL_ERRORS = frozenset(
+    {"#REF!", "#N/A", "#VALUE!", "#DIV/0!", "#NAME?", "#NUM!", "#NULL!", "#SPILL!", "#CALC!"}
+)
 _UNSUPPORTED_EXCEL = {
     ".xlsm": "매크로가 든 엑셀(.xlsm)",
     ".xls": "옛 엑셀(.xls)",
@@ -45,8 +51,35 @@ _UNSUPPORTED_EXCEL = {
 }
 
 
+def _header_not_found(found: list[str]) -> "UnsupportedInput":
+    """머리글(표 맨 윗줄의 칸 이름)을 찾지 못했을 때의 안내. 파일에서 본 칸 이름도 보여 준다."""
+    seen = f" 이 파일에서 찾은 칸 이름: {', '.join(found[:8])}." if found else ""
+    return UnsupportedInput(
+        "요구사항 표를 찾지 못했어요. 표의 칸 이름을 확인해 주세요.",
+        f"위쪽 {HEADER_SCAN_ROWS}행 안에 「요구사항 ID」와 「요구사항명」 또는 「상세 내용」 칸이 "
+        "있어야 해요(ID 칸이 없다면 「요구사항명」과 「상세 내용」)." + seen + " "
+        "알아보는 칸 이름 예: 고유번호는 「요구사항 ID」「고유번호」「ID」, 요구사항명은 "
+        "「요구사항명」「요구사항 명칭」, 상세 내용은 「상세 내용」「세부 내용」「요구사항 설명」.",
+    )
+
+
+def _label_row(rows: list[list[str]]) -> list[str]:
+    """위 20행 중 값이 가장 많은 행(머리글로 보이는 줄)의 값들."""
+    best = max(rows[:HEADER_SCAN_ROWS], key=lambda r: sum(1 for v in r if v), default=[])
+    return [v for v in best if v]
+
+
 class UnsupportedInput(ValueError):
-    """읽지 않는 파일. 메시지는 사용자에게 그대로 보여 줄 문장이다."""
+    """읽지 않는 파일. 화면 안내에 그대로 쓰는 두 문장을 담는다.
+
+    - notice: 팝업에 보이는 짧은 안내(무엇이 안 되는지 + 무엇을 하면 되는지)
+    - detail: 「자세히 보기」를 눌렀을 때 보이는 원인과 방법
+    """
+
+    def __init__(self, notice: str, detail: str = "") -> None:
+        super().__init__(f"{notice} {detail}".strip())
+        self.notice = notice
+        self.detail = detail
 
 
 @dataclass(frozen=True)
@@ -87,6 +120,7 @@ class _Cell:
     uncached_formula: bool = False
     # 세로로 2행 이상 병합된 칸이면 병합 범위의 (첫 행, 마지막 행), 0부터. 아니면 None
     vertical_merge: tuple[int, int] | None = None
+    hidden: bool = False  # 작성자가 숨긴 행·시트의 칸이면 True (사람이 확인할 대상)
 
 
 def load_column_map(path: Path = DEFAULT_COLUMN_MAP) -> dict[str, tuple[str, ...]]:
@@ -104,27 +138,58 @@ def read_excel(
     """엑셀(.xlsx)의 모든 시트를 읽는다."""
     reason = _UNSUPPORTED_EXCEL.get(path.suffix.lower())
     if reason:
-        raise UnsupportedInput(f"{reason}은 읽지 않습니다. .xlsx로 다시 저장해 올려 주세요.")
+        raise UnsupportedInput(
+            "이 형식은 올릴 수 없어요. 「Excel 통합 문서(.xlsx)」로 다시 저장해 올려 주세요.",
+            f"{reason}은 읽지 않아요. 엑셀에서 「다른 이름으로 저장」 → "
+            "「Excel 통합 문서(.xlsx)」를 고르면 돼요.",
+        )
     columns = column_map or load_column_map()
     try:
         values_book = load_workbook(path, data_only=True)
         formula_book = load_workbook(path, data_only=False)
-    except (InvalidFileException, KeyError, ValueError) as exc:
-        # Strict OOXML 등 openpyxl이 읽지 못하는 형식
+    except zipfile.BadZipFile as exc:
+        # 깨진 파일: .xlsx는 zip 묶음인데 zip이 아니거나 비어 있다
+        # (0바이트, 이름만 .xlsx인 다른 파일)
         raise UnsupportedInput(
-            "엑셀 파일을 읽지 못했습니다. "
-            "엑셀에서 「Excel 통합 문서(.xlsx)」로 다시 저장해 올려 주세요."
+            "파일을 열 수 없어요. 파일이 엑셀에서 열리는지 확인해 주세요.",
+            "파일 안의 구조가 .xlsx가 아니에요(손상됐거나, 이름만 .xlsx인 다른 파일). "
+            "엑셀에서 열린다면 「Excel 통합 문서(.xlsx)」로 다시 저장해 올려 주세요.",
+        ) from exc
+    except (InvalidFileException, KeyError, ValueError) as exc:
+        # .xlsx 구조이지만 필요한 부분이 없거나 다른 형식 (openpyxl이 열지 못함)
+        raise UnsupportedInput(
+            "파일을 열 수 없어요. 파일이 엑셀에서 열리는지 확인해 주세요.",
+            "엑셀 파일 안에서 읽어야 할 부분을 찾지 못했어요. 엑셀에서 열린다면 "
+            "「Excel 통합 문서(.xlsx)」로 다시 저장해 올려 주세요.",
         ) from exc
 
+    if not values_book.worksheets:
+        # Strict Open XML 등 openpyxl이 시트를 하나도 돌려주지 않는 파일. 조용히 0건으로 두지 않는다
+        raise UnsupportedInput(
+            "파일의 시트를 읽지 못했어요. 「Excel 통합 문서(.xlsx)」로 다시 저장해 올려 주세요.",
+            "「Strict Open XML」 형식 등으로 저장돼 시트를 찾지 못했을 수 있어요. 엑셀에서 "
+            "열린다면 「다른 이름으로 저장」 → 「Excel 통합 문서(.xlsx)」를 고르면 돼요.",
+        )
     requirements: list[SourceRequirement] = []
     issues: list[ExtractionIssue] = []
     skipped: list[str] = []
+    found_labels: list[str] = []
+    found_from_req_sheet = False
+    empty_tables: list[ExtractionIssue] = []
     for sheet in values_book.worksheets:
         grid = _sheet_grid(sheet, formula_book[sheet.title])
-        header = _find_header([[c.value for c in row] for row in grid], columns)
+        rows = [[c.value for c in row] for row in grid]
+        header = _find_header(rows, columns)
         if header is None:
             skipped.append(sheet.title)
+            labels = _label_row(rows)
+            # 안내에 보일 칸 이름: 이름에 「요구사항」이 든 시트를 먼저, 없으면 값이 가장 많은 줄
+            if "요구사항" in sheet.title and not found_from_req_sheet:
+                found_labels, found_from_req_sheet = labels, True
+            elif not found_from_req_sheet and len(labels) > len(found_labels):
+                found_labels = labels
             continue
+        before = len(requirements) + len(issues)
         for index, row in _row_groups(grid, header):
             ref = SourceRef(file_format="xlsx", sheet=sheet.title, row=index + 1)
             built = _build_row(row, header, ref, document_id, f"xlsx:{sheet.title}:{index + 1}")
@@ -132,7 +197,23 @@ def read_excel(
                 issues.append(built)
             elif built is not None:
                 requirements.append(built)
+        if len(requirements) + len(issues) == before:
+            empty_tables.append(_empty_table(sheet.title, header))
+    if len(skipped) == len(values_book.worksheets):
+        # 어느 시트에서도 요구사항 표 머리글을 찾지 못함. 조용히 0건으로 두지 않는다
+        raise _header_not_found(found_labels)
+    # 머리글만 있고 요구사항 행이 없는 표(빈 양식)는 시트마다 확인 필요로 알린다
+    issues.extend(empty_tables)
     return TabularResult(_mark_duplicates(requirements), tuple(issues), tuple(skipped))
+
+
+def _empty_table(sheet: str | None, header: _Header, file_format: str = "xlsx") -> ExtractionIssue:
+    return ExtractionIssue(
+        SourceRef(file_format=file_format, sheet=sheet, row=header.last_row + 1),
+        notice="요구사항이 비어 있어요. 표에 요구사항을 적었는지 확인해 주세요.",
+        detail=(f"{sheet} 시트 " if sheet else "")
+        + f"{header.last_row + 1}행에 칸 이름만 있고 그 아래에 요구사항이 없어요.",
+    )
 
 
 def read_csv(
@@ -150,13 +231,10 @@ def read_csv(
         [_Cell(value.strip()) for value in row]
         for row in csv.reader(io.StringIO(text), delimiter=delimiter)
     ]
-    header = _find_header([[c.value for c in row] for row in grid], columns)
+    rows = [[c.value for c in row] for row in grid]
+    header = _find_header(rows, columns)
     if header is None:
-        raise UnsupportedInput(
-            f"위 {HEADER_SCAN_ROWS}행 안에서 머리글을 찾지 못했습니다. "
-            "「요구사항 ID」와 「요구사항명」 또는 「상세 내용」 칸이 있어야 합니다 "
-            "(ID 칸이 없으면 「요구사항명」과 「상세 내용」)."
-        )
+        raise _header_not_found(_label_row(rows))
     requirements: list[SourceRequirement] = []
     issues: list[ExtractionIssue] = []
     for index in range(header.last_row + 1, len(grid)):
@@ -166,16 +244,32 @@ def read_csv(
             issues.append(built)
         elif built is not None:
             requirements.append(built)
+    if not requirements and not issues:
+        issues.append(_empty_table(None, header, "csv"))
     return TabularResult(_mark_duplicates(requirements), tuple(issues))
 
 
 def _decode(data: bytes) -> str:
+    """CSV 글자 인코딩을 고른다. 엑셀의 「유니코드 텍스트」 저장(UTF-16)은 BOM으로 알아본다."""
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        try:
+            return data.decode("utf-16")
+        except UnicodeDecodeError:
+            pass
+    first_error: UnicodeDecodeError | None = None
     for encoding in _CSV_ENCODINGS:
         try:
             return data.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    raise UnsupportedInput("CSV 인코딩을 알 수 없습니다. UTF-8 또는 CP949로 저장해 올려 주세요.")
+        except UnicodeDecodeError as exc:
+            first_error = first_error or exc
+    # 어디서 막혔는지 줄 번호로 알려 준다. 읽은 방식과 위치를 사실대로 적고 원인은 단정하지 않는다
+    line = data[: first_error.start].count(b"\n") + 1 if first_error else 1
+    raise UnsupportedInput(
+        "글자를 읽지 못했어요. 「CSV UTF-8」로 다시 저장해 올려 주세요.",
+        f"{line}번째 줄에 읽을 수 없는 글자가 있어요(UTF-8·CP949·UTF-16으로 읽어 봤어요). "
+        "그 줄의 글자가 깨져 있지 않은지 확인하고, 엑셀에서 「다른 이름으로 저장」 → "
+        "「CSV UTF-8」을 고르면 돼요.",
+    )
 
 
 def _norm(text: str) -> str:
@@ -197,6 +291,10 @@ def _sheet_grid(values: Worksheet, formulas: Worksheet) -> list[list[_Cell]]:
         for r in range(merged.min_row, merged.max_row + 1):
             for c in range(merged.min_col, merged.max_col + 1):
                 grid[r - 1][c - 1] = top
+    sheet_hidden = values.sheet_state != "visible"
+    for r in range(1, rows + 1):
+        if sheet_hidden or values.row_dimensions[r].hidden:
+            grid[r - 1] = [replace(cell, hidden=True) for cell in grid[r - 1]]
     return grid
 
 
@@ -231,7 +329,13 @@ def _merge_rows(rows: list[list[_Cell]]) -> list[_Cell]:
         for cell in cells:
             if cell.value and cell.value not in values:
                 values.append(cell.value)
-        merged.append(_Cell("\n".join(values), any(cell.uncached_formula for cell in cells)))
+        merged.append(
+            _Cell(
+                "\n".join(values),
+                any(cell.uncached_formula for cell in cells),
+                hidden=any(cell.hidden for cell in cells),
+            )
+        )
     return merged
 
 
@@ -379,6 +483,10 @@ def _build_row(
         reasons.append("상세 내용이 없어 요구사항명을 원문으로 씀")
     if any(cell.uncached_formula for cell in row):
         reasons.append("저장된 결과값이 없는 수식 칸")
+    if any(cell.value in _EXCEL_ERRORS for cell in row):
+        reasons.append("수식 오류값(#REF! 등)이 있는 칸")
+    if any(cell.hidden for cell in row):
+        reasons.append("작성자가 숨긴 행 또는 시트")
 
     used = {
         header.columns[k]
