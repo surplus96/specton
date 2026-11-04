@@ -1,17 +1,32 @@
 # few-shot 예시 (maintenance · A01 requirement_analysis). 사람이 작성하는 입력 파일이다.
 # - 입력은 개발용 세트(비공개, 저장소에 올리지 않음)에서만 가져오고 source_id에 원문 ID를 적는다. 평가용 세트 문서는 넣지 않는다.
 # - output은 해당 노드의 LLM 출력 모델과 같은 모양이어야 한다. load_examples가 그 모델로 검증한다 (docs/04 "노드 작성 규칙").
+# - input은 A01 노드의 input_data 모양(source_blocks)이다.
 agent: A01
 role: requirement_analysis
 status: draft
 examples:
 - source_id: MNT-009
-  input: 보전 담당자는 설비, 접수 일시, 신고자 사내 식별값, 증상, 우선순위로 고장 건을 등록한다. 한 접수는 한 설비에 대한 것이며 하나 이상의 보전 작업으로 나누어 처리할 수 있다.
+  input:
+    source_blocks:
+    - block_id: xlsx:요구사항:10
+      text: 보전 담당자는 설비, 접수 일시, 신고자 사내 식별값, 증상, 우선순위로 고장 건을 등록한다. 한 접수는 한 설비에 대한 것이며 하나 이상의 보전 작업으로 나누어 처리할 수 있다.
+      acceptance_level: null
+      extra: {}
   output:
-    type: FR
-    split: true
-    parts:
-    - 고장 접수 등록
-    - 접수를 여러 작업으로 처리
-    questions:
-    - 우선순위 값의 종류는 무엇입니까?
+    requirements:
+    - source_block_ids: [xlsx:요구사항:10]
+      text: 보전 담당자는 설비, 접수 일시, 신고자 사내 식별값, 증상, 우선순위로 고장 건을 등록하며, 한 접수는 한 설비에 대한 것이다.
+      type: FR
+      nfr_category: null
+      parent_hint: 고장 접수
+      quality_issues:
+      - kind: missing_value
+        message: 우선순위에 쓸 값의 종류가 원문에 없다.
+        question: 고장 접수의 우선순위 값은 어떤 것들입니까?
+    - source_block_ids: [xlsx:요구사항:10]
+      text: 고장 접수 한 건은 하나 이상의 보전 작업으로 나누어 처리할 수 있다.
+      type: FR
+      nfr_category: null
+      parent_hint: 고장 접수
+      quality_issues: []
