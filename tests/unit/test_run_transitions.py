@@ -15,6 +15,7 @@ from specton.persistence.runs import can_transition
         (S.REVIEWING, S.DESIGNING),
         (S.REVIEWING, S.ANALYSING),  # 요구사항 단계 재작업 (#111)
         (S.DESIGNING, S.ANALYSING),  # HITL 2 수정 요청 뒤 요구사항 단계로
+        (S.DESIGNING, S.AWAITING_REVIEW),  # HITL 2 수정 요청을 A09가 판단하지 못함 (#114)
         (S.AWAITING_REVIEW, S.EXPORTING),
         (S.DESIGNING, S.DESIGNING),
         (S.GENERATING, S.FAILED),

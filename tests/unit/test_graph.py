@@ -170,6 +170,48 @@ def test_all_reviewers_join_before_merge() -> None:
     assert all(b.ok for b in result["branches"].values())
 
 
+def test_failed_reviewer_stays_failed_and_is_shown_at_final_review() -> None:
+    """실패한 리뷰 가지를 빈 성공으로 바꾸지 않고, HITL 2에 불완전 검토로 알린다 (TC-F14)."""
+
+    def refuse(state: GraphState) -> Mapping[str, Any]:
+        failed = BranchResult(
+            branch="A05", revision=state["design"].revision, ok=False, error_code="LLM_REFUSED"
+        )
+        return {"branches": {"A05": failed}}
+
+    run = _Run({"A05": refuse})
+    run.start()
+
+    result = run.resume(REQUIREMENTS_OK)
+
+    assert _interrupt(result)["failed_branches"] == ["A05"]
+    kept = result["design"].branch_results["A05"]
+    assert (kept.ok, kept.error_code) == (False, "LLM_REFUSED")
+    assert all(result["design"].branch_results[name].ok for name in REVIEWERS if name != "A05")
+
+
+def test_reviewer_result_from_an_earlier_revision_is_not_joined() -> None:
+    """재작업 뒤 결과를 내지 못한 가지는 이전 revision 결과로 채우지 않고 실패로 본다."""
+
+    def first_pass_only(state: GraphState) -> Mapping[str, Any]:
+        design = state["design"]
+        if design.revision > 0:
+            return {}  # 이번 revision 결과가 없다
+        finding = _finding("fp-old", TargetStage.FUNCTIONS, design.iteration)
+        result = BranchResult(branch="A05", revision=0, ok=True, findings=(finding,))
+        return {"branches": {"A05": result}}
+
+    run = _Run({"A05": first_pass_only})
+    run.start()
+
+    result = run.resume(REQUIREMENTS_OK)
+
+    assert result["design"].revision == 1
+    assert _interrupt(result)["failed_branches"] == ["A05"]
+    assert "A05" not in result["design"].branch_results
+    assert all(f.fingerprint != "fp-old" for f in result["design"].findings)
+
+
 def test_resumes_from_checkpoint_with_a_new_graph_instance() -> None:
     """서버 재시작: 같은 checkpointer와 thread_id로 새 그래프를 만들어도 멈춘 곳에서 이어간다."""
     first = _Run()
@@ -282,6 +324,22 @@ def test_revise_to_requirements_follows_the_state_diagram() -> None:
     invalid = [(a, b) for a, b in pairwise(seen) if not can_transition(a, b)]
     assert invalid == []
     assert (RunState.DESIGNING, RunState.ANALYSING) in pairwise(seen)
+    assert seen[-1] is RunState.COMPLETED
+
+
+def test_revise_with_undecided_router_follows_the_state_diagram() -> None:
+    """HITL 2 수정 요청을 A09가 판단하지 못하면 다시 최종 검토로 간다.
+
+    `designing → awaiting_review` (#114 R3 확인).
+    """
+    run = _Run({"a09": lambda state: {"router_stage": None}})
+    revise = {"kind": "review", "decision": "revise", "feedback": "보완"}
+
+    seen = run.statuses(REQUIREMENTS_OK, revise, APPROVE)
+
+    invalid = [(a, b) for a, b in pairwise(seen) if not can_transition(a, b)]
+    assert invalid == []
+    assert (RunState.DESIGNING, RunState.AWAITING_REVIEW) in pairwise(seen)
     assert seen[-1] is RunState.COMPLETED
 
 

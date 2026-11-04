@@ -307,7 +307,7 @@
       "get": {
         "operationId": "getRunView",
         "summary": "화면 표시용 실행 내용 조회",
-        "description": "Interrupt는 확인 대상만 알리며 추출 블록·요구사항·설계 모델·지적은 이 조회로 가져온다.",
+        "description": "Interrupt는 확인 대상만 알리며 추출 블록·요구사항·설계 모델·지적은 이 조회로 가져온다. 항목 구조는 docs/06-api.md \"화면용 조회\"를 따른다.",
         "parameters": [
           {
             "name": "section",
@@ -546,10 +546,10 @@
       "get": {
         "operationId": "downloadArtifact",
         "summary": "같은 revision의 문서 다운로드",
-        "description": "kind-format 허용 조합은 docs/06-api.md를 따른다. 미허용 조합422, 미생성409. 초안 표시 유지.",
+        "description": "kind-file_format 허용 조합은 docs/06-api.md를 따른다. 미허용 조합 422, 미생성 409(PDF는 승인한 revision만). 초안은 파일명에 -draft.",
         "parameters": [
           {
-            "name": "format",
+            "name": "file_format",
             "in": "query",
             "required": true,
             "schema": {
