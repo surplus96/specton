@@ -1,7 +1,77 @@
 # few-shot 예시 (maintenance · A06 missing_data_review). 사람이 작성하는 입력 파일이다.
 # - 입력은 개발용 세트(비공개, 저장소에 올리지 않음)에서만 가져오고 source_id에 원문 ID를 적는다. 평가용 세트 문서는 넣지 않는다.
 # - output은 해당 노드의 LLM 출력 모델과 같은 모양이어야 한다. load_examples가 그 모델로 검증한다 (docs/04 "노드 작성 규칙").
+# - 요구사항 문장은 개발용 세트(MNT-004·MNT-015)의 것이고, 검토 대상 기능·엔티티는 예시를 위해 만든 가상 설계다.
 agent: A06
 role: missing_data_review
 status: draft
-examples: []
+examples:
+# 지적 예시: 요구사항이 나열한 항목(적용 단가)을 저장할 속성이 없다.
+- source_id: MNT-015
+  input:
+    requirements:
+    - id: REQ-01
+      type: FR
+      nfr_category: null
+      text: 작업에는 사용한 부품의 코드·이름·단위·수량·적용 단가·사용 일시·기록자를 남긴다.
+    functions:
+    - {id: FUNC-01, name: 사용 부품 기록, description: 작업에 사용한 부품을 기록한다, req_ids: [REQ-01]}
+    entities:
+    - id: ENT-01
+      pack: maintenance
+      name: 사용부품실적
+      description: 작업에 사용한 부품의 기록
+      req_ids: [REQ-01]
+      crud_exemptions: []
+      attributes:
+      - {id: ATTR-01, name: 작업번호, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-02, name: 부품코드, data_type: varchar, length: 10, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-03, name: 부품명, data_type: varchar, length: 300, req_ids: [REQ-01]}
+      - {id: ATTR-04, name: 단위명, data_type: varchar, length: 100, req_ids: [REQ-01]}
+      - {id: ATTR-05, name: 사용수량, data_type: numeric, precision: 10, scale: 3, req_ids: [REQ-01]}
+      - {id: ATTR-06, name: 사용일시, data_type: timestamp, req_ids: [REQ-01]}
+      - {id: ATTR-07, name: 기록자식별값, data_type: varchar, length: 50, req_ids: [REQ-01]}
+  output:
+    findings:
+    - kind: missing_attribute
+      severity: major
+      targets:
+      - {kind: entity, id: ENT-01}
+      evidence:
+      - req_id: REQ-01
+        quote: 코드·이름·단위·수량·적용 단가·사용 일시·기록자를 남긴다
+      suggestion: 요구사항이 사용 부품마다 남기라고 한 적용 단가를 저장할 속성이 사용부품실적 엔티티에 없고 다른 엔티티에도 없다. 사용부품실적에 적용 단가 속성을 추가한다.
+      target_stage: data_model
+# 지적 없음 예시: 가입·탈퇴 일자는 팀소속 엔티티가 소속마다 가진다. 다른 엔티티에서 충족하면 누락이 아니다.
+- source_id: MNT-004
+  input:
+    requirements:
+    - id: REQ-01
+      type: FR
+      nfr_category: null
+      text: 한 기술자는 여러 팀에 소속될 수 있다. 탈퇴한 소속도 가입·탈퇴 일자를 남긴다.
+    functions:
+    - {id: FUNC-01, name: 팀 소속 관리, description: 기술자의 팀 가입과 탈퇴를 기록한다, req_ids: [REQ-01]}
+    entities:
+    - id: ENT-01
+      pack: maintenance
+      name: 기술자
+      description: 보전 기술자
+      req_ids: [REQ-01]
+      crud_exemptions: []
+      attributes:
+      - {id: ATTR-01, name: 기술자번호, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-02, name: 기술자명, data_type: varchar, length: 100, req_ids: [REQ-01]}
+    - id: ENT-02
+      pack: maintenance
+      name: 팀소속
+      description: 기술자가 팀에 가입하고 탈퇴한 기록
+      req_ids: [REQ-01]
+      crud_exemptions: []
+      attributes:
+      - {id: ATTR-03, name: 기술자번호, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-04, name: 팀코드, data_type: varchar, length: 10, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-05, name: 가입일자, data_type: date, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-06, name: 탈퇴일자, data_type: date, req_ids: [REQ-01]}
+  output:
+    findings: []
