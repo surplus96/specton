@@ -289,9 +289,11 @@ class _Job:
         kind = InterruptKind(value["kind"])
         design: DesignState = snapshot.values["design"]
         interrupt = Interrupt(interrupt_id=pending.id, kind=kind, message=_INTERRUPT_MESSAGES[kind])
-        payload = {"interrupt_id": pending.id, "kind": kind.value}
+        payload: dict[str, Any] = {"interrupt_id": pending.id, "kind": kind.value}
         if value.get("hitl_reason"):
             payload["hitl_reason"] = str(value["hitl_reason"])
+        if "failed_branches" in value:
+            payload["failed_branches"] = list(value["failed_branches"])  # 불완전 검토 (TC-F14)
         events = self._status_events(design.status)
         events.append(
             NewEvent(E.INTERRUPT, interrupt.message, stage=design.status.value, payload=payload)

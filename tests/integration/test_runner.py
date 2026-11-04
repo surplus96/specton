@@ -10,6 +10,7 @@ import pytest
 
 from specton.config import Settings
 from specton.contracts import (
+    BranchResult,
     DesignState,
     Finding,
     Requirement,
@@ -264,6 +265,31 @@ def test_approval_is_linked_to_the_saved_model_and_completes(
         ).fetchone()
     assert row is not None and row["snapshot_id"] is not None
     assert w.status(run_id).status is RunState.COMPLETED
+
+
+def test_failed_review_branch_is_shown_in_the_final_review_event(
+    world: Callable[..., _World],
+) -> None:
+    """리뷰 가지가 실패해도 run은 실패하지 않고, HITL 2 이벤트에 불완전 검토를 싣는다 (TC-F14)."""
+
+    def refuse(state: GraphState) -> Mapping[str, Any]:
+        failed = BranchResult(
+            branch="A06", revision=state["design"].revision, ok=False, error_code="LLM_UNAVAILABLE"
+        )
+        return {"branches": {"A06": failed}}
+
+    w = world({"A06": refuse})
+    run_id = w.create()
+    w.runner.run_pending()
+    w.answer(run_id, REQUIREMENTS_OK)
+
+    w.runner.run_pending()
+
+    assert w.status(run_id).status is RunState.AWAITING_REVIEW
+    with w.pool.connection() as conn:
+        last = events_after(conn, run_id, OWNER, 0)[-1]
+    assert last.event is SseEventType.INTERRUPT
+    assert last.data.payload["failed_branches"] == ["A06"]
 
 
 def test_status_events_follow_each_saved_state(world: Callable[..., _World]) -> None:

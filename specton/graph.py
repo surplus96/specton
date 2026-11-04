@@ -73,6 +73,7 @@ class GraphState(TypedDict, total=False):
     hitl_reason: HitlReason | None
     router_stage: TargetStage | None  # A09 답
     revising: bool  # HITL 2의 수정 요청으로 A09에 왔는지
+    failed_branches: tuple[str, ...]  # 이번 검토에서 실패하거나 빠진 리뷰 가지 (불완전 검토)
     requirements_answer: dict[str, Any]
     review_response: dict[str, Any]
 
@@ -191,7 +192,14 @@ def _ask_requirements(state: GraphState) -> dict[str, Any]:
 
 
 def _ask_review(state: GraphState) -> dict[str, Any]:
-    response = interrupt({"kind": "review", "hitl_reason": state.get("hitl_reason")})
+    response = interrupt(
+        {
+            "kind": "review",
+            "hitl_reason": state.get("hitl_reason"),
+            # 실패하거나 빠진 리뷰 가지. 비어 있지 않으면 불완전 검토다 (TC-F14)
+            "failed_branches": list(state.get("failed_branches", ())),
+        }
+    )
     decision = response.get("decision")
     update: dict[str, Any] = {"review_response": response, "revising": decision == "revise"}
     if decision in REVIEW_STATUS:
@@ -200,13 +208,25 @@ def _ask_review(state: GraphState) -> dict[str, Any]:
 
 
 def _merge(state: GraphState) -> dict[str, Any]:
-    """리뷰 가지 합류·근거 확인·지적 병합 (#18 `merge_review`)."""
+    """리뷰 가지 합류·근거 확인·지적 병합 (#18 `merge_review`).
+
+    `branches`는 가지 이름별로 누적되므로, 이번 revision에 결과를 내지 못한 가지의 이전 결과가
+    남아 있을 수 있다. 현재 revision 결과만 합류하고, 빠진 가지는 `merge_review`가 실패로 남긴다
+    (04 문서 "지적 확정 절차" 합류, TC-F14). 이전 결과로 채우지 않는다.
+    """
     design = state["design"]
-    branches = state.get("branches", {})
-    results = [branches[name] for name in REVIEWERS if name in branches]
+    current = {
+        name: result
+        for name, result in state.get("branches", {}).items()
+        if result.revision == design.revision
+    }
+    results = [current[name] for name in REVIEWERS if name in current]
     merged = merge_review(design, results, REVIEWERS, rule_findings=state.get("rule_findings", ()))
-    joined = {name: branches[name] for name in (*GENERATORS, *REVIEWERS) if name in branches}
-    return {"design": design.evolve(findings=merged.findings, branch_results=joined)}
+    joined = {name: current[name] for name in (*GENERATORS, *REVIEWERS) if name in current}
+    return {
+        "design": design.evolve(findings=merged.findings, branch_results=joined),
+        "failed_branches": merged.failed_branches,
+    }
 
 
 def _route(max_rework: int) -> Callable[[GraphState], dict[str, Any]]:
