@@ -285,16 +285,15 @@ class TestExcel:
         with pytest.raises(UnsupportedInput, match="요구사항 표를 찾지 못했어요"):
             read_excel(path, "doc-1")
 
-    def test_template_without_rows_is_a_review_item(self, tmp_path: Path) -> None:
-        """머리글만 있는 빈 양식은 0건으로 넘기지 않고 확인 필요 1건으로 알린다."""
-        result = read_excel(_xlsx(tmp_path / "t.xlsx", [HEADER]), "doc-1")
-        assert result.requirements == ()
-        [issue] = result.issues
-        assert "비어 있어요" in issue.notice
-        assert issue.source_ref.row == 1
+    def test_template_without_rows_is_rejected_as_empty_form(self, tmp_path: Path) -> None:
+        """파일 전체가 머리글만 있는 빈 양식이면 0건으로 넘기지 않고 파일 단위로 안내한다."""
+        with pytest.raises(UnsupportedInput) as info:
+            read_excel(_xlsx(tmp_path / "t.xlsx", [HEADER]), "doc-1")
+        assert info.value.notice.startswith("요구사항이 없는 빈 양식이에요")
+        assert "칸 이름만 있고" in info.value.detail
 
-    def test_empty_sheet_next_to_filled_sheet_is_reported(self, tmp_path: Path) -> None:
-        """다른 시트에 요구사항이 있어도 머리글만 있는 시트는 확인 필요로 알린다."""
+    def test_empty_sheet_next_to_filled_sheet_is_info_only(self, tmp_path: Path) -> None:
+        """다른 시트에 요구사항이 있으면 머리글만 있는 시트는 정보(skipped_sheets)로만 알린다."""
         from openpyxl import load_workbook
 
         path = _xlsx(tmp_path / "two.xlsx", [HEADER, ["INV-001", "기능", "입고", "입고 등록"]])
@@ -304,7 +303,8 @@ class TestExcel:
 
         result = read_excel(path, "doc-1")
         assert len(result.requirements) == 1
-        assert [i.source_ref.sheet for i in result.issues] == ["빈 표"]
+        assert result.issues == ()  # 확인·제외할 원문 줄이 없으므로 확인 필요가 아니다
+        assert result.skipped_sheets == ("빈 표",)
 
     def test_unsupported_input_has_notice_and_detail(self, tmp_path: Path) -> None:
         """안내는 팝업용 짧은 문장(notice)과 「자세히 보기」(detail) 두 칸으로 나뉜다."""
@@ -375,12 +375,11 @@ class TestCsv:
         with pytest.raises(UnsupportedInput, match="3번째 줄"):
             read_csv(path, "doc-1")
 
-    def test_header_only_csv_is_a_review_item(self, tmp_path: Path) -> None:
+    def test_header_only_csv_is_rejected_as_empty_form(self, tmp_path: Path) -> None:
         path = tmp_path / "h.csv"
         path.write_text("요구사항 ID,요구사항명,상세 내용\n", encoding="utf-8")
-        result = read_csv(path, "doc-1")
-        assert result.requirements == ()
-        assert len(result.issues) == 1
+        with pytest.raises(UnsupportedInput, match="요구사항이 없는 빈 양식이에요"):
+            read_csv(path, "doc-1")
 
     def test_utf16_with_bom(self, tmp_path: Path) -> None:
         """엑셀 「유니코드 텍스트」로 저장한 UTF-16 CSV도 읽는다."""

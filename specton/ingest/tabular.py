@@ -101,8 +101,9 @@ class TabularResult:
 
     requirements: tuple[SourceRequirement, ...]  # 읽은 원문들 (1건 = 1행)
     issues: tuple[ExtractionIssue, ...] = ()  # 확인 필요 건 목록 (ExtractionIssue 여러 개)
-    # 머리글을 찾지 못해 통째로 건너뛴 시트 이름 (표지·개정이력 등). 엑셀만 해당.
-    # 건너뛰는 곳: read_excel 안 `if header is None: skipped.append(...)`
+    # 읽지 않은 시트 이름. 화면에 정보 한 줄로만 알리고 확인·제외 대상이 아니다.
+    # 머리글을 찾지 못한 시트(표지·개정이력 등)와 머리글만 있고 요구사항 행이 없는 시트(빈 표).
+    # 파일 전체가 빈 양식이면 여기 대신 `_empty_form` 안내. 엑셀만 해당.
     skipped_sheets: tuple[str, ...] = ()
 
 
@@ -175,7 +176,7 @@ def read_excel(
     skipped: list[str] = []
     found_labels: list[str] = []
     found_from_req_sheet = False
-    empty_tables: list[ExtractionIssue] = []
+    empty: list[str] = []
     for sheet in values_book.worksheets:
         grid = _sheet_grid(sheet, formula_book[sheet.title])
         rows = [[c.value for c in row] for row in grid]
@@ -198,21 +199,23 @@ def read_excel(
             elif built is not None:
                 requirements.append(built)
         if len(requirements) + len(issues) == before:
-            empty_tables.append(_empty_table(sheet.title, header))
+            empty.append(sheet.title)
     if len(skipped) == len(values_book.worksheets):
         # 어느 시트에서도 요구사항 표 머리글을 찾지 못함. 조용히 0건으로 두지 않는다
         raise _header_not_found(found_labels)
-    # 머리글만 있고 요구사항 행이 없는 표(빈 양식)는 시트마다 확인 필요로 알린다
-    issues.extend(empty_tables)
-    return TabularResult(_mark_duplicates(requirements), tuple(issues), tuple(skipped))
+    if not requirements and not issues:
+        # 요구사항 표는 있지만 모두 머리글만 있는 빈 양식. 분석할 원문이 없어 파일 단위로 안내한다
+        raise _empty_form(empty)
+    return TabularResult(_mark_duplicates(requirements), tuple(issues), (*skipped, *empty))
 
 
-def _empty_table(sheet: str | None, header: _Header, file_format: str = "xlsx") -> ExtractionIssue:
-    return ExtractionIssue(
-        SourceRef(file_format=file_format, sheet=sheet, row=header.last_row + 1),
-        notice="요구사항이 비어 있어요. 표에 요구사항을 적었는지 확인해 주세요.",
-        detail=(f"{sheet} 시트 " if sheet else "")
-        + f"{header.last_row + 1}행에 칸 이름만 있고 그 아래에 요구사항이 없어요.",
+def _empty_form(sheets: list[str]) -> "UnsupportedInput":
+    """파일 전체가 빈 양식일 때의 안내. 엑셀은 칸 이름만 있는 시트 이름을 보여 준다."""
+    more = f" 외 {len(sheets) - 5}개" if len(sheets) > 5 else ""
+    where = f"「{'」「'.join(sheets[:5])}」{more} 시트에 " if sheets else ""
+    return UnsupportedInput(
+        "요구사항이 없는 빈 양식이에요. 요구사항을 적은 뒤 다시 올려 주세요.",
+        f"{where}칸 이름만 있고 그 아래에 요구사항이 없어요.",
     )
 
 
@@ -245,7 +248,7 @@ def read_csv(
         elif built is not None:
             requirements.append(built)
     if not requirements and not issues:
-        issues.append(_empty_table(None, header, "csv"))
+        raise _empty_form([])
     return TabularResult(_mark_duplicates(requirements), tuple(issues))
 
 
