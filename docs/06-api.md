@@ -142,7 +142,7 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 | `INTERRUPT_STALE` | 이미 응답했거나 오래된 확인 요청에 답함 | 409 | 최신 상태 조회 후 |
 | `EVENT_REPLAY_EXPIRED` | SSE 재연결 시 이벤트 보존 범위를 벗어남 | 409 | 상태 조회 후 |
 | `ARTIFACT_NOT_READY` | 산출물이 아직 생성되지 않음 | 409 | 예 |
-| `ARTIFACT_FORMAT_UNSUPPORTED` | 허용하지 않는 kind·format 조합 | 422 | 아니오 |
+| `ARTIFACT_FORMAT_UNSUPPORTED` | 허용하지 않는 kind·file_format 조합 | 422 | 아니오 |
 | `UPLOAD_TOO_LARGE` | 파일 크기 한도 초과 | 413 | 아니오 |
 | `UNSUPPORTED_MEDIA_TYPE` | 지원하지 않는 파일 형식 | 415 | 아니오 |
 | `PACK_UNSUPPORTED` | 없는 도메인 팩 선택 | 422 | 아니오 |
@@ -160,7 +160,7 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 
 ## 산출물 형식
 
-| kind | 허용 format | 비고 |
+| kind | 허용 file_format | 비고 |
 |---|---|---|
 | `requirements` | md | 중간 |
 | `functions` | md, pdf | PDF는 승인된 revision에서만 |
