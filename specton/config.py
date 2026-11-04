@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     lease_seconds: int = Field(default=60, gt=0)
     lease_renew_seconds: int = Field(default=20, gt=0)
     db_pool_size: int = Field(default=10, gt=0)
+    # 실행기가 `queued`·lease 만료 run을 찾는 간격 (ADR-0012)
+    runner_poll_seconds: float = Field(default=1.0, gt=0)
 
     # 업로드 원문·산출물 저장 위치(git 제외). 응답에는 경로를 넣지 않는다 (docs/11).
     storage_dir: Path = Path("var/storage")

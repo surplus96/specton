@@ -113,6 +113,7 @@ stateDiagram-v2
     awaiting_requirements --> designing
     designing --> generating
     designing --> analysing: 수정 요청이 요구사항 단계로
+    designing --> awaiting_review: 수정 요청 단계 판단 불가
     generating --> reviewing
     reviewing --> designing: 재작업
     reviewing --> analysing: 요구사항 단계 재작업
@@ -123,7 +124,7 @@ stateDiagram-v2
     completed --> [*]
 ```
 
-- HITL 2 수정 요청은 API가 먼저 `designing`으로 바꾸고, A09가 요구사항 단계로 보내면 `designing → analysing`이 된다.
+- HITL 2 수정 요청은 API가 먼저 `designing`으로 바꾸고, A09가 요구사항 단계로 보내면 `designing → analysing`이 된다. A09가 복귀 단계를 정하지 못하면 새 확인 요청으로 다시 최종 검토를 묻는다 (`designing → awaiting_review`).
 - 어느 단계에서든 `failed`, 또는 `cancel_requested` → `cancelled`로 갈 수 있다. `queued`와 사람 확인 대기 중에는 바로 `cancelled`로 간다 (ADR-0012).
 - `failed` 복구는 오류 종류와 마지막 checkpoint를 명시하며 무조건 처음부터 다시 실행하지 않는다.
 - 각 단계는 `run_id`, `revision`, `iteration`, 입력 해시를 갖는다.
