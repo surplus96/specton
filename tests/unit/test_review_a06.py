@@ -130,7 +130,7 @@ def _settings() -> Settings:
 
 def test_a06_reads_requirements_functions_and_entities() -> None:
     assert set(A06.inputs) == {"requirements", "functions", "entities"}
-    assert A06.prompt_version == "a06-v1"
+    assert A06.prompt_version == "a06-v2"
 
 
 def test_a06_is_loaded_with_the_other_perspectives() -> None:
@@ -169,6 +169,17 @@ def test_a06_prompt_keeps_the_satisfied_elsewhere_guard() -> None:
     system = transport.sent[0].messages[0].content
     assert "다른 엔티티나 다른 기능에서 같은 요구를 충족하면 누락으로 지적하지 않는다" in system
     assert "한 곳에 없다는 사실만으로 누락이라고 하지 않는다" in system
+
+
+def test_a06_prompt_marks_uncertainty_when_context_is_short() -> None:
+    """TC-A06 기대: 전달 문맥이 부족하면 단정하지 않고 불확실성을 표시한다."""
+    client, transport = stub_client(reply(ReviewOutput(findings=())))
+
+    review_perspective(client, A06, _satisfied_elsewhere_state(), _settings())
+
+    system = transport.sent[0].messages[0].content
+    assert "누락이라고 단정하지 않는다" in system
+    assert "전달된 설계 안에서 찾지 못함(확인 필요)" in system
 
 
 def test_a06_shows_the_whole_design_so_another_table_can_be_checked() -> None:
