@@ -61,6 +61,12 @@ _PERSISTENCE: dict[type[pe.PersistenceError], tuple[int, ErrorCode, str, bool]] 
         "차단 오류가 남아 있어 승인할 수 없습니다.",
         False,
     ),
+    pe.ArtifactNotReadyError: (
+        409,
+        ErrorCode.ARTIFACT_NOT_READY,
+        "요청한 산출물이 아직 없습니다. PDF는 승인한 revision에서만 받을 수 있습니다.",
+        True,
+    ),
     pe.EventReplayExpiredError: (
         409,
         ErrorCode.EVENT_REPLAY_EXPIRED,

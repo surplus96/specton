@@ -12,7 +12,7 @@ from uuid import UUID, uuid4
 import yaml
 from anyio import to_thread
 from fastapi import APIRouter, File, Form, Header, Path, Query, Request, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from specton.api.deps import ConnDep, PoolDep, SettingsDep
@@ -26,17 +26,37 @@ from specton.contracts import (
     RunState,
     RunStatus,
     RunSummary,
+    RunView,
     SseEvent,
 )
 from specton.packs.build import discover_packs
-from specton.persistence import runs
+from specton.persistence import runs, snapshots
 from specton.persistence.db import Pool
 from specton.persistence.lease import FINAL_STATES
+from specton.persistence.snapshots import ArtifactKind, FileFormat, Section
 
 router = APIRouter(prefix="/runs")
 
 RunId = Annotated[UUID, Path(alias="id")]
 _KEEPALIVE_SECONDS = 15.0
+
+# 산출물 kind별 허용 형식 (06 문서 "산출물 형식"). PDF는 승인한 revision에서만 생긴다
+ARTIFACT_FORMATS: dict[str, tuple[str, ...]] = {
+    "requirements": ("md",),
+    "functions": ("md", "pdf"),
+    "erd": ("mmd", "pdf"),
+    "ddl": ("sql",),
+    "rtm": ("xlsx", "csv"),
+    "review": ("md",),
+}
+_MEDIA_TYPES = {
+    "md": "text/markdown; charset=utf-8",
+    "pdf": "application/pdf",
+    "mmd": "text/plain; charset=utf-8",
+    "sql": "application/sql; charset=utf-8",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "csv": "text/csv; charset=utf-8",
+}
 
 
 class CancelRequest(BaseModel):
@@ -145,6 +165,55 @@ def cancel_run(run_id: RunId, owner: OwnerRef, conn: ConnDep, body: CancelReques
     """취소 요청. 실행 중이면 `cancel_requested`, 실행자가 없으면 바로 `cancelled` (ADR-0012)."""
     runs.request_cancel(conn, run_id, owner, body.expected_revision)
     return runs.get_run(conn, run_id, owner)
+
+
+@router.get("/{id}/view", operation_id="getRunView")
+def get_run_view(
+    run_id: RunId,
+    owner: OwnerRef,
+    conn: ConnDep,
+    section: Section,
+    revision: Annotated[int | None, Query(ge=0)] = None,
+) -> RunView:
+    """화면용 내용. 확인 요청이 가리키는 추출 블록·요구사항·설계 모델·지적을 여기서 읽는다."""
+    return snapshots.get_view(conn, run_id, owner, section, revision)
+
+
+@router.get(
+    "/{id}/artifacts/{kind}",
+    operation_id="downloadArtifact",
+    response_class=FileResponse,
+    responses={200: {"content": {"application/octet-stream": {}}}},
+)
+def download_artifact(
+    run_id: RunId,
+    owner: OwnerRef,
+    conn: ConnDep,
+    settings: SettingsDep,
+    kind: ArtifactKind,
+    file_format: FileFormat,
+    revision: Annotated[int, Query(ge=0)],
+) -> FileResponse:
+    """산출물 파일. 허용하지 않는 kind·형식 조합은 422, 아직 없으면 409 (06 문서 산출물 형식)."""
+    if file_format not in ARTIFACT_FORMATS[kind]:
+        allowed = ", ".join(ARTIFACT_FORMATS[kind])
+        raise ApiError(
+            422,
+            ErrorCode.ARTIFACT_FORMAT_UNSUPPORTED,
+            f"{kind}는 {allowed} 형식만 받을 수 있습니다.",
+        )
+    stored = snapshots.find_artifact(conn, run_id, owner, kind, file_format, revision)
+    root = settings.storage_dir.resolve()
+    path = (root / stored.storage_ref).resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        raise RuntimeError("산출물 기록은 있으나 파일이 없습니다")  # 경로는 응답에 넣지 않는다
+    draft = "" if stored.ref.approved else "-draft"
+    return FileResponse(
+        path,
+        media_type=_MEDIA_TYPES[file_format],
+        filename=f"specton-{kind}-r{revision}{draft}.{file_format}",
+        headers={"ETag": f'"{stored.ref.hash}"'},
+    )
 
 
 @router.get("/{id}/events", operation_id="streamRunEvents")

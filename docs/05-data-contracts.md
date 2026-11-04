@@ -141,7 +141,7 @@ DDL은 `specton/persistence/schema.sql`이고 이 표와 같아야 한다. 보�
 | run | `run_id`, `owner_ref`, `status`, `revision`, `iteration`, `stage`, `interrupt`, `error`, `pack`, `pack_version`, `model_config`, `last_event_id`, 시각 | revision 낙관적 잠금, 상태 전이 검사. `owner_ref`는 세션 값 (ADR-0011). `interrupt`는 사람 확인 대기에서만, `error`는 `failed`에서만 값이 있고 `GET /runs/{id}`는 run 행만 읽는다 |
 | document | `document_id`, `run_id`, `file_name`, `file_format`, `file_hash`, `storage_ref` | run 1:N (초기 API는 1파일), 파일 경로 노출 금지. MIME은 저장하지 않고 `file_format`에서 정한다 |
 | source_block | `block_id`, `document_id`, `source_ref`, `source_text`, `extraction_status`, `payload`(SourceRequirement) | document 1:N. 수정본·제외 표시는 ADR-0015(#95) 결론에 따른다 |
-| model_snapshot | `snapshot_id`, `run_id`, `revision`, `normalized_model`, `model_hash` | UNIQUE(run_id, revision), 승인 후 불변 |
+| model_snapshot | `snapshot_id`, `run_id`, `revision`, `normalized_model`, `model_hash` | UNIQUE(run_id, revision), 승인 후 불변 (같은 모델을 다시 저장하면 그대로 두고, 다른 모델이면 거절). `normalized_model`은 `requirements`·`functions`·`entities`·`relationships` 칸 (`save_model`) |
 | finding | `finding_id`, `snapshot_id`, `source`, `reviewer_or_rule`, `fingerprint`, `iteration`, `payload` | 모델 버전 연결, 과거 지적 보존 |
 | approval | `approval_id`, `run_id`, `snapshot_id`, `interrupt_id`, `actor_ref`, `decision`, `feedback`, `response`, `answered_at` | UNIQUE(run_id, interrupt_id): 같은 interrupt 응답 1회. 추출·분석 확인은 모델 전이라 `snapshot_id`가 비어 있다 |
 | artifact | `artifact_id`, `snapshot_id`, `kind`, `file_format`, `hash`, `storage_ref`, `approval_status` | UNIQUE(snapshot_id, kind, file_format), 초안/승인본 구분 |
