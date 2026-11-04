@@ -4,7 +4,8 @@
 API는 이 표만 읽는다. 체크포인트는 읽지 않는다 (ADR-0012 "화면 상태는 run 기준", #110 리뷰 답 2).
 
 `model_snapshot.normalized_model`은 `DesignState`의 `requirements`·`functions`·`entities`·
-`relationships`를 같은 이름의 칸으로 담는다. 같은 revision은 승인 전까지 덮어쓸 수 있다.
+`relationships`를 같은 이름의 칸으로 담는다. 같은 revision은 승인 전까지 덮어쓸 수 있고,
+승인 뒤에는 같은 모델을 다시 저장하는 것만 허용한다 (승인 뒤 export·complete 노드도 저장한다).
 """
 
 import hashlib
@@ -45,8 +46,8 @@ class StoredArtifact:
 def save_model(conn: Connection[DictRow], run_id: UUID, holder: str, state: DesignState) -> UUID:
     """노드가 끝난 뒤 추출 원문·모델·지적을 저장한다. lease를 가진 실행자만 쓸 수 있다.
 
-    같은 상태를 다시 저장해도 결과가 같다(멱등). 승인된 revision의 모델은 바꾸지 않는다
-    (InvalidTransitionError). 돌려주는 값은 그 revision의 `snapshot_id`다.
+    같은 상태를 다시 저장해도 결과가 같다(멱등). 승인된 revision은 모델이 같으면 아무것도
+    다시 쓰지 않고, 다르면 InvalidTransitionError다. 돌려주는 값은 그 revision의 `snapshot_id`다.
     """
     model = {
         name: [m.model_dump(mode="json") for m in getattr(state, name)] for name in MODEL_FIELDS
@@ -56,6 +57,23 @@ def save_model(conn: Connection[DictRow], run_id: UUID, holder: str, state: Desi
     ).hexdigest()
     with conn.transaction():
         _lock_for_writer(conn, run_id, holder)
+        # 승인도 run 행을 잠그고 기록하므로 잠금 뒤에 확인하면 그 사이에 바뀌지 않는다
+        approved = conn.execute(
+            """
+            SELECT s.snapshot_id, s.model_hash FROM model_snapshot s
+            WHERE s.run_id = %s AND s.revision = %s AND EXISTS (
+                SELECT 1 FROM approval a
+                WHERE a.snapshot_id = s.snapshot_id AND a.decision = 'approve')
+            """,
+            (run_id, state.revision),
+        ).fetchone()
+        if approved is not None:
+            if approved["model_hash"] != model_hash:
+                raise InvalidTransitionError(
+                    f"revision {state.revision}은 승인되어 바꿀 수 없습니다"
+                )
+            approved_id: UUID = approved["snapshot_id"]
+            return approved_id  # 승인본의 원문·지적도 그대로 둔다
         for block in state.source_requirements:
             conn.execute(
                 """
@@ -77,15 +95,11 @@ def save_model(conn: Connection[DictRow], run_id: UUID, holder: str, state: Desi
             VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (run_id, revision) DO UPDATE SET
                 normalized_model = EXCLUDED.normalized_model, model_hash = EXCLUDED.model_hash
-            WHERE NOT EXISTS (
-                SELECT 1 FROM approval a
-                WHERE a.snapshot_id = model_snapshot.snapshot_id AND a.decision = 'approve')
             RETURNING snapshot_id
             """,
             (uuid4(), run_id, state.revision, Jsonb(model), model_hash),
         ).fetchone()
-        if row is None:
-            raise InvalidTransitionError(f"revision {state.revision}은 승인되어 바꿀 수 없습니다")
+        assert row is not None  # INSERT … DO UPDATE는 항상 한 행을 돌려준다
         snapshot_id: UUID = row["snapshot_id"]
         # 지적은 이번 iteration에서 새로 모은 것으로 바꾼다 (03 문서 상태·버전)
         conn.execute("DELETE FROM finding WHERE snapshot_id = %s", (snapshot_id,))

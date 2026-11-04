@@ -44,11 +44,8 @@ def test_saving_the_same_state_again_keeps_one_snapshot(pool: Pool, sample_state
     assert view.items == ()  # 지적은 마지막 저장으로 바뀐다
 
 
-def test_approved_model_cannot_change(pool: Pool, sample_state: Factory) -> None:
-    run_id, document_id = _running(pool)
-    state = sample_state(str(run_id), document_id)
+def _approve(pool: Pool, run_id: UUID, snapshot_id: UUID) -> None:
     with pool.connection() as conn:
-        snapshot_id = save_model(conn, run_id, "w1", state)
         conn.execute(
             """
             INSERT INTO approval (approval_id, run_id, snapshot_id, interrupt_id, actor_ref,
@@ -58,8 +55,32 @@ def test_approved_model_cannot_change(pool: Pool, sample_state: Factory) -> None
             (uuid4(), run_id, snapshot_id, OWNER),
         )
 
-        with pytest.raises(InvalidTransitionError):
-            save_model(conn, run_id, "w1", state.evolve(functions=()))
+
+def test_approved_model_cannot_change(pool: Pool, sample_state: Factory) -> None:
+    run_id, document_id = _running(pool)
+    state = sample_state(str(run_id), document_id)
+    with pool.connection() as conn:
+        snapshot_id = save_model(conn, run_id, "w1", state)
+    _approve(pool, run_id, snapshot_id)
+
+    with pool.connection() as conn, pytest.raises(InvalidTransitionError):
+        save_model(conn, run_id, "w1", state.evolve(functions=()))
+
+
+def test_saving_the_approved_model_again_keeps_it(pool: Pool, sample_state: Factory) -> None:
+    """승인 뒤 export·complete 노드가 같은 모델을 저장해도 실패하지 않는다 (#113 리뷰)."""
+    run_id, document_id = _running(pool)
+    state = sample_state(str(run_id), document_id)
+    with pool.connection() as conn:
+        snapshot_id = save_model(conn, run_id, "w1", state)
+    _approve(pool, run_id, snapshot_id)
+
+    with pool.connection() as conn:
+        again = save_model(conn, run_id, "w1", state.evolve(findings=()))
+        view = get_view(conn, run_id, OWNER, "review")
+
+    assert again == snapshot_id
+    assert [f["id"] for f in view.items] == ["A05-1-1"]  # 승인본의 지적은 다시 쓰지 않는다
 
 
 def test_only_the_lease_holder_can_write(pool: Pool, sample_state: Factory) -> None:
