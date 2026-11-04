@@ -148,6 +148,27 @@ def test_answers_resume_the_run_to_completion(world: Callable[..., _World]) -> N
     assert w.events(run_id)[-1] is SseEventType.COMPLETED
 
 
+def test_revise_asks_again_and_completes_after_approval(world: Callable[..., _World]) -> None:
+    """수정 요청을 A09가 판단하지 못하면 새 확인 요청으로 다시 최종 검토를 묻는다 (#114 R3 확인)."""
+    w = world()  # A09는 stub: 복귀 단계를 정하지 못한다
+    run_id = w.create()
+    w.runner.run_pending()
+    w.answer(run_id, REQUIREMENTS_OK)
+    w.runner.run_pending()
+    first = w.status(run_id).interrupt
+
+    w.answer(run_id, {"kind": "review", "decision": "revise", "feedback": "보완"})
+    w.runner.run_pending()
+    again = w.status(run_id)
+    w.answer(run_id, APPROVE)
+    w.runner.run_pending()
+
+    assert first is not None
+    assert again.status is RunState.AWAITING_REVIEW
+    assert again.interrupt is not None and again.interrupt.interrupt_id != first.interrupt_id
+    assert w.status(run_id).status is RunState.COMPLETED
+
+
 def test_status_events_follow_each_saved_state(world: Callable[..., _World]) -> None:
     w = world()
     run_id = w.create()

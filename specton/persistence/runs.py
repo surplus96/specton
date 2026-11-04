@@ -46,8 +46,9 @@ _FLOW: Mapping[RunState, frozenset[RunState]] = {
     S.AWAITING_INPUT: frozenset({S.ANALYSING}),
     S.ANALYSING: frozenset({S.AWAITING_REQUIREMENTS}),
     S.AWAITING_REQUIREMENTS: frozenset({S.DESIGNING}),
-    # 요구사항 단계로 재작업하면 A01로 돌아간다 (03 문서 재작업 복귀, #111)
-    S.DESIGNING: frozenset({S.GENERATING, S.ANALYSING}),
+    # 요구사항 단계로 재작업하면 A01로 돌아간다 (03 문서 재작업 복귀, #111).
+    # HITL 2 수정 요청을 A09가 판단하지 못하면 다시 최종 검토를 묻는다 (#114)
+    S.DESIGNING: frozenset({S.GENERATING, S.ANALYSING, S.AWAITING_REVIEW}),
     S.GENERATING: frozenset({S.REVIEWING}),
     S.REVIEWING: frozenset({S.DESIGNING, S.AWAITING_REVIEW, S.ANALYSING}),
     S.AWAITING_REVIEW: frozenset({S.DESIGNING, S.EXPORTING}),
