@@ -285,6 +285,22 @@ def test_revise_to_requirements_follows_the_state_diagram() -> None:
     assert seen[-1] is RunState.COMPLETED
 
 
+def test_revise_with_undecided_router_follows_the_state_diagram() -> None:
+    """HITL 2 수정 요청을 A09가 판단하지 못하면 다시 최종 검토로 간다.
+
+    `designing → awaiting_review` (#114 R3 확인).
+    """
+    run = _Run({"a09": lambda state: {"router_stage": None}})
+    revise = {"kind": "review", "decision": "revise", "feedback": "보완"}
+
+    seen = run.statuses(REQUIREMENTS_OK, revise, APPROVE)
+
+    invalid = [(a, b) for a, b in pairwise(seen) if not can_transition(a, b)]
+    assert invalid == []
+    assert (RunState.DESIGNING, RunState.AWAITING_REVIEW) in pairwise(seen)
+    assert seen[-1] is RunState.COMPLETED
+
+
 # 재작업
 
 

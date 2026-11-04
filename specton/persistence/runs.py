@@ -46,8 +46,9 @@ _FLOW: Mapping[RunState, frozenset[RunState]] = {
     S.AWAITING_INPUT: frozenset({S.ANALYSING}),
     S.ANALYSING: frozenset({S.AWAITING_REQUIREMENTS}),
     S.AWAITING_REQUIREMENTS: frozenset({S.DESIGNING}),
-    # 요구사항 단계로 재작업하면 A01로 돌아간다 (03 문서 재작업 복귀, #111)
-    S.DESIGNING: frozenset({S.GENERATING, S.ANALYSING}),
+    # 요구사항 단계로 재작업하면 A01로 돌아간다 (03 문서 재작업 복귀, #111).
+    # HITL 2 수정 요청을 A09가 판단하지 못하면 다시 최종 검토를 묻는다 (#114)
+    S.DESIGNING: frozenset({S.GENERATING, S.ANALYSING, S.AWAITING_REVIEW}),
     S.GENERATING: frozenset({S.REVIEWING}),
     S.REVIEWING: frozenset({S.DESIGNING, S.AWAITING_REVIEW, S.ANALYSING}),
     S.AWAITING_REVIEW: frozenset({S.DESIGNING, S.EXPORTING}),
@@ -137,6 +138,29 @@ def get_run(conn: Connection[DictRow], run_id: UUID, owner_ref: str) -> RunStatu
     if row is None:
         raise RunNotFoundError(str(run_id))
     return RunStatus.model_validate(row)
+
+
+def load_run(conn: Connection[DictRow], run_id: UUID) -> RunStatus:
+    """실행기용 run 상태. 소유자를 검사하지 않으므로 API에서 쓰지 않는다 (#17)."""
+    row = conn.execute(
+        "SELECT run_id, status, revision, stage, interrupt, error FROM run WHERE run_id = %s",
+        (run_id,),
+    ).fetchone()
+    if row is None:
+        raise RunNotFoundError(str(run_id))
+    return RunStatus.model_validate(row)
+
+
+def answer_for(conn: Connection[DictRow], run_id: UUID, interrupt_id: str) -> dict[str, Any] | None:
+    """실행기용: 확인 요청에 받은 응답(`ResumeRequest.response`). 아직 답이 없으면 None (#17)."""
+    row = conn.execute(
+        "SELECT response FROM approval WHERE run_id = %s AND interrupt_id = %s",
+        (run_id, interrupt_id),
+    ).fetchone()
+    if row is None:
+        return None
+    response: dict[str, Any] = row["response"]
+    return response
 
 
 def list_runs(
