@@ -9,6 +9,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from langgraph.checkpoint.serde.event_hooks import SerdeEvent, register_serde_event_listener
 from openpyxl import Workbook  # type: ignore[import-untyped]
 
 from specton.config import Settings
@@ -45,6 +46,19 @@ pytestmark = pytest.mark.db
 OWNER = "owner-a"
 REQUIREMENTS_OK = {"kind": "requirements", "answers": []}
 APPROVE = {"kind": "review", "decision": "approve", "feedback": ""}
+
+
+@pytest.fixture(autouse=True)
+def only_registered_checkpoint_types() -> Iterator[None]:
+    """체크포인트를 다시 읽을 때 목록 밖 타입을 막거나 경고하지 않는다 (#131).
+
+    LangGraph 경고는 프로세스에서 한 번만 나오므로 로그 대신 serde 이벤트를 모은다.
+    """
+    events: list[SerdeEvent] = []
+    unregister = register_serde_event_listener(events.append)
+    yield
+    unregister()
+    assert [(e["kind"], e["module"], e["name"]) for e in events] == []
 
 
 @pytest.fixture
