@@ -1,9 +1,6 @@
-:root {
-  font-family: system-ui, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
-  line-height: 1.5;
-}
-
+/* 기본 여백만 지운다. 색·글꼴은 src/theme.ts에서 정한다. */
 body {
   margin: 0;
-  padding: 2rem;
+  -webkit-font-smoothing: antialiased;
+  word-break: keep-all; /* 한글을 단어 중간에서 끊지 않는다 */
 }
