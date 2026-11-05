@@ -1,5 +1,6 @@
 """#17 실행기: lease·노드마다 저장·HITL 재개·취소·실패·시작 시 대조 (ADR-0012)."""
 
+import io
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
@@ -8,6 +9,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from openpyxl import Workbook  # type: ignore[import-untyped]
 
 from specton.config import Settings
 from specton.contracts import (
@@ -166,17 +168,18 @@ def test_a_new_run_starts_with_its_pack_in_the_design(world: Callable[..., _Worl
 CSV = "요구사항 ID,요구사항명,상세 내용\nSFR-001,입고 등록,입고를 등록한다\n,출고,출고한다\n"
 
 
-def _upload(w: _World, storage: Path, text: str) -> UUID:
-    """CSV 하나를 올린 실행. 파일은 업로드 API와 같은 위치(`<run_id>/<document_id>.csv`)에 둔다."""
+def _upload(w: _World, storage: Path, content: str | bytes, file_format: str = "csv") -> UUID:
+    """문서 하나를 올린 실행. 업로드 API처럼 `<run_id>/<document_id>.<형식>`에 둔다."""
     document_id = uuid4()
     with w.pool.connection() as conn:
         run_id = create_run(conn, OWNER, "inventory").run_id
-        ref = f"{run_id}/{document_id}.csv"
+        ref = f"{run_id}/{document_id}.{file_format}"
         (storage / str(run_id)).mkdir()
-        (storage / ref).write_text(text, encoding="utf-8")
+        data = content.encode("utf-8") if isinstance(content, str) else content
+        (storage / ref).write_bytes(data)
         add_document(
-            conn, run_id, document_id=document_id, file_name="a.csv", file_format="csv",
-            file_hash="h", storage_ref=ref,
+            conn, run_id, document_id=document_id, file_name=f"a.{file_format}",
+            file_format=file_format, file_hash="h", storage_ref=ref,
         )  # fmt: skip
     return run_id
 
@@ -246,6 +249,101 @@ def test_unreadable_document_fails_the_run_as_extraction_failed(
     assert status.error is not None
     assert status.error.code == "EXTRACTION_FAILED"
     assert status.error.retryable is False
+
+
+def test_skipped_sheets_are_recorded_for_the_extraction_screen(
+    world: Callable[..., _World], tmp_path: Path
+) -> None:
+    """요구사항 표가 없는 시트는 안내 한 줄로 status 이벤트에 남는다 (docs/09 UI-02)."""
+    book = Workbook()
+    book.active.title = "표지"
+    sheet = book.create_sheet("요구사항")
+    sheet.append(["요구사항 ID", "요구사항명", "상세 내용"])
+    sheet.append(["SFR-001", "입고 등록", "입고를 등록한다"])
+    data = io.BytesIO()
+    book.save(data)
+    w = world({"parse": parse_node(tmp_path)})
+    run_id = _upload(w, tmp_path, data.getvalue(), file_format="xlsx")
+
+    w.runner.run_pending()
+
+    with w.pool.connection() as conn:
+        events = events_after(conn, run_id, OWNER, 0)
+    [note] = [e for e in events if e.data.payload.get("info") == "skipped_sheets"]
+    assert note.event is SseEventType.STATUS
+    assert (note.data.stage, note.data.payload["sheets"]) == ("parsing", ["표지"])
+    assert note.data.message == "요구사항을 읽지 않은 시트가 있습니다"
+    assert w.status(run_id).status is RunState.AWAITING_REQUIREMENTS
+    assert _decisions(w, run_id) == {"xlsx:요구사항:2": (None, None)}
+    with w.pool.connection() as conn:
+        [document] = conn.execute(
+            "SELECT document_id FROM document WHERE run_id = %s", (run_id,)
+        ).fetchall()
+        replay = events_after(conn, run_id, OWNER, note.id - 1)
+    assert note.data.payload["document_id"] == str(document["document_id"])
+    assert replay[0] == note
+
+
+def test_extraction_failure_shows_the_parser_notice_and_detail(
+    world: Callable[..., _World], tmp_path: Path
+) -> None:
+    """파서 안내 두 문장 (#19): `message`는 짧은 안내(notice).
+
+    SSE `error` payload의 `detail`은 「자세히 보기」 문장이다.
+    """
+    w = world({"parse": parse_node(tmp_path)})
+    run_id = _upload(w, tmp_path, "이름,값\n가,1\n")  # 요구사항 표 머리글이 없다
+
+    w.runner.run_pending()
+
+    status = w.status(run_id)
+    assert status.error is not None
+    assert status.error.message == "요구사항 표를 찾지 못했어요. 표의 칸 이름을 확인해 주세요."
+    with w.pool.connection() as conn:
+        [error] = [e for e in events_after(conn, run_id, OWNER, 0) if e.event is SseEventType.ERROR]
+    assert error.data.message == status.error.message
+    assert error.data.payload["code"] == "EXTRACTION_FAILED"
+    assert "위쪽 20행 안에" in error.data.payload["detail"]
+
+
+def test_other_failures_keep_the_fixed_message_without_detail(
+    world: Callable[..., _World],
+) -> None:
+    def refuse(state: GraphState) -> Mapping[str, Any]:
+        raise LLMRefusalError("내부 프롬프트 내용")
+
+    w = world({"a01": refuse})
+    run_id = w.create()
+
+    w.runner.run_pending()
+
+    with w.pool.connection() as conn:
+        [error] = [e for e in events_after(conn, run_id, OWNER, 0) if e.event is SseEventType.ERROR]
+    assert error.data.message == "모델이 응답을 거절했습니다. 입력을 확인해 주세요."
+    assert "detail" not in error.data.payload
+
+
+def test_excluding_a_related_requirement_is_recorded_as_a_run_event(
+    world: Callable[..., _World], tmp_path: Path
+) -> None:
+    """ADR-0015 결정 5: 제외는 막지 않고, 경고를 status 이벤트로 남긴다."""
+    w = world({"parse": parse_node(tmp_path)})
+    rows = "요구사항 ID,요구사항명,상세 내용,관련 요구사항\n"
+    # SFR-002는 상세 내용이 비어 review 블록이다 (pass 블록은 제외할 수 없다, #120)
+    rows += "SFR-001,입고 등록,입고를 등록한다,SFR-002\nSFR-003,출고,출고한다,\nSFR-002,반품,,\n"
+    run_id = _upload(w, tmp_path, rows)
+    w.runner.run_pending()
+    exclude = [{"block_id": "csv:4", "reason": "2차 범위"}]
+
+    w.answer(run_id, {"kind": "extraction", "confirmed": True, "excluded_blocks": exclude})
+    w.runner.run_pending()
+
+    with w.pool.connection() as conn:
+        events = events_after(conn, run_id, OWNER, 0)
+    [warning] = [e for e in events if e.data.payload.get("warning") == "excluded_related"]
+    assert warning.event is SseEventType.STATUS
+    assert warning.data.payload["block_id"] == "csv:4"
+    assert warning.data.payload["related_block_ids"] == ["csv:2"]
 
 
 def test_answers_resume_the_run_to_completion(world: Callable[..., _World]) -> None:

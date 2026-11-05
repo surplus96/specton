@@ -11,6 +11,7 @@
   실행만 `LLM_UNAVAILABLE`로 실패한다.
 """
 
+import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache
@@ -20,7 +21,7 @@ from specton.config import Settings
 from specton.contracts import DesignState
 from specton.graph import REVIEWERS, GraphState, Node
 from specton.llm.client import LLMClient
-from specton.llm.errors import LLMBudgetExceededError
+from specton.llm.errors import LLMBudgetExceededError, LLMError
 from specton.llm.openai_transport import openai_client
 from specton.llm.types import CallRecord
 from specton.nodes import (
@@ -34,6 +35,8 @@ from specton.nodes.a03_entities import A03Result
 from specton.nodes.common import NodeRun
 from specton.review.perspective import Perspective, load_perspectives
 from specton.review.reviewer import ReviewRun, review_combined, review_perspective
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -128,7 +131,7 @@ def router_node(get_client: Callable[[], LLMClient], settings: Settings) -> Node
         return {
             "router_stage": result.output.stage,
             "design": design.evolve(versions=versions),
-            "tokens_used": _spent(result.calls),
+            "tokens_used": _used(design.run_id, result.calls),
         }
 
     return node
@@ -147,20 +150,24 @@ def openai_agent_nodes(settings: Settings) -> dict[str, Node]:
 def _design_node(agent: _Agent, get_client: Callable[[], LLMClient], settings: Settings) -> Node:
     def node(state: GraphState) -> Mapping[str, Any]:
         design = state["design"]
-        result = agent.run(
-            get_client(),
-            design,
-            settings,
-            pack=_pack(design, agent.agent_id),
-            token_budget=_remaining(state, settings, agent.agent_id),
-            **agent.options(design),
-        )
+        try:
+            result = agent.run(
+                get_client(),
+                design,
+                settings,
+                pack=_pack(design, agent.agent_id),
+                token_budget=_remaining(state, settings, agent.agent_id),
+                **agent.options(design),
+            )
+        except LLMError as exc:
+            _used(design.run_id, exc.calls)  # 실패까지의 호출도 남긴다
+            raise
         versions = _recorded(
             design, {agent.agent_id: (agent.prompt_version, settings.design_model)}
         )
         return {
             "design": agent.apply(design, result.output).evolve(versions=versions),
-            "tokens_used": _spent(result.calls),
+            "tokens_used": _used(design.run_id, result.calls),
         }
 
     return node
@@ -176,7 +183,7 @@ def _reviewer_node(
         run = review_perspective(
             get_client(), perspective, design, settings, pack=pack, token_budget=budget
         )
-        return _branch_update(run, (perspective,), settings)
+        return _branch_update(run, (perspective,), settings, design.run_id)
 
     return node
 
@@ -191,7 +198,7 @@ def _combined_node(
         run = review_combined(
             get_client(), perspectives, design, settings, pack=pack, token_budget=budget
         )
-        return _branch_update(run, perspectives, settings)
+        return _branch_update(run, perspectives, settings, design.run_id)
 
     return node
 
@@ -202,14 +209,14 @@ def _skip(state: GraphState) -> Mapping[str, Any]:
 
 
 def _branch_update(
-    run: ReviewRun, perspectives: Sequence[Perspective], settings: Settings
+    run: ReviewRun, perspectives: Sequence[Perspective], settings: Settings, run_id: str
 ) -> dict[str, Any]:
     return {
         "branches": {r.branch: r for r in run.results},
         "branch_versions": {
             p.reviewer_id: (p.prompt_version, _review(settings)) for p in perspectives
         },
-        "tokens_used": _spent(run.calls),
+        "tokens_used": _used(run_id, run.calls),
     }
 
 
@@ -223,7 +230,18 @@ def _remaining(state: GraphState, settings: Settings, agent_id: str) -> int:
     return remaining
 
 
-def _spent(calls: Sequence[CallRecord]) -> int:
+def _used(run_id: str, calls: Sequence[CallRecord]) -> int:
+    """호출 기록을 한 줄씩 로그로 남기고 쓴 토큰을 돌려준다 (docs/13 단계별 비용 확인).
+
+    기록에는 단계·프롬프트 버전·모델·시도·결과·토큰·시간만 있다. 원문·키는 없다 (docs/04).
+    """
+    for c in calls:
+        logger.info(
+            "LLM 호출 run=%s stage=%s prompt=%s model=%s attempt=%d outcome=%s "
+            "input_tokens=%d output_tokens=%d duration_ms=%d",
+            run_id, c.stage, c.prompt_version, c.model, c.attempt, c.outcome,
+            c.input_tokens, c.output_tokens, c.duration_ms,
+        )  # fmt: skip
     return sum(c.input_tokens + c.output_tokens for c in calls)
 
 

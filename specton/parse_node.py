@@ -4,8 +4,10 @@
   `DesignState.source_requirements`에 둔다. 판정(`pass`·`review`·`fail`)은 파서가 정한다.
 - 파일 단위로 읽지 못하면(`UnsupportedInput`) `ExtractionFailedError`로 실행을 끝낸다.
 - HWPX 파서는 #24에서 만든다. 그때까지 HWPX는 읽지 못한 파일로 끝낸다.
-- 원문을 만들지 못한 행(`ExtractionIssue`)과 건너뛴 시트는 지금 로그에만 남긴다.
-  빈 행은 R2 후속 PR에서 원문 블록으로 돌려주고, 건너뛴 시트를 화면에 보일 자리는 #19와 정한다.
+- 요구사항명·상세 내용이 모두 빈 행은 파서가 원문 문장 없는 `review` 블록으로 돌려준다(#10).
+  `ExtractionIssue`는 지금 표 파서가 만들지 않지만 오면 로그에 남긴다.
+- 건너뛴 시트(요구사항 표가 없거나 빈 표)는 확인·제외 대상이 아니라 안내 한 줄이다 (#95 결론,
+  docs/09 UI-02). 문서마다 `notes`로 돌려주고 실행기가 status 이벤트로 기록한다.
 """
 
 import logging
@@ -13,8 +15,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from specton.contracts.requirements import SourceRequirement
-from specton.graph import DocumentRef, ExtractionFailedError, GraphState, Node
+from specton.graph import DocumentRef, ExtractionFailedError, GraphState, Node, RunNote
 from specton.ingest.tabular import TabularResult, UnsupportedInput, read_csv, read_excel
 
 logger = logging.getLogger(__name__)
@@ -32,18 +33,24 @@ def parse_node(storage_dir: Path) -> Node:
         documents = state.get("documents", ())
         if not documents:
             raise ValueError("parse: 실행에 연결된 문서가 없습니다")
-        blocks = tuple(b for doc in documents for b in _read(storage_dir, doc))
+        results = [(doc, _read(storage_dir, doc)) for doc in documents]
+        blocks = tuple(b for _, result in results for b in result.requirements)
         if not blocks:
             raise ExtractionFailedError(
                 "읽은 요구사항이 없어요. 요구사항명이나 상세 내용을 적은 뒤 다시 올려 주세요.",
                 "원문 블록이 0건입니다 (원문을 만들지 못한 행만 있음)",
             )
-        return {"design": state["design"].evolve(source_requirements=blocks)}
+        notes = tuple(
+            _skipped_sheets(doc, result.skipped_sheets)
+            for doc, result in results
+            if result.skipped_sheets
+        )
+        return {"design": state["design"].evolve(source_requirements=blocks), "notes": notes}
 
     return parse
 
 
-def _read(storage_dir: Path, doc: DocumentRef) -> tuple[SourceRequirement, ...]:
+def _read(storage_dir: Path, doc: DocumentRef) -> TabularResult:
     reader = _READERS.get(doc["file_format"])
     if reader is None:
         raise ExtractionFailedError(
@@ -61,6 +68,9 @@ def _read(storage_dir: Path, doc: DocumentRef) -> tuple[SourceRequirement, ...]:
             issue.source_ref.model_dump(exclude_none=True),
             issue.notice,
         )
-    if result.skipped_sheets:
-        logger.info("문서 %s: 건너뛴 시트 %s", doc["document_id"], list(result.skipped_sheets))
-    return result.requirements
+    return result
+
+
+def _skipped_sheets(doc: DocumentRef, sheets: tuple[str, ...]) -> RunNote:
+    payload = {"info": "skipped_sheets", "document_id": doc["document_id"], "sheets": list(sheets)}
+    return RunNote(message="요구사항을 읽지 않은 시트가 있습니다", payload=payload)
