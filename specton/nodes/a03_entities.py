@@ -120,6 +120,8 @@ class PackTerm(Contract):
     length: int | None = Field(default=None, ge=1)
     precision: int | None = Field(default=None, ge=1)
     scale: int | None = Field(default=None, ge=0)
+    # 이 용어 대신 쓰면 안 되는 다른 이름 (#91 후속). 검사에만 쓰고 LLM 입력에는 넣지 않는다
+    synonyms: tuple[NonEmptyText, ...] = ()
 
     @model_validator(mode="after")
     def _check_type_params(self) -> Self:
@@ -156,7 +158,9 @@ def input_data(
             for f in state.functions
         ],
         "pack": {
-            "terms": [t.model_dump(mode="json", exclude_none=True) for t in terms],
+            "terms": [
+                t.model_dump(mode="json", exclude_none=True, exclude={"synonyms"}) for t in terms
+            ],
             "crud_exemption_reasons": {
                 reason: [op.value for op in ops] for reason, ops in exemption_reasons.items()
             },
@@ -173,9 +177,11 @@ def _checked_against(
     """이번 입력으로 검사하는 출력 모델. 어기면 형식 오류처럼 재요청 대상이 된다.
 
     팩 용어와 이름이 같은 속성만 타입을 대조하고, 팩에 없는 속성은 허용한다.
+    속성 이름이 팩 용어의 동의어이거나 띄어쓰기만 다르면 정식 용어명으로 다시 요청한다.
     면제 사유는 팩이 인정하는 것만, 면제 조작은 그 사유에 나열된 것만 허용한다.
     """
     by_term = {t.term: t for t in terms}
+    official = _official_names(terms)
 
     class CheckedA03Output(A03Output):
         @model_validator(mode="after")
@@ -208,6 +214,17 @@ def _checked_against(
             ]
             if wrong_ops:
                 raise ValueError(f"사유가 면제할 수 없는 조작입니다: {', '.join(wrong_ops)}")
+            renamed = [
+                f"{e.name}.{a.name} → {'/'.join(official[_compact(a.name)])}"
+                for e in self.entities
+                for a in e.attributes
+                if a.name not in by_term and _compact(a.name) in official
+            ]
+            if renamed:
+                raise ValueError(
+                    "팩 용어의 동의어·띄어쓰기 변형입니다. 정식 용어명으로 쓰세요: "
+                    + ", ".join(renamed)
+                )
             mismatched = [
                 f"{e.name}.{a.name}"
                 for e in self.entities
@@ -219,6 +236,20 @@ def _checked_against(
             return self
 
     return CheckedA03Output
+
+
+def _compact(name: str) -> str:
+    """띄어쓰기 차이를 무시하고 비교하기 위한 이름."""
+    return "".join(name.split())
+
+
+def _official_names(terms: Sequence[PackTerm]) -> dict[str, tuple[str, ...]]:
+    """동의어·띄어쓰기 변형 → 정식 용어명. 한 말이 여러 용어의 동의어면 모두 남긴다."""
+    found: dict[str, set[str]] = {}
+    for t in terms:
+        for alias in (t.term, *t.synonyms):
+            found.setdefault(_compact(alias), set()).add(t.term)
+    return {k: tuple(sorted(v)) for k, v in found.items()}
 
 
 def _same_type(attribute: AttributeDraft, term: PackTerm) -> bool:
@@ -249,7 +280,11 @@ def load_pack_context(pack: str, *, root: Path = DEFAULT_ROOT) -> PackContext:
     domains = {d["name"]: d for d in read_yaml(root / "common" / "domains.yaml")["domains"]}
     terms = tuple(
         PackTerm.model_validate(
-            {"term": t["term"], **_contract_fields(domains[t["domain"]]["postgres"]["strict"])}
+            {
+                "term": t["term"],
+                "synonyms": t.get("synonyms") or (),
+                **_contract_fields(domains[t["domain"]]["postgres"]["strict"]),
+            }
         )
         for t in read_yaml(root / pack / "terms.yaml")["terms"]
     )

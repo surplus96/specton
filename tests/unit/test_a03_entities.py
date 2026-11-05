@@ -659,3 +659,65 @@ def test_id_collision_stops_instead_of_overwriting(monkeypatch: pytest.MonkeyPat
 
     with pytest.raises(ValueError, match="엔티티 ID가 충돌합니다: ENT-same"):
         run(client, _a02_state(), _settings(), pack="inventory")
+
+
+# 동의어 재요청 (#137, #91 후속)
+
+
+def _checked_with_synonyms() -> type[A03Output]:
+    """예시 입력의 팩 용어 중 창고코드에 실제 팩의 동의어를 붙인 검사 모델."""
+    [example] = load_examples("inventory", "A03", A03Output)
+    terms = [
+        PackTerm.model_validate(
+            {**t, "synonyms": ["창고 번호", "보관소 코드"]} if t["term"] == "창고코드" else t
+        )
+        for t in example.input["pack"]["terms"]
+    ]
+    return _checked_against(
+        {f["id"] for f in example.input["functions"]},
+        {r["id"] for r in example.input["requirements"]},
+        terms,
+        _reasons(example.input["pack"]),
+    )
+
+
+@pytest.mark.parametrize("name", ["보관소 코드", "보관소코드", "창고번호", "창고 코드"])
+def test_synonym_or_spacing_variant_of_a_pack_term_is_requested_again(name: str) -> None:
+    data = _output()
+    attribute = data["entities"][0]["attributes"][0]
+    assert attribute["name"] == "창고코드"
+    attribute["name"] = name
+
+    with pytest.raises(
+        ValidationError, match=re.escape(f"정식 용어명으로 쓰세요: 창고.{name} → 창고코드")
+    ):
+        _checked_with_synonyms().model_validate(data)
+
+
+def test_official_term_name_passes_the_synonym_check() -> None:
+    _checked_with_synonyms().model_validate(_output())
+
+
+def test_pack_context_reads_synonyms_but_input_data_does_not_show_them() -> None:
+    by_term = {t.term: t for t in load_pack_context("inventory").terms}
+    assert by_term["창고코드"].synonyms == ("창고 번호", "보관소 코드")
+
+    data = input_data(_a02_state(), terms=[by_term["창고코드"]], exemption_reasons={})
+    assert "synonyms" not in data["pack"]["terms"][0]
+
+
+def test_run_requests_again_when_a_synonym_is_used_and_accepts_the_official_term() -> None:
+    """실제 팩(inventory)의 동의어를 쓴 응답은 재요청되고, 정식 용어명 응답으로 끝난다."""
+    data = _output()
+    data["entities"][0]["attributes"][0]["name"] = "보관소 코드"  # 창고코드의 팩 동의어
+    client, transport = stub_client(reply(_raw(data)), reply(_example_output()))
+
+    result = run(client, _a02_state(), _settings(), pack="inventory")
+
+    assert len(transport.sent) == 2
+    retry = transport.sent[1].messages[-1].content
+    assert "정식 용어명으로 쓰세요" in retry
+    assert "보관소 코드 → 창고코드" in retry
+    names = [a.name for e in result.output.entities for a in e.attributes]
+    assert "창고코드" in names
+    assert "보관소 코드" not in names
