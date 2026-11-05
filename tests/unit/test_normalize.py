@@ -27,6 +27,7 @@ from specton.codegen.model import (
 from specton.codegen.naming import NamingRules, TermInfo
 from specton.codegen.normalize import PackRef, check_output, normalize
 from specton.contracts import DesignState, Entity, Relationship, Requirement
+from specton.contracts.base import SqlType
 from specton.packs.build import read_yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -433,13 +434,11 @@ def test_d6_entity_without_key_fails() -> None:
     assert result.problems[0].target == "ENT-rc"
 
 
-def test_parent_without_key_reports_both_missing_pk_and_underivable_fk() -> None:
+def test_parent_without_key_is_reported_once_as_missing_pk() -> None:
+    """부모의 PK 없음이 원인이므로, 그 부모를 가리키는 관계는 따로 보고하지 않는다."""
     warehouse = _entity("ENT-wh", "창고", _attr("ATTR-wh-nm", "창고명"))
     result = _failed(_design([warehouse, RECEIPT], [_rel("REL-01", "ENT-wh", "ENT-rc")]))
-    assert _codes(result) == {
-        (ProblemCode.NO_PRIMARY_KEY, "D6"),
-        (ProblemCode.PARENT_WITHOUT_KEY, None),
-    }
+    assert [(p.code, p.target) for p in result.problems] == [(ProblemCode.NO_PRIMARY_KEY, "ENT-wh")]
 
 
 def test_d13_fk_name_matching_existing_attribute_is_a_conflict_even_with_same_type() -> None:
@@ -567,10 +566,7 @@ def test_d14_identifying_parent_without_key_blocks_descendants_with_one_cause() 
         _rel("REL-02", "ENT-rc", "ENT-ln", identifying=True),
     ]
     result = _failed(_design([warehouse, RECEIPT, LINE], rels))
-    assert {(p.code, p.target) for p in result.problems} == {
-        (ProblemCode.NO_PRIMARY_KEY, "ENT-wh"),
-        (ProblemCode.PARENT_WITHOUT_KEY, "REL-01"),
-    }
+    assert [(p.code, p.target) for p in result.problems] == [(ProblemCode.NO_PRIMARY_KEY, "ENT-wh")]
 
 
 def test_d13_identifying_child_already_holding_parent_key_conflicts() -> None:
@@ -608,10 +604,8 @@ def test_d5_self_reference_prefix_not_in_dictionary_is_pending() -> None:
 def test_many_to_many_side_without_key_fails() -> None:
     supplier = _entity("ENT-sp", "거래처", _attr("ATTR-sp-bz", "사업자번호"))
     rel = _rel("REL-01", "ENT-wh", "ENT-sp", cardinality="N:M")
-    assert _codes(_failed(_design([WAREHOUSE, supplier], [rel]))) == {
-        (ProblemCode.NO_PRIMARY_KEY, "D6"),
-        (ProblemCode.PARENT_WITHOUT_KEY, None),
-    }
+    result = _failed(_design([WAREHOUSE, supplier], [rel]))
+    assert [(p.code, p.target) for p in result.problems] == [(ProblemCode.NO_PRIMARY_KEY, "ENT-sp")]
 
 
 def test_d4_many_to_many_sides_with_same_key_name_conflict() -> None:
@@ -839,3 +833,53 @@ def test_codegen_does_not_import_llm_or_nodes() -> None:
             )
             for name in names:
                 assert not name.startswith(("specton.llm", "specton.nodes", "openai")), path
+
+
+# ── #129 리뷰 반영 ────────────────────────────────────────────────────
+
+
+def test_required_self_reference_fails_because_top_row_cannot_be_inserted() -> None:
+    """필수 자기참조는 FK가 NOT NULL이라 상위가 없는 최상위 행을 넣을 수 없다."""
+    design = _design([WAREHOUSE], [_rel("REL-01", "ENT-wh", "ENT-wh", optional=False)])
+    result = _failed(design, rules=RULES_SELF)
+    assert [(p.code, p.target) for p in result.problems] == [
+        (ProblemCode.REQUIRED_SELF_REFERENCE, "REL-01")
+    ]
+
+
+def test_attribute_type_different_from_term_domain_type_fails() -> None:
+    """속성 이름이 팩 용어와 같은데 타입이 그 용어 도메인의 타입과 다르면 보고한다."""
+    lexicon = FixtureLexicon(
+        terms={"창고코드": TermInfo("WRHUS_CD", "코드C10", data_type=SqlType.CHAR)}
+    )
+    wrong = _entity(
+        "ENT-wh",
+        "창고",
+        _attr("ATTR-wh-cd", "창고코드", is_key=True, data_type="integer", length=None),
+    )
+    result = _failed(_design([wrong], []), lexicon=lexicon)
+    assert [p.code for p in result.problems] == [ProblemCode.DOMAIN_TYPE_MISMATCH]
+
+
+def test_single_key_attribute_marked_unique_gets_no_extra_unique() -> None:
+    """PK 칸 하나가 is_unique이기도 하면 PK가 이미 유일하므로 UNIQUE를 더하지 않는다."""
+    warehouse = _entity(
+        "ENT-wh", "창고", _attr("ATTR-wh-cd", "창고코드", is_key=True, is_unique=True)
+    )
+    model = _ok(_design([warehouse], []))
+    (table,) = model.tables
+    assert table.unique_keys == ()
+
+
+def test_relationships_are_ordered_by_number_not_text() -> None:
+    """`REL-9`가 `REL-10`보다 먼저 처리되어 복합 PK 칸이 번호 순으로 놓인다."""
+    rels = [
+        _rel("REL-10", "ENT-wh", "ENT-rc", identifying=True),
+        _rel("REL-9", "ENT-sp", "ENT-rc", identifying=True),
+    ]
+    supplier = _entity("ENT-sp", "거래처", _attr("ATTR-sp-cd", "거래처코드", is_key=True))
+    lexicon = FixtureLexicon(words={"거래처코드": "BCNC_CD"})
+    model = _ok(_design([WAREHOUSE, supplier, RECEIPT], rels), lexicon=lexicon)
+    receipt = _table(model, "ENT-rc")
+    sources = [_col(receipt, c).relationship_id for c in receipt.primary_key]
+    assert sources[:2] == ["REL-9", "REL-10"]

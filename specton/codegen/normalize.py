@@ -87,7 +87,8 @@ def normalize(
         run.tables[entity.id] = _entity_table(entity, run)
         own_keys[entity.id] = run.tables[entity.id].primary_key
 
-    supported = [r for r in sorted(design.relationships, key=lambda r: r.id) if _accept(r, run)]
+    relationships = sorted(design.relationships, key=lambda r: _id_order(r.id))
+    supported = [r for r in relationships if _accept(r, run)]
     identifying = [r for r in supported if r.identifying]
     _resolve_primary_keys([e.id for e in entities], identifying, own_keys, run)
     for rel in supported:
@@ -150,6 +151,15 @@ def _accept(rel: Relationship, run: _Run) -> bool:
             )
         )
         return False
+    if self_ref and not rel.optional:
+        run.problems.append(
+            problem(
+                ProblemCode.REQUIRED_SELF_REFERENCE,
+                rel.id,
+                "필수 자기참조는 FK가 NOT NULL이라 최상위 행(상위가 없는 행)을 넣을 수 없음",
+            )
+        )
+        return False
     if self_ref and run.rules.self_reference_prefix is None:
         run.problems.append(
             problem(
@@ -179,6 +189,15 @@ def _entity_table(entity: Entity, run: _Run) -> Table:
     for attr in entity.attributes:
         col_id = stable_id("COL", pack, attr.id)
         term = run.lexicon.term(attr.name)
+        if term and term.data_type is not None and term.data_type is not attr.data_type:
+            run.problems.append(
+                problem(
+                    ProblemCode.DOMAIN_TYPE_MISMATCH,
+                    col_id,
+                    f"{attr.name}: 속성 타입 {attr.data_type.value} ≠ 팩 용어 도메인 "
+                    f"{term.domain}의 타입 {term.data_type.value}",
+                )
+            )
         columns.append(
             Column(
                 id=col_id,
@@ -198,14 +217,18 @@ def _entity_table(entity: Entity, run: _Run) -> Table:
             )
         )
     run.problems.extend(_duplicate_column_names(table_id, columns))
+    own_key = tuple(stable_id("COL", pack, a.id) for a in entity.attributes if a.is_key)
     return Table(
         id=table_id,
         name=entity.name,
         physical_name=table_name,
         columns=tuple(columns),
-        primary_key=tuple(stable_id("COL", pack, a.id) for a in entity.attributes if a.is_key),
+        primary_key=own_key,
+        # PK와 같은 묶음은 이미 유일하므로 UNIQUE를 따로 두지 않는다
         unique_keys=tuple(
-            (stable_id("COL", pack, a.id),) for a in entity.attributes if a.is_unique
+            (stable_id("COL", pack, a.id),)
+            for a in entity.attributes
+            if a.is_unique and own_key != (stable_id("COL", pack, a.id),)
         ),
         req_ids=entity.req_ids,
         entity_id=entity.id,
@@ -287,6 +310,7 @@ def _resolve_primary_keys(
                     decision="D6",
                 )
             )
+            run.blocked.add(entity_id)  # 이 엔티티를 부모로 둔 관계는 따로 보고하지 않는다
         unique = [u for u in one_to_one if u != primary_key]  # PK와 같으면 이미 유일하다
         run.tables[entity_id] = table.model_copy(
             update={"primary_key": primary_key, "unique_keys": (*table.unique_keys, *unique)}
@@ -628,6 +652,12 @@ def _check_coverage(model: NormalizedModel, design: DesignState, bad: _Bad) -> N
 
 
 # ── 공통 ──────────────────────────────────────────────────────────────
+
+
+def _id_order(object_id: str) -> tuple[str, int, str]:
+    """`REL-9` < `REL-10`처럼 끝 번호를 숫자로 비교하는 정렬 키."""
+    head, _, tail = object_id.rpartition("-")
+    return (head, int(tail), "") if tail.isdigit() else (object_id, -1, object_id)
 
 
 def stable_id(prefix: str, *parts: str) -> str:

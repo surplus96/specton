@@ -35,6 +35,7 @@ class TermInfo:
     physical_name: str
     domain: str
     time_precision: int | None = None
+    data_type: SqlType | None = None  # 도메인 타입 (naming.yaml type_profile 기준)
 
 
 class Lexicon(Protocol):
@@ -228,4 +229,4 @@ def load_pack_lexicon(pack: str, root: Path = DEFAULT_PACK_ROOT) -> PackLexicon:
 def _term_info(term: Mapping[str, Any], domain: Mapping[str, Any], profile: str) -> TermInfo:
     setting = domain["postgres"][profile]
     precision = setting.get("precision") if SqlType(setting["type"]) in _TIME_TYPES else None
-    return TermInfo(term["physical_name"], term["domain"], precision)
+    return TermInfo(term["physical_name"], term["domain"], precision, SqlType(setting["type"]))
