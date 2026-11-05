@@ -11,8 +11,6 @@
 - 팩 타입은 strict 프로필로 읽는다 (프로필 확정 전).
 """
 
-import hashlib
-import unicodedata
 from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Self
@@ -32,6 +30,7 @@ from specton.contracts import (
     SqlType,
 )
 from specton.contracts.base import Contract, NonEmptyText
+from specton.ids import stable_id
 from specton.llm.client import LLMClient
 from specton.nodes.common import NodeRun, build_request
 from specton.packs.build import DEFAULT_ROOT, read_yaml
@@ -352,7 +351,6 @@ def run(
 
 
 # 해시 앞 16자리(64비트). 한 실행의 엔티티·속성 수에서 충돌 확률은 무시할 만하고, 나면 멈춘다.
-_ID_HEX_LENGTH = 16
 
 
 def _with_ids(drafts: Sequence[EntityDraft], pack: str) -> tuple[Entity, ...]:
@@ -365,10 +363,10 @@ def _with_ids(drafts: Sequence[EntityDraft], pack: str) -> tuple[Entity, ...]:
         Entity.model_validate(
             {
                 **d.model_dump(exclude={"attributes"}),
-                "id": _stable_id("ENT", pack, d.name),
+                "id": stable_id("ENT", pack, d.name),
                 "pack": pack,
                 "attributes": [
-                    {**a.model_dump(), "id": _stable_id("ATTR", pack, d.name, a.name)}
+                    {**a.model_dump(), "id": stable_id("ATTR", pack, d.name, a.name)}
                     for a in d.attributes
                 ],
             }
@@ -378,13 +376,6 @@ def _with_ids(drafts: Sequence[EntityDraft], pack: str) -> tuple[Entity, ...]:
     _check_unique([e.id for e in entities], "엔티티")
     _check_unique([a.id for e in entities for a in e.attributes], "속성")
     return entities
-
-
-def _stable_id(prefix: str, *parts: str) -> str:
-    """실행이 달라도 같은 값이 나오는 ID. 한글 조합 방식 차이는 NFC로 맞춘다."""
-    key = "\x1f".join(unicodedata.normalize("NFC", p) for p in parts)
-    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:_ID_HEX_LENGTH]
-    return f"{prefix}-{digest}"
 
 
 def _check_unique(ids: Sequence[str], kind: str) -> None:

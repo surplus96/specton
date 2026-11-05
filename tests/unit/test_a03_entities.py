@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from specton.config import Settings
 from specton.contracts import Crud, DesignState, Function, Requirement
 from specton.contracts.state import find_trace_issues
+from specton.ids import stable_id
 from specton.llm.errors import LLMContractError, LLMRefusalError
 from specton.llm.stub import refusal, reply, stub_client
 from specton.nodes import a03_entities
@@ -371,7 +372,7 @@ def test_pack_context_turns_domains_into_contract_types() -> None:
 
 
 def _entity_id(name: str, pack: str = "inventory") -> str:
-    return a03_entities._stable_id("ENT", pack, name)
+    return stable_id("ENT", pack, name)
 
 
 def _settings() -> Settings:
@@ -587,12 +588,10 @@ def _without(data: dict[str, Any], name: str) -> dict[str, Any]:
 def test_ids_are_fixed_values_of_pack_and_name() -> None:
     """알고리즘이 바뀌면 저장된 참조가 끊기므로 값을 고정해 둔다."""
     assert _entity_id("창고") == "ENT-98727dcf83e8b2b7"
-    assert a03_entities._stable_id("ATTR", "inventory", "창고", "창고코드") == (
-        "ATTR-6be8c07817773f78"
-    )
+    assert stable_id("ATTR", "inventory", "창고", "창고코드") == ("ATTR-6be8c07817773f78")
     assert _entity_id("창고") != _entity_id("창고", pack="maintenance")
-    assert a03_entities._stable_id("ATTR", "inventory", "창고", "사용여부") != (
-        a03_entities._stable_id("ATTR", "inventory", "품목", "사용여부")
+    assert stable_id("ATTR", "inventory", "창고", "사용여부") != (
+        stable_id("ATTR", "inventory", "품목", "사용여부")
     )
     # 한글 조합 방식(NFC·NFD)이 달라도 같은 ID
     assert _entity_id(unicodedata.normalize("NFD", "창고")) == _entity_id("창고")
@@ -654,7 +653,7 @@ def test_renamed_entity_is_treated_as_a_new_object() -> None:
 
 
 def test_id_collision_stops_instead_of_overwriting(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(a03_entities, "_stable_id", lambda prefix, *parts: f"{prefix}-same")
+    monkeypatch.setattr(a03_entities, "stable_id", lambda prefix, *parts: f"{prefix}-same")
     client, _ = stub_client(reply(_example_output()))
 
     with pytest.raises(ValueError, match="엔티티 ID가 충돌합니다: ENT-same"):
