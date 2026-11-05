@@ -327,6 +327,62 @@ def test_extraction_answer_with_valid_exclusions_moves_on(client: TestClient, po
     assert response.json()["status"] == "analysing"
 
 
+def _analysed(pool: Pool, run_id: str, *req_ids: str) -> None:
+    """실행기가 분석 확인에서 멈추며 저장한 revision 0 모델 (요구사항 ID만)."""
+    model = {"requirements": [{"id": r} for r in req_ids]}
+    with pool.connection() as conn:
+        conn.execute(
+            "INSERT INTO model_snapshot (snapshot_id, run_id, revision, normalized_model, "
+            "model_hash) VALUES (%s, %s, 0, %s, 'h')",
+            (uuid4(), run_id, Jsonb(model)),
+        )
+
+
+def _answers(*answers: tuple[str, str, list[str]]) -> dict[str, Any]:
+    return {
+        "kind": "requirements",
+        "answers": [{"req_id": r, "action": a, "texts": t} for r, a, t in answers],
+    }
+
+
+@pytest.mark.parametrize(
+    ("answer", "req_id"),
+    [
+        (_answers(("REQ-09", "keep", [])), "REQ-09"),  # 없는 요구사항
+        (_answers(("REQ-01", "keep", []), ("REQ-01", "edit", ["새 문장"])), "REQ-01"),  # 두 번
+        (_answers(("REQ-01", "keep", ["바꿀 문장"])), "REQ-01"),  # keep은 문장 0개
+        (_answers(("REQ-02", "edit", ["가", "나"])), "REQ-02"),  # edit은 1개
+        (_answers(("REQ-02", "split", ["하나만"])), "REQ-02"),  # split은 2개 이상
+        (_answers(("REQ-01", "split", ["입고를 등록한다", " "])), "REQ-01"),  # 빈 문장
+    ],
+)
+def test_requirements_answer_must_match_the_saved_requirements(
+    client: TestClient, pool: Pool, answer: dict[str, Any], req_id: str
+) -> None:
+    run_id = _create(client).json()["run_id"]
+    interrupt_id = _wait(pool, run_id, "requirements", S.AWAITING_REQUIREMENTS)
+    _analysed(pool, run_id, "REQ-01", "REQ-02")
+
+    response = _resume(client, run_id, interrupt_id, answer)
+    again = _resume(client, run_id, interrupt_id, _answers(("REQ-01", "keep", [])))
+
+    assert _error(response) == (422, "INVALID_RESPONSE")
+    assert response.json()["message"].startswith(f"{req_id}:")
+    assert again.status_code == 202  # 거절된 답은 기록되지 않아 다시 답할 수 있다
+
+
+def test_requirements_answer_that_fits_moves_on(client: TestClient, pool: Pool) -> None:
+    run_id = _create(client).json()["run_id"]
+    interrupt_id = _wait(pool, run_id, "requirements", S.AWAITING_REQUIREMENTS)
+    _analysed(pool, run_id, "REQ-01", "REQ-02")
+    answer = _answers(("REQ-01", "edit", ["입고를 등록한다"]), ("REQ-02", "split", ["가", "나"]))
+
+    response = _resume(client, run_id, interrupt_id, answer)
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "designing"
+
+
 def test_review_hold_keeps_waiting_and_approve_is_blocked_by_critical(
     client: TestClient, pool: Pool
 ) -> None:

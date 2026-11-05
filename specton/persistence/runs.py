@@ -20,6 +20,7 @@ from specton.contracts import (
     ExtractionStatus,
     Interrupt,
     InterruptKind,
+    RequirementsResponse,
     ResumeRequest,
     RunState,
     RunStatus,
@@ -321,6 +322,7 @@ def answer_interrupt(
                 new = S.CANCELLED  # 확인하지 않으면 중단한다 (ADR-0015)
             decision = "confirm" if response.confirmed else "stop"
         elif response.kind == "requirements":
+            _check_requirements(conn, run_id, current["revision"], response)
             new, decision = _AFTER_ANSWER[InterruptKind.REQUIREMENTS], "answer"
         else:
             new, decision = _AFTER_REVIEW[response.decision], response.decision
@@ -433,6 +435,28 @@ def _check_extraction(conn: Connection[DictRow], run_id: UUID, answer: Extractio
     failed = sorted({b for b, s in judged.items() if s is ExtractionStatus.FAIL} - excluded)
     if failed:
         raise InvalidResponseError(f"{', '.join(failed)}: 추출에 실패한 블록은 제외해야 합니다")
+
+
+def _check_requirements(
+    conn: Connection[DictRow], run_id: UUID, revision: int, answer: RequirementsResponse
+) -> None:
+    """분석 확인 답이 멈출 때 저장한 요구사항과 맞는지 본다 (06 문서, #130).
+
+    대조 기준은 실행기가 HITL 1에서 멈추며 저장한 그 revision 모델이다. 맞지 않으면 해당
+    `req_id`를 담아 InvalidResponseError. 답을 요구사항에 반영하는 일은 그래프가 한다 (#123).
+    """
+    row = conn.execute(
+        """
+        SELECT normalized_model -> 'requirements' AS requirements
+        FROM model_snapshot WHERE run_id = %s AND revision = %s
+        """,
+        (run_id, revision),
+    ).fetchone()
+    req_ids = [r["id"] for r in row["requirements"] or ()] if row else []
+    try:
+        answer.answers_for(req_ids)
+    except ValueError as exc:
+        raise InvalidResponseError(str(exc)) from exc
 
 
 def _has_blocking_findings(conn: Connection[DictRow], run_id: UUID, revision: int) -> bool:
