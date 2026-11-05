@@ -38,7 +38,7 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 | kind | 내용 | 규칙 |
 |---|---|---|
 | `extraction` | `confirmed`, `excluded_blocks`(`block_id`, `reason` 선택) | 문장은 고치지 않고 확인 또는 제외만 한다 (ADR-0015). `confirmed=false`는 중단(`cancelled`). 제외 결정은 `source_block`과 `SourceRequirement.user_decision`에, 확인한 사람·시각은 approval에 남긴다. 제외 후 남은 블록이 0건이면 `EXTRACTION_FAILED` |
-| `requirements` | `req_id`별 `keep`/`edit`/`split`, `texts` | split의 새 ID는 서버가 부여 |
+| `requirements` | `req_id`별 `keep`/`edit`/`split`, `texts` | 답이 없는 요구사항은 `keep`. `edit`은 문장 1개로 `text`를 바꾸고 `draft_text`는 둔다. `split`은 문장 2개 이상이며 첫 조각은 원래 ID, 나머지는 서버가 이어지는 새 ID를 부여한다. 조각은 원문 연결·분류를 부모와 같게 둔다 |
 | `review` | `approve`/`revise`/`hold`, `feedback` | approve는 현재 revision과 차단 오류 유무 확인. hold는 SSE `status` 이벤트만 남기고 같은 확인 요청으로 계속 기다린다 (approval을 저장하지 않고 실행을 재개하지 않음) |
 
 ```json
