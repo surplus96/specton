@@ -21,8 +21,13 @@
 | #87 | 표준 준수 검사 규칙 코드 `SC-01~06` |
 | #94 | 이름 규칙 `source_`·`draft_` 통일, 원문 위치 `kind` → `file_format` |
 | #98 | `DesignState.source_requirements`, 근거 인용에 `source_text` 허용 |
+| #110 | `ErrorCode.INVALID_REQUEST` (resume 밖 요청의 형식 오류) |
+| #119 | 추출 확인은 확인·제외만 (ADR-0015): `ExtractionResponse.edits` → `excluded_blocks`, `SourceRequirement`에 `notice`·`user_decision`·`excluded_reason`, `source_text` null 허용(`review`만), `extraction_status` 기본값 없음 |
+| #120 | `SourceRequirement.excluded_reason` 빈 문자열 금지, `analysable`이 결정 전 `fail` 블록도 뺀다 |
 
-남은 작업: 계약 클래스 docstring (#105, API는 #106), requirements·추적 검사 설명 (#107), FK 파생·참조 키 (#12), 값 범위 제약 (#15)
+남은 작업: requirements·추적 검사 설명 (#107), `review`·`fail` 블록의 `notice` 필수 계약 검사 (R3 후속, #120·#128), FK 파생·참조 키 (#12), 값 범위 제약 (#15)
+
+- #128로 표 파서의 `review` 블록은 `notice`를 채운다. 계약 모델의 필수 검사는 아직 없다.
 
 ### 모델별 `kind` 뜻
 
@@ -34,7 +39,7 @@
 | `FindingDraft.kind` | 자유 문자열 | 지적 유형 (리뷰어가 붙인 이름) |
 | `QualityIssue.kind` | 자유 문자열 | A01 품질 경고 유형 (모호 표현 등) |
 | `Interrupt.kind` | `extraction`·`requirements`·`review` | HITL 멈춤 지점 |
-| `ExtractionResponse`·`RequirementsResponse`·`ReviewResponse`의 `kind` | 각 지점 이름 하나 | resume 응답 판별자. `Interrupt.kind`와 같은 값 (#106에서 확정) |
+| `ExtractionResponse`·`RequirementsResponse`·`ReviewResponse`의 `kind` | 각 지점 이름 하나 | resume 응답 판별자. `Interrupt.kind`와 같은 값이어야 하며, 다르면 422 `INVALID_RESPONSE` (#106) |
 
 ## 단계 간 모델
 
@@ -50,7 +55,7 @@
 
 - 추가 필드를 모두 LLM 출력에 넣지 않는다. 실행 메타데이터·버전·ID·필터 결과는 코드가 채운다.
 - 계약 모델은 불변이다. 값을 바꿀 때는 `evolve(...)`로 새 객체를 만든다. `model_copy(update=...)`는 검증을 건너뛰므로 쓰지 않는다.
-- 이름 규칙: `source_` = 원문에서 온 값(코드가 복사, 해석하지 않음. 추출 확인에서 고친 값도 원문으로 보고 같은 칸에 둠. 앞뒤 공백까지 보존하는 칸은 `source_text`뿐이고, 나머지 `source_` 칸은 다른 텍스트 칸처럼 앞뒤 공백을 지운다) / `draft_` = LLM이 낸 값(사람 확인 전) / 접두어 없음 = 최종 또는 코드 계산값. 클래스는 맨 이름 = 저장 모델, `…Draft` = LLM 출력. 새 필드에는 `kind`를 단독 이름으로 쓰지 않는다 (예: `file_format`, `object_kind`). 기존 `kind`의 뜻은 [모델별 `kind` 뜻](#모델별-kind-뜻).
+- 이름 규칙: `source_` = 원문에서 온 값(코드가 복사, 해석하지 않음. 추출 확인에서도 고치지 않고 확인·제외만 한다(ADR-0015). 앞뒤 공백까지 보존하는 칸은 `source_text`뿐이고, 나머지 `source_` 칸은 다른 텍스트 칸처럼 앞뒤 공백을 지운다) / `draft_` = LLM이 낸 값(사람 확인 전) / 접두어 없음 = 최종 또는 코드 계산값. 클래스는 맨 이름 = 저장 모델, `…Draft` = LLM 출력. 새 필드에는 `kind`를 단독 이름으로 쓰지 않는다 (예: `file_format`, `object_kind`). 기존 `kind`의 뜻은 [모델별 `kind` 뜻](#모델별-kind-뜻).
 - 응락수준·중요도 같은 원문 값은 MoSCoW 등으로 바꾸지 않고 문자열 그대로 둔다. 요구사항을 분할하면 부모 값을 그대로 쓴다.
 - 계약의 텍스트 필드는 앞뒤 공백을 지운다. 단, 추출한 원문(`SourceRequirement.source_text`)은 `SourceText` 타입으로 앞뒤 공백·줄바꿈까지 그대로 보존한다.
 - LLM 출력 모델(예: FindingDraft)과 저장 모델(Finding)을 나눈다. `id`·`source`·`fingerprint`·`iteration`은 코드가 붙인다.
