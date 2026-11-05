@@ -22,7 +22,7 @@
 | #94 | 이름 규칙 `source_`·`draft_` 통일, 원문 위치 `kind` → `file_format` |
 | #98 | `DesignState.source_requirements`, 근거 인용에 `source_text` 허용 |
 
-남은 작업: 계약 클래스 docstring (#105, API는 #95 뒤 #106), requirements·추적 검사 설명 (#107), FK 파생·참조 키 (#12), 값 범위 제약 (#15)
+남은 작업: 계약 클래스 docstring (#105, API는 #106), requirements·추적 검사 설명 (#107), FK 파생·참조 키 (#12), 값 범위 제약 (#15)
 
 ### 모델별 `kind` 뜻
 
@@ -34,13 +34,13 @@
 | `FindingDraft.kind` | 자유 문자열 | 지적 유형 (리뷰어가 붙인 이름) |
 | `QualityIssue.kind` | 자유 문자열 | A01 품질 경고 유형 (모호 표현 등) |
 | `Interrupt.kind` | `extraction`·`requirements`·`review` | HITL 멈춤 지점 |
-| `ExtractionResponse`·`RequirementsResponse`·`ReviewResponse`의 `kind` | 각 지점 이름 하나 | resume 응답 판별자. `Interrupt.kind`와 같은 값 (#95 결과에 따라 #106에서 확정) |
+| `ExtractionResponse`·`RequirementsResponse`·`ReviewResponse`의 `kind` | 각 지점 이름 하나 | resume 응답 판별자. `Interrupt.kind`와 같은 값 (#106에서 확정) |
 
 ## 단계 간 모델
 
 | 모델 | 핵심 필드 | 추가·정리 후보 |
 |---|---|---|
-| SourceRequirement | `document_id`, `block_id`, `source_id`, `source_ref`, `source_text`, `source_acceptance_level`, `source_related_requirements`, `source_extra`, `extraction_status` | 수정 이력 위치(계약 칸 또는 DB 표) |
+| SourceRequirement | `document_id`, `block_id`, `source_id`, `source_ref`, `source_text`, `source_acceptance_level`, `source_related_requirements`, `source_extra`, `extraction_status`, `notice`, `user_decision`, `excluded_reason` | 문장은 고치지 않는다(ADR-0015). `source_text`는 원문 문장이 없는 행이면 null이고 이때 판정은 `review`. `extraction_status`는 기본값 없음. `user_decision`(`confirmed`·`excluded`)은 추출 확인 결정이며 `pass` 블록에는 두지 않고 `fail` 블록은 확인할 수 없다. 제외 사유는 `review`면 필수. 노드는 제외했거나 원문이 없는 블록을 분석하지 않는다(`analysable`) |
 | Requirement | `id`, `source_id`, `source_ref`, `parent_id`, `text`, `draft_text`, `source_text`, `source_acceptance_level`, `type`, `nfr_category`, `quality_issues`, `analysis_version` | — |
 | Function | `id`, `name`, `description`, `priority`, `req_ids`, `entity_ops` | `priority` nullable + 근거·확인 상태 (ADR-0006). A03 전까지 `entity_ops` 비움 |
 | Entity / Attribute | `pack`, `name`, `description`, `attributes`, `req_ids`, `crud_exemptions` / 타입·길이·정밀도·키·NULL·제약 | 허용 타입 고정, 안정적 내부 참조 키. FK는 관계에서 파생 |
@@ -140,7 +140,7 @@ DDL은 `specton/persistence/schema.sql`이고 이 표와 같아야 한다. 보�
 |---|---|---|
 | run | `run_id`, `owner_ref`, `status`, `revision`, `iteration`, `stage`, `interrupt`, `error`, `pack`, `pack_version`, `model_config`, `last_event_id`, 시각 | revision 낙관적 잠금, 상태 전이 검사. `owner_ref`는 세션 값 (ADR-0011). `interrupt`는 사람 확인 대기에서만, `error`는 `failed`에서만 값이 있고 `GET /runs/{id}`는 run 행만 읽는다 |
 | document | `document_id`, `run_id`, `file_name`, `file_format`, `file_hash`, `storage_ref` | run 1:N (초기 API는 1파일), 파일 경로 노출 금지. MIME은 저장하지 않고 `file_format`에서 정한다 |
-| source_block | `block_id`, `document_id`, `source_ref`, `source_text`, `extraction_status`, `payload`(SourceRequirement) | document 1:N. 수정본·제외 표시는 ADR-0015(#95) 결론에 따른다 |
+| source_block | `block_id`, `document_id`, `source_ref`, `source_text`(null 허용), `extraction_status`, `notice`, `user_decision`, `excluded_reason`, `payload`(SourceRequirement) | document 1:N. 판정 이유·추출 확인 결정·제외 사유를 계약과 같은 칸으로 둔다 (ADR-0015). 확인한 사람·시각은 approval, 확인한 `review` 블록 목록은 `run_event` |
 | model_snapshot | `snapshot_id`, `run_id`, `revision`, `normalized_model`, `model_hash` | UNIQUE(run_id, revision), 승인 후 불변 (같은 모델을 다시 저장하면 그대로 두고, 다른 모델이면 거절). `normalized_model`은 `requirements`·`functions`·`entities`·`relationships` 칸 (`save_model`) |
 | finding | `finding_id`, `snapshot_id`, `source`, `reviewer_or_rule`, `fingerprint`, `iteration`, `payload` | 모델 버전 연결, 과거 지적 보존 |
 | approval | `approval_id`, `run_id`, `snapshot_id`, `interrupt_id`, `actor_ref`, `decision`, `feedback`, `response`, `answered_at` | UNIQUE(run_id, interrupt_id): 같은 interrupt 응답 1회. 추출·분석 확인은 모델 전이라 `snapshot_id`가 비어 있다 |

@@ -78,15 +78,18 @@ def save_model(conn: Connection[DictRow], run_id: UUID, holder: str, state: Desi
             conn.execute(
                 """
                 INSERT INTO source_block (document_id, block_id, source_ref, source_text,
-                    extraction_status, payload)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                    extraction_status, notice, user_decision, excluded_reason, payload)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (document_id, block_id) DO UPDATE SET
                     source_ref = EXCLUDED.source_ref, source_text = EXCLUDED.source_text,
-                    extraction_status = EXCLUDED.extraction_status, payload = EXCLUDED.payload
+                    extraction_status = EXCLUDED.extraction_status, notice = EXCLUDED.notice,
+                    user_decision = EXCLUDED.user_decision,
+                    excluded_reason = EXCLUDED.excluded_reason, payload = EXCLUDED.payload
                 """,
                 (
                     block.document_id, block.block_id, _jsonb(block.source_ref),
-                    block.source_text, block.extraction_status, _jsonb(block),
+                    block.source_text, block.extraction_status, block.notice,
+                    block.user_decision, block.excluded_reason, _jsonb(block),
                 ),
             )  # fmt: skip
         row = conn.execute(

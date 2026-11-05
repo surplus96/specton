@@ -41,11 +41,20 @@ CREATE TABLE IF NOT EXISTS source_block (
     document_id       uuid NOT NULL REFERENCES document ON DELETE CASCADE,
     block_id          text NOT NULL,
     source_ref        jsonb NOT NULL,
-    source_text       text NOT NULL,
+    source_text       text,  -- 원문 문장이 없는 행(범례·각주 줄 등)은 NULL, 판정은 review
     extraction_status text NOT NULL CHECK (extraction_status IN ('pass', 'review', 'fail')),
+    notice            text,  -- 판정 이유 (화면·RTM 문구)
+    user_decision     text CHECK (user_decision IN ('confirmed', 'excluded')),
+    excluded_reason   text,
     payload           jsonb NOT NULL,  -- SourceRequirement 전체
     PRIMARY KEY (document_id, block_id)
 );
+-- 추출 확인 결론(#95, ADR-0015) 전에 만든 DB에도 칸을 맞춘다
+ALTER TABLE source_block ALTER COLUMN source_text DROP NOT NULL;
+ALTER TABLE source_block ADD COLUMN IF NOT EXISTS notice text;
+ALTER TABLE source_block ADD COLUMN IF NOT EXISTS user_decision text
+    CHECK (user_decision IN ('confirmed', 'excluded'));
+ALTER TABLE source_block ADD COLUMN IF NOT EXISTS excluded_reason text;
 
 CREATE TABLE IF NOT EXISTS model_snapshot (
     snapshot_id      uuid PRIMARY KEY,

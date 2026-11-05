@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from specton.contracts import ArtifactRef, DesignState
+from specton.contracts import ArtifactRef, DesignState, SourceRequirement
 from specton.persistence import lease
 from specton.persistence.db import Pool
 from specton.persistence.errors import InvalidTransitionError, LeaseLostError
@@ -101,3 +101,34 @@ def test_artifact_needs_the_model_of_its_revision(pool: Pool) -> None:
 
     with pool.connection() as conn, pytest.raises(ValueError, match="save_model"):
         add_artifact(conn, run_id, "w1", ref, "x.sql")
+
+
+def test_blank_row_and_user_decisions_are_saved_for_the_view(
+    pool: Pool, sample_state: Factory
+) -> None:
+    """원문 없는 행과 추출 확인 결정이 source_block 칸과 화면 조회에 남는다 (#95)."""
+    run_id, document_id = _running(pool)
+    state = sample_state(str(run_id), document_id)
+    excluded = state.source_requirements[0].evolve(
+        extraction_status="review", notice="같은 원문 ID", user_decision="excluded",
+        excluded_reason="2차 범위",
+    )  # fmt: skip
+    blank = SourceRequirement(
+        document_id=document_id, block_id="B-2", source_ref={"file_format": "xlsx",
+        "sheet": "요구사항", "row": 6}, source_text=None, extraction_status="review",
+        notice="내용 칸이 비어 있습니다", user_decision="confirmed",
+    )  # fmt: skip
+
+    with pool.connection() as conn:
+        save_model(conn, run_id, "w1", state.evolve(source_requirements=(excluded, blank)))
+        rows = conn.execute(
+            "SELECT block_id, source_text, notice, user_decision, excluded_reason"
+            " FROM source_block ORDER BY block_id"
+        ).fetchall()
+        view = get_view(conn, run_id, OWNER, "extraction")
+
+    assert [tuple(r.values()) for r in rows] == [
+        ("B-1", "주문을 취소할 수 있다", "같은 원문 ID", "excluded", "2차 범위"),
+        ("B-2", None, "내용 칸이 비어 있습니다", "confirmed", None),
+    ]
+    assert [b["user_decision"] for b in view.items] == ["excluded", "confirmed"]

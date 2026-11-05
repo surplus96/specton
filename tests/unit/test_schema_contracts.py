@@ -13,7 +13,14 @@ import pytest
 
 from specton.api.main import create_app
 from specton.config import Settings
-from specton.contracts import ArtifactRef, ExtractionStatus, RunState, SourceRef, SseEventType
+from specton.contracts import (
+    ArtifactRef,
+    ExtractionStatus,
+    RunState,
+    SourceRef,
+    SseEventType,
+    UserDecision,
+)
 
 SCHEMA = files("specton.persistence").joinpath("schema.sql").read_text(encoding="utf-8")
 DRAFT = json.loads(Path("docs/api/openapi.json").read_text(encoding="utf-8"))
@@ -33,6 +40,7 @@ def _check_values(table: str, column: str) -> set[str]:
         ("run", "status", {s.value for s in RunState}),
         ("run_event", "event_type", {e.value for e in SseEventType}),
         ("source_block", "extraction_status", {s.value for s in ExtractionStatus}),
+        ("source_block", "user_decision", {d.value for d in UserDecision}),
         ("artifact", "kind", set(get_args(ArtifactRef.model_fields["kind"].annotation))),
         (
             "artifact",

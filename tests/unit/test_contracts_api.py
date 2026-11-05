@@ -98,7 +98,8 @@ def test_resume_request_selects_response_by_kind() -> None:
     [
         {"kind": "review", "decision": "maybe", "feedback": ""},
         {"kind": "unknown"},
-        {"kind": "extraction", "confirmed": True},
+        {"kind": "extraction", "confirmed": True, "edits": []},  # 보완은 뺐다 (#95)
+        {"kind": "extraction", "confirmed": True, "excluded_blocks": [{"block_id": ""}]},
     ],
 )
 def test_invalid_resume_response_is_rejected(response: dict[str, Any]) -> None:
@@ -106,6 +107,20 @@ def test_invalid_resume_response_is_rejected(response: dict[str, Any]) -> None:
         ResumeRequest.model_validate(
             {"interrupt_id": "int-1", "expected_revision": 0, "response": response}
         )
+
+
+def test_extraction_response_excludes_blocks_with_optional_reason() -> None:
+    """추출 확인은 제외할 블록만 보낸다. 사유 검사는 블록 판정을 아는 resume API가 한다 (#95)."""
+    response = ExtractionResponse.model_validate(
+        {
+            "kind": "extraction",
+            "confirmed": True,
+            "excluded_blocks": [{"block_id": "B-1", "reason": "범위 밖"}, {"block_id": "B-2"}],
+        }
+    )
+
+    assert [b.reason for b in response.excluded_blocks] == ["범위 밖", None]
+    assert ExtractionResponse(kind="extraction", confirmed=True).excluded_blocks == ()
 
 
 def test_run_status_example_with_interrupt() -> None:

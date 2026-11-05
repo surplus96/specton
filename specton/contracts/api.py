@@ -75,15 +75,22 @@ class RunSummary(Contract):
     created_at: datetime
 
 
-class ExtractionEdit(Contract):
+class ExcludedBlock(Contract):
+    """추출 확인에서 뺄 원문 블록. 사유는 `review` 블록이면 필수, `fail` 블록이면 선택이다.
+
+    블록 판정에 따른 검사(없는 블록·`pass` 블록·빈 사유)는 resume API가 422로 한다 (06 문서).
+    """
+
     block_id: NonEmptyText
-    text: str
+    reason: str | None = None
 
 
 class ExtractionResponse(Contract):
+    """추출 확인 응답. 문장을 고치지 않고 확인 또는 제외만 한다 (ADR-0015, #95)."""
+
     kind: Literal["extraction"]
-    confirmed: bool
-    edits: tuple[ExtractionEdit, ...]
+    confirmed: bool  # false는 중단(`cancelled`). 이때 `excluded_blocks`는 비워야 한다
+    excluded_blocks: tuple[ExcludedBlock, ...] = ()
 
 
 class RequirementAnswer(Contract):

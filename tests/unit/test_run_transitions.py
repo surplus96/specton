@@ -15,6 +15,7 @@ from specton.persistence.runs import can_transition
         (S.REVIEWING, S.DESIGNING),
         (S.REVIEWING, S.ANALYSING),  # 요구사항 단계 재작업 (#111)
         (S.DESIGNING, S.ANALYSING),  # HITL 2 수정 요청 뒤 요구사항 단계로
+        (S.ANALYSING, S.DESIGNING),  # 확인할 것이 없으면 UI-03을 건너뛴다 (ADR-0015, #95)
         (S.DESIGNING, S.AWAITING_REVIEW),  # HITL 2 수정 요청을 A09가 판단하지 못함 (#114)
         (S.AWAITING_REVIEW, S.EXPORTING),
         (S.DESIGNING, S.DESIGNING),
@@ -31,7 +32,6 @@ def test_allows_flow_in_the_state_diagram(current: S, new: S) -> None:
     ("current", "new"),
     [
         (S.QUEUED, S.DESIGNING),
-        (S.ANALYSING, S.DESIGNING),  # ADR-0015(#95) 승인 전
         (S.CANCEL_REQUESTED, S.DESIGNING),
         (S.CANCEL_REQUESTED, S.CANCEL_REQUESTED),
         (S.COMPLETED, S.FAILED),
