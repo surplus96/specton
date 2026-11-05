@@ -117,7 +117,7 @@ class ExtractionResponse(Contract):
     """
 
     kind: Literal["extraction"]
-    confirmed: bool  # false는 중단(`cancelled`). 이때 `excluded_blocks`는 비워야 한다
+    confirmed: bool  # false는 중단(`cancelled`). 이때 `excluded_blocks`는 비워야 한다(어기면 422)
     excluded_blocks: tuple[ExcludedBlock, ...] = ()
 
 
