@@ -1,25 +1,37 @@
-"""설계 에이전트(A01~A04)를 그래프 노드로 잇는다 (#17). 통합 담당(R1)만 수정한다.
+"""에이전트(A01~A09)를 그래프 노드로 잇는다 (#17). 통합 담당(R1)만 수정한다.
 
-- 노드는 `run(client, design, settings, pack=...)`을 부르고 결과를 상태에 반영한다.
+- 설계 노드(A01~A04)는 `run(client, design, settings, pack=...)`을 부르고 결과를 상태에 반영한다.
   호출한 에이전트의 프롬프트 버전과 모델은 `DesignState.versions`에 남긴다 (재현용).
+- 검토 노드(A05~A08)는 설정형 리뷰어(`specton.review.reviewer`)로 관점 하나를 검토해 가지 결과를
+  낸다. 병렬 가지라 design을 쓰지 않고, 버전은 `branch_versions`로 넘겨 합류에서 기록한다.
+  `review_mode=combined`면 첫 관점 노드가 모든 관점을 한 번에 검토하고 나머지 노드는 비운다.
+- 재작업 판단 노드(A09)는 코드가 단계를 정하지 못한 지적이나 HITL 2 수정 요청을 넘긴다.
 - 팩은 실행마다 다르므로 실행기가 첫 상태의 `versions.pack_id`에 넣은 값을 쓴다.
 - client는 노드가 처음 LLM을 부를 때 만든다. API 키가 없어도 서버는 뜨고,
   실행만 `LLM_UNAVAILABLE`로 실패한다.
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache
 from typing import Any
 
 from specton.config import Settings
 from specton.contracts import DesignState
-from specton.graph import GraphState, Node
+from specton.graph import REVIEWERS, GraphState, Node
 from specton.llm.client import LLMClient
 from specton.llm.openai_transport import openai_client
-from specton.nodes import a01_requirements, a02_functions, a03_entities, a04_relationships
+from specton.nodes import (
+    a01_requirements,
+    a02_functions,
+    a03_entities,
+    a04_relationships,
+    a09_rework_router,
+)
 from specton.nodes.a03_entities import A03Result
 from specton.nodes.common import NodeRun
+from specton.review.perspective import Perspective, load_perspectives
+from specton.review.reviewer import ReviewRun, review_combined, review_perspective
 
 
 @dataclass(frozen=True)
@@ -65,23 +77,125 @@ def design_nodes(get_client: Callable[[], LLMClient], settings: Settings) -> dic
     }
 
 
-def openai_design_nodes(settings: Settings) -> dict[str, Node]:
-    """실제 OpenAI client를 쓰는 노드. client는 첫 호출 때 한 번 만든다."""
-    return design_nodes(cache(lambda: openai_client(settings)), settings)
+def review_nodes(
+    get_client: Callable[[], LLMClient],
+    settings: Settings,
+    perspectives: Sequence[Perspective] | None = None,
+) -> dict[str, Node]:
+    """검토 노드 A05~A08. 관점 설정 파일은 그래프의 검토 가지와 하나씩 맞아야 한다."""
+    loaded = tuple(perspectives) if perspectives is not None else load_perspectives()
+    by_id = {p.reviewer_id: p for p in loaded}
+    if set(by_id) != set(REVIEWERS):
+        missing = sorted(set(REVIEWERS) ^ set(by_id))
+        raise ValueError(f"관점 설정과 검토 가지가 다릅니다: {', '.join(missing)}")
+    ordered = tuple(by_id[r] for r in REVIEWERS)
+    if settings.review_mode == "combined":
+        nodes: dict[str, Node] = {r: _skip for r in REVIEWERS[1:]}
+        return {REVIEWERS[0]: _combined_node(ordered, get_client, settings), **nodes}
+    return {p.reviewer_id: _reviewer_node(p, get_client, settings) for p in ordered}
+
+
+def router_node(get_client: Callable[[], LLMClient], settings: Settings) -> Node:
+    """재작업 판단 노드 A09. 답이 없거나 호출이 실패하면 `router_stage=None`(HITL 2)."""
+
+    def node(state: GraphState) -> Mapping[str, Any]:
+        design = state["design"]
+        revising = state.get("revising", False)
+        feedback = state.get("review_response", {}).get("feedback", "") if revising else ""
+        findings = () if revising else state.get("unrouted", ())
+        if not feedback and not findings:
+            return {"router_stage": None}  # 판단할 내용이 없다: 사람에게 다시 묻는다
+        result = a09_rework_router.run(
+            get_client(),
+            design,
+            settings,
+            pack=_pack(design, "A09"),
+            findings=findings,
+            feedback=feedback or None,
+        )
+        versions = _recorded(design, {"A09": (a09_rework_router.PROMPT_VERSION, _review(settings))})
+        return {"router_stage": result.output.stage, "design": design.evolve(versions=versions)}
+
+    return node
+
+
+def openai_agent_nodes(settings: Settings) -> dict[str, Node]:
+    """실제 OpenAI client를 쓰는 노드 A01~A09. client는 첫 호출 때 한 번 만든다."""
+    get_client = cache(lambda: openai_client(settings))
+    return {
+        **design_nodes(get_client, settings),
+        **review_nodes(get_client, settings),
+        "a09": router_node(get_client, settings),
+    }
 
 
 def _design_node(agent: _Agent, get_client: Callable[[], LLMClient], settings: Settings) -> Node:
     def node(state: GraphState) -> Mapping[str, Any]:
         design = state["design"]
-        pack = design.versions.pack_id
-        if pack is None:
-            raise ValueError(f"{agent.agent_id}: 실행의 팩이 정해지지 않았습니다")
-        result = agent.run(get_client(), design, settings, pack=pack)
-        recorded = design.versions
-        versions = recorded.evolve(
-            prompt_versions={**recorded.prompt_versions, agent.agent_id: agent.prompt_version},
-            model_names={**recorded.model_names, agent.agent_id: settings.design_model},
+        result = agent.run(get_client(), design, settings, pack=_pack(design, agent.agent_id))
+        versions = _recorded(
+            design, {agent.agent_id: (agent.prompt_version, settings.design_model)}
         )
         return {"design": agent.apply(design, result.output).evolve(versions=versions)}
 
     return node
+
+
+def _reviewer_node(
+    perspective: Perspective, get_client: Callable[[], LLMClient], settings: Settings
+) -> Node:
+    def node(state: GraphState) -> Mapping[str, Any]:
+        design = state["design"]
+        pack = _pack(design, perspective.reviewer_id)
+        run = review_perspective(get_client(), perspective, design, settings, pack=pack)
+        return _branch_update(run, (perspective,), settings)
+
+    return node
+
+
+def _combined_node(
+    perspectives: tuple[Perspective, ...], get_client: Callable[[], LLMClient], settings: Settings
+) -> Node:
+    def node(state: GraphState) -> Mapping[str, Any]:
+        design = state["design"]
+        pack = _pack(design, "REVIEW")
+        run = review_combined(get_client(), perspectives, design, settings, pack=pack)
+        return _branch_update(run, perspectives, settings)
+
+    return node
+
+
+def _skip(state: GraphState) -> Mapping[str, Any]:
+    """combined 방식에서 첫 관점 노드가 이미 검토한 관점."""
+    return {}
+
+
+def _branch_update(
+    run: ReviewRun, perspectives: Sequence[Perspective], settings: Settings
+) -> dict[str, Any]:
+    return {
+        "branches": {r.branch: r for r in run.results},
+        "branch_versions": {
+            p.reviewer_id: (p.prompt_version, _review(settings)) for p in perspectives
+        },
+    }
+
+
+def _pack(design: DesignState, agent_id: str) -> str:
+    pack = design.versions.pack_id
+    if pack is None:
+        raise ValueError(f"{agent_id}: 실행의 팩이 정해지지 않았습니다")
+    return pack
+
+
+def _recorded(design: DesignState, used: Mapping[str, tuple[str, str]]) -> Any:
+    """호출한 에이전트의 (프롬프트 버전, 모델)을 기록한 새 VersionInfo."""
+    recorded = design.versions
+    return recorded.evolve(
+        prompt_versions={**recorded.prompt_versions, **{k: p for k, (p, _) in used.items()}},
+        model_names={**recorded.model_names, **{k: m for k, (_, m) in used.items()}},
+    )
+
+
+def _review(settings: Settings) -> str:
+    return settings.review_model

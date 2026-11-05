@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 
-from specton.agent_nodes import design_nodes, openai_design_nodes
+from specton.agent_nodes import design_nodes, openai_agent_nodes
 from specton.api.main import create_graph
 from specton.config import Settings
 from specton.contracts import DesignState
@@ -140,7 +140,7 @@ def test_node_fails_when_the_run_has_no_pack() -> None:
 
 
 def test_openai_nodes_build_without_an_api_key_and_fail_only_when_called() -> None:
-    nodes = openai_design_nodes(Settings(_env_file=None, openai_api_key=None))
+    nodes = openai_agent_nodes(Settings(_env_file=None, openai_api_key=None))
 
     with pytest.raises(LLMAPIError):
         nodes["a01"](initial_state(_design(pack_id=PACK)))
