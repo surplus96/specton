@@ -99,7 +99,7 @@ class RunSummary(Contract):
 class ExcludedBlock(Contract):
     """추출 확인에서 뺄 원문 블록. 사유는 `review` 블록이면 필수, `fail` 블록이면 선택이다.
 
-    블록 판정과 맞지 않으면 resume API가 422 `INVALID_RESPONSE`로 막는다: 없는 블록, `pass` 블록,
+    다음 답은 resume API가 422 `INVALID_RESPONSE`로 막는다: 없는 블록, `pass` 블록,
     `review` 블록의 빈 사유(공백만 있는 사유 포함), 같은 블록 두 번 (06 문서, #120).
     `fail` 블록의 빈 사유(`""`)는 사유 없음으로 블록에 남긴다 (`SourceRequirement.excluded_reason`).
     """
@@ -112,8 +112,8 @@ class ExtractionResponse(Contract):
     """추출 확인 응답. 문장을 고치지 않고 확인 또는 제외만 한다 (ADR-0015, #95).
 
     제외 목록에 없는 `review` 블록은 확인으로 보고, 제외하지 않은 `fail` 블록이 있으면 422다.
-    실행기가 결정을 `SourceRequirement.user_decision`·`excluded_reason`에 남기고, 분석할 블록이
-    0건이면 `EXTRACTION_FAILED`로 끝낸다.
+    그래프의 추출 확인 노드가 결정을 `SourceRequirement.user_decision`·`excluded_reason`에 남기고
+    (실행기가 `source_block`에 저장), 분석할 블록이 0건이면 `EXTRACTION_FAILED`로 끝낸다.
     """
 
     kind: Literal["extraction"]
@@ -138,9 +138,8 @@ class RequirementAnswer(Contract):
 class RequirementsResponse(Contract):
     """분석 확인(HITL 1) 응답. 답이 없는 요구사항은 keep으로 본다.
 
-    질문(`QualityIssue.question`)의 답은 edit 문장으로 반영한다. 없는 ID·같은 ID 두 번·문장 수가
-    맞지 않는 답은 그래프가 반영하지 않고 실행을 `INTERNAL`로 끝낸다 (#123). resume API의 422 검사는
-    아직 없다.
+    없는 ID·같은 ID 두 번·문장 수가 맞지 않는 답은 그래프가 반영하지 않고 실행을 `INTERNAL`로
+    끝낸다 (#123). resume API의 422 검사는 아직 없다.
     """
 
     kind: Literal["requirements"]
@@ -192,10 +191,11 @@ class RunView(Contract):
 class SseEventType(StrEnum):
     """SSE 이벤트 종류 (06 문서 SSE).
 
-    - status: 상태 변화. 분석 확인(HITL 1)을 건너뛰면 `designing` 이벤트 메시지로 알린다 (UI-04)
-    - interrupt: 사람 확인 대기. payload는 `interrupt_id`·`kind`, 최종 검토면
-      `failed_branches`·`hitl_reason`도
-    - artifact: 산출물 생성 (생성 노드 #12~#15 연결 뒤)
+    - status: 상태 변화와 진행 안내(답을 받음·보류). 분석 확인(HITL 1)을 건너뛰면 `designing`
+      이벤트 메시지로 알린다 (UI-04)
+    - interrupt: 사람 확인 대기. payload는 `interrupt_id`·`kind`, 최종 검토면 `failed_branches`와
+      `hitl_reason`(있을 때)도
+    - artifact: 산출물 생성. 생성 노드(#12~#15)를 연결하면 보낸다. 지금은 보내는 곳이 없다
     - error: 실행 실패. payload는 `code`·`retryable`
     - completed·cancelled: 실행 종료
     """
