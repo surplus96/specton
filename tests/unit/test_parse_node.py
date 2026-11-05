@@ -47,9 +47,65 @@ def test_excel_sheet_rows_become_source_blocks(tmp_path: Path) -> None:
     book.save(tmp_path / "a.xlsx")
     doc = DocumentRef(document_id="doc-1", file_format="xlsx", storage_ref="a.xlsx")
 
-    design = _parse(tmp_path, doc)
+    update = parse_node(tmp_path)(initial_state(DesignState(run_id="run-1"), (doc,)))
+    design = update["design"]
 
     assert [b.block_id for b in design.source_requirements] == ["xlsx:요구사항:2"]
+    assert update["notes"] == ()
+
+
+@pytest.mark.parametrize("header_only", [False, True])
+def test_skipped_sheets_are_left_as_a_note_for_the_extraction_screen(
+    tmp_path: Path, header_only: bool
+) -> None:
+    """표가 없거나 빈 표인 시트는 안내 한 줄이다 (#95 결론, docs/09 UI-02)."""
+    book = Workbook()
+    cover = book.active
+    cover.title = "표지"
+    cover.append(HEADER.split(",") if header_only else ["재고 관리 요구사항 정의서"])
+    sheet = book.create_sheet("요구사항")
+    sheet.append(HEADER.split(","))
+    sheet.append(["SFR-001", "입고 등록", "입고를 등록한다"])
+    book.save(tmp_path / "a.xlsx")
+    doc = DocumentRef(document_id="doc-1", file_format="xlsx", storage_ref="a.xlsx")
+    state = initial_state(DesignState(run_id="run-1"), (doc,))
+
+    update = parse_node(tmp_path)(state)
+
+    assert update["notes"] == (
+        {
+            "message": "요구사항을 읽지 않은 시트가 있습니다",
+            "payload": {"info": "skipped_sheets", "document_id": "doc-1", "sheets": ["표지"]},
+        },
+    )
+    assert [b.block_id for b in update["design"].source_requirements] == ["xlsx:요구사항:2"]
+
+
+def test_skipped_sheet_notes_identify_each_document(tmp_path: Path) -> None:
+    documents = []
+    for n in (1, 2):
+        book = Workbook()
+        book.active.title = "표지"
+        sheet = book.create_sheet("요구사항")
+        sheet.append(HEADER.split(","))
+        sheet.append([f"SFR-00{n}", "입고 등록", "입고를 등록한다"])
+        book.save(tmp_path / f"{n}.xlsx")
+        documents.append(
+            DocumentRef(document_id=f"doc-{n}", file_format="xlsx", storage_ref=f"{n}.xlsx")
+        )
+    state = initial_state(DesignState(run_id="run-1"), tuple(documents))
+
+    update = parse_node(tmp_path)(state)
+
+    assert [n["payload"]["document_id"] for n in update["notes"]] == ["doc-1", "doc-2"]
+    assert [n["payload"]["sheets"] for n in update["notes"]] == [["표지"], ["표지"]]
+
+
+def test_csv_has_no_skipped_sheet_note(tmp_path: Path) -> None:
+    doc = _write(tmp_path, "a.csv", f"{HEADER}\nSFR-001,입고 등록,입고를 등록한다\n")
+    state = initial_state(DesignState(run_id="run-1"), (doc,))
+
+    assert parse_node(tmp_path)(state)["notes"] == ()
 
 
 def test_unreadable_file_ends_the_run_as_extraction_failed(tmp_path: Path) -> None:
