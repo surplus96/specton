@@ -20,9 +20,10 @@ from specton.packs.examples import load_examples
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "a09-v1"
+PROMPT_VERSION = "a09-v2"
 SYSTEM_PROMPT = """\
 너는 설계 재작업 라우터다. 검토 지적을 고치려면 어느 단계부터 다시 만들어야 하는지 판단한다.
+- feedback이 있으면 사용자가 최종 검토에서 보낸 수정 요청이다. 그 요청을 기준으로 판단한다.
 - requirements: 요구사항 해석·분할이 잘못됐거나 원문 확인이 필요하다 (요구사항 분석부터)
 - functions: 기능 분해·묶음·요구사항 연결이 잘못됐다 (기능 설계부터)
 - data_model: 엔티티·속성·관계·CRUD가 잘못됐다 (엔티티 설계부터)
@@ -52,16 +53,20 @@ def run(
     *,
     pack: str,
     findings: Sequence[Finding],
+    feedback: str | None = None,
     token_budget: int | None = None,
 ) -> NodeRun[RouterAnswer]:
-    """target_stage가 없는 지적(`ReworkDecision.unrouted`)의 복귀 단계를 묻는다."""
+    """target_stage가 없는 지적(`ReworkDecision.unrouted`)의 복귀 단계를 묻는다.
+
+    HITL 2 수정 요청이면 `feedback`(사용자 요청 문장)을 함께 넘긴다.
+    """
     request = build_request(
         settings,
         role="review",
         stage="A09",
         prompt_version=PROMPT_VERSION,
         system=SYSTEM_PROMPT,
-        data=_router_data(state, findings),
+        data=_router_data(state, findings, feedback),
         examples=load_examples(pack, "A09", A09Output),
     )
     try:
@@ -74,10 +79,14 @@ def run(
     return NodeRun(output=RouterAnswer(stage=stage, rationale=output.rationale), calls=result.calls)
 
 
-def _router_data(state: DesignState, findings: Sequence[Finding]) -> dict[str, Any]:
-    """지적과 그 근거 요구사항만 담는다. 전체 설계는 넣지 않는다."""
+def _router_data(
+    state: DesignState, findings: Sequence[Finding], feedback: str | None = None
+) -> dict[str, Any]:
+    """지적과 그 근거 요구사항(HITL 2면 사용자 요청)만 담는다. 전체 설계는 넣지 않는다."""
     req_ids = {e.req_id for f in findings for e in f.evidence if e.req_id is not None}
+    extra = {"feedback": feedback} if feedback else {}
     return {
+        **extra,
         "findings": [
             f.model_dump(
                 mode="json", include={"id", "kind", "severity", "targets", "evidence", "suggestion"}

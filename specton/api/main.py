@@ -10,7 +10,7 @@ from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel
 
 from specton import __version__
-from specton.agent_nodes import openai_design_nodes
+from specton.agent_nodes import openai_agent_nodes
 from specton.api.errors import install_error_handlers
 from specton.api.runs import router as runs_router
 from specton.config import Settings, get_settings
@@ -28,8 +28,8 @@ class HealthResponse(BaseModel):
 def create_graph(
     settings: Settings, checkpointer: BaseCheckpointSaver[Any]
 ) -> CompiledStateGraph[GraphState, None, GraphState, GraphState]:
-    """실행기가 돌릴 그래프 (#17). 문서 읽기·설계 노드(A01~A04)는 실제 노드, 나머지는 빈 노드다."""
-    nodes = {"parse": parse_node(settings.storage_dir), **openai_design_nodes(settings)}
+    """실행기가 돌릴 그래프 (#17). 문서 읽기·에이전트(A01~A09)는 실제 노드, 생성·규칙은 빈 노드."""
+    nodes = {"parse": parse_node(settings.storage_dir), **openai_agent_nodes(settings)}
     return build_graph(nodes, checkpointer=checkpointer)
 
 

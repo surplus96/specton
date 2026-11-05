@@ -98,6 +98,13 @@ def _merge_branches(
     return {**old, **new}
 
 
+def _merge_versions(
+    old: Mapping[str, tuple[str, str]], new: Mapping[str, tuple[str, str]]
+) -> dict[str, tuple[str, str]]:
+    """병렬 가지가 쓴 (프롬프트 버전, 모델). 가지는 design을 동시에 쓸 수 없어 따로 모은다."""
+    return {**old, **new}
+
+
 class GraphState(TypedDict, total=False):
     design: DesignState
     documents: tuple[DocumentRef, ...]  # 업로드 문서 (parse 노드 입력)
@@ -109,6 +116,8 @@ class GraphState(TypedDict, total=False):
     next_stage: TargetStage | None
     hitl_reason: HitlReason | None
     router_stage: TargetStage | None  # A09 답
+    unrouted: tuple[Finding, ...]  # 코드가 복귀 단계를 정하지 못해 A09에 넘길 지적
+    branch_versions: Annotated[dict[str, tuple[str, str]], _merge_versions]  # 합류에서 기록
     revising: bool  # HITL 2의 수정 요청으로 A09에 왔는지
     failed_branches: tuple[str, ...]  # 이번 검토에서 실패하거나 빠진 리뷰 가지 (불완전 검토)
     requirements_answer: dict[str, Any]
@@ -390,8 +399,14 @@ def _merge(state: GraphState) -> dict[str, Any]:
     results = [current[name] for name in REVIEWERS if name in current]
     merged = merge_review(design, results, REVIEWERS, rule_findings=state.get("rule_findings", ()))
     joined = {name: current[name] for name in (*GENERATORS, *REVIEWERS) if name in current}
+    versions = design.versions
+    used = state.get("branch_versions", {})
+    versions = versions.evolve(
+        prompt_versions={**versions.prompt_versions, **{k: p for k, (p, _) in used.items()}},
+        model_names={**versions.model_names, **{k: m for k, (_, m) in used.items()}},
+    )
     return {
-        "design": design.evolve(findings=merged.findings, branch_results=joined),
+        "design": design.evolve(findings=merged.findings, branch_results=joined, versions=versions),
         "failed_branches": merged.failed_branches,
     }
 
@@ -434,6 +449,7 @@ def _apply(state: GraphState, decision: ReworkDecision, *, counted: bool = True)
     }
     if decision.action is ReworkAction.ASK_ROUTER:
         update["router_stage"] = None
+        update["unrouted"] = decision.unrouted
     elif decision.action is ReworkAction.REWORK:
         design = state["design"]
         update["design"] = design.evolve(

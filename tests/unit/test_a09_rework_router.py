@@ -119,3 +119,28 @@ def test_router_answer_completes_the_rework_decision() -> None:
 
     assert (resolved.action, resolved.target_stage) == (ReworkAction.REWORK, "functions")
     assert len(transport.sent) == 1
+
+
+def test_final_review_feedback_is_sent_for_the_router_to_judge() -> None:
+    """HITL 2 수정 요청은 지적 대신 사용자 요청 문장으로 판단한다 (03 문서 상태·버전)."""
+    client, transport = stub_client(
+        reply(A09Output(decision="requirements", rationale="취소 조건을 요구사항부터 고친다"))
+    )
+
+    answer = run(
+        client, STATE, _settings(), pack="inventory", findings=[], feedback="취소 사유가 빠졌다"
+    ).output
+
+    assert answer.stage == "requirements"
+    data = json.loads(unwrap_data(transport.sent[0].messages[-1].content))
+    assert data["feedback"] == "취소 사유가 빠졌다"
+    assert (data["findings"], data["requirements"]) == ([], [])
+
+
+def test_feedback_is_not_sent_for_automatic_rework() -> None:
+    client, transport = stub_client(reply(A09Output(decision="functions", rationale="기능 문제")))
+
+    _run(client)
+
+    data = json.loads(unwrap_data(transport.sent[0].messages[-1].content))
+    assert "feedback" not in data
