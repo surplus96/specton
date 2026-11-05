@@ -20,6 +20,7 @@ from specton.contracts import (
     RunStatus,
     SseEventType,
 )
+from specton.contracts.requirements import QualityIssue
 from specton.graph import GraphState, Node, build_graph, initial_state
 from specton.llm.errors import LLMRefusalError
 from specton.parse_node import parse_node
@@ -63,8 +64,10 @@ class _World:
         self.pool = pool
         self.visited: list[str] = []
         recorded = {name: self._record(name, node) for name, node in (nodes or {}).items()}
-        for name in ("parse", "a01", "a02", "a03"):
+        for name in ("parse", "a02", "a03"):
             recorded.setdefault(name, self._record(name, lambda state: {}))
+        # 기본 A01은 확인할 것이 있는 요구사항을 낸다. 그래야 분석 확인(HITL 1)에서 멈춘다
+        recorded.setdefault("a01", self._record("a01", _with_requirement))
         self.graph = build_graph(recorded, checkpointer=create_checkpointer(pool))
         self.runner = Runner(pool, self.graph, settings)
 
@@ -286,12 +289,14 @@ def test_revise_asks_again_and_completes_after_approval(world: Callable[..., _Wo
     assert w.status(run_id).status is RunState.COMPLETED
 
 
+# 품질 경고가 있어 분석 확인(HITL 1)에서 멈추는 요구사항
 REQ = Requirement(
     id="REQ-01",
     source_ref={"file_format": "csv", "row": 2},
     text="입고를 등록한다",
     draft_text="입고를 등록한다",
     type="FR",
+    quality_issues=[QualityIssue(kind="ambiguous", message="입고 단위가 없습니다")],
     analysis_version=1,
 )
 
@@ -318,6 +323,26 @@ def _critical_rule(state: GraphState) -> Mapping[str, Any]:
         }
     )
     return {"rule_findings": (finding,)}
+
+
+def test_skipped_requirements_check_is_announced_for_the_progress_screen(
+    world: Callable[..., _World],
+) -> None:
+    """확인할 것이 없으면 HITL 1에서 멈추지 않고, UI-04가 「분석 확인 생략」을 보이도록 알린다."""
+    clean = REQ.evolve(quality_issues=())
+    w = world({"a01": lambda state: {"design": state["design"].evolve(requirements=(clean,))}})
+    run_id = w.create()
+
+    w.runner.run_pending()
+
+    with w.pool.connection() as conn:
+        events = events_after(conn, run_id, OWNER, 0)
+    statuses = [(e.data.stage, e.data.message) for e in events if e.event is SseEventType.STATUS]
+    stages = [stage for stage, _ in statuses]
+    assert "awaiting_requirements" not in stages
+    assert stages[stages.index("analysing") + 1] == "designing"
+    assert ("designing", "확인할 항목이 없어 분석 확인을 생략했습니다") in statuses
+    assert w.status(run_id).status is RunState.AWAITING_REVIEW
 
 
 def test_requirements_are_saved_for_the_view_before_the_requirements_check(

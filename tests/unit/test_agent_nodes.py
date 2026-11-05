@@ -8,7 +8,6 @@ from typing import Any
 
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.types import Command
 
 from specton.agent_nodes import design_nodes, openai_design_nodes
 from specton.api.main import create_graph
@@ -28,7 +27,6 @@ from specton.nodes.a04_relationships import A04Output
 from specton.packs.examples import load_examples
 
 PACK = "maintenance"
-REQUIREMENTS_OK = {"kind": "requirements", "answers": []}
 
 
 def _settings() -> Settings:
@@ -169,6 +167,7 @@ def test_app_graph_reads_the_document_and_runs_the_real_design_nodes(tmp_path: P
 
 
 def test_design_nodes_run_through_the_graph_to_the_final_review() -> None:
+    """블록마다 요구사항 하나에 품질 경고가 없으면 분석 확인(HITL 1)을 건너뛴다 (ADR-0015)."""
     client, transport = stub_client(
         reply(_a01_output()),
         reply(_example_output("A02", A02Output)),
@@ -178,10 +177,8 @@ def test_design_nodes_run_through_the_graph_to_the_final_review() -> None:
     graph = build_graph(_nodes(client), checkpointer=InMemorySaver())
     config = {"configurable": {"thread_id": "run-1"}}
 
-    first = graph.invoke(initial_state(_design(pack_id=PACK)), config)
-    review = graph.invoke(Command(resume=REQUIREMENTS_OK), config)
+    review = graph.invoke(initial_state(_design(pack_id=PACK)), config)
 
-    assert first["__interrupt__"][0].value["kind"] == "requirements"
     assert review["__interrupt__"][0].value["kind"] == "review"
     design: DesignState = review["design"]
     assert design.requirements and design.functions and design.entities

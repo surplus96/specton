@@ -10,6 +10,7 @@ from langgraph.types import Command
 
 from specton.contracts import BranchResult, DesignState, Finding, Requirement, RunState
 from specton.contracts.base import TargetStage
+from specton.contracts.requirements import QualityIssue
 from specton.graph import (
     GENERATORS,
     REVIEWERS,
@@ -21,12 +22,14 @@ from specton.graph import (
 from specton.persistence.runs import can_transition
 from specton.review.rework import HitlReason
 
+# 품질 경고가 있어 분석 확인(HITL 1)에서 멈추는 요구사항. 건너뛰는 경우는 test_requirements_check
 REQ = Requirement(
     id="REQ-01",
     source_ref={"file_format": "csv", "row": 2},
     text="입고를 등록한다",
     draft_text="입고를 등록한다",
     type="FR",
+    quality_issues=[QualityIssue(kind="ambiguous", message="입고 단위가 없습니다")],
     analysis_version=1,
 )
 REQUIREMENTS_OK = {"kind": "requirements", "answers": []}

@@ -16,7 +16,7 @@ from specton.contracts.requirements import SourceRequirement
 from specton.graph import ExtractionFailedError, GraphState, Node, build_graph, initial_state
 from specton.persistence.runs import can_transition
 
-REQUIREMENTS_OK = {"kind": "requirements", "answers": []}
+APPROVE = {"kind": "review", "decision": "approve", "feedback": ""}
 
 
 def _block(n: int, status: str, text: str | None = "입고를 등록한다") -> SourceRequirement:
@@ -73,7 +73,7 @@ def test_all_pass_blocks_go_to_analysis_without_stopping() -> None:
 
     result = run.start()
 
-    assert _kind(result) == "requirements"
+    assert _kind(result) != "extraction"
     assert len(run.analysed) == 1
 
 
@@ -99,7 +99,7 @@ def test_answer_is_kept_as_block_decisions_and_moves_to_analysis() -> None:
 
     result = run.resume(_extraction(("csv:4", "2차 범위"), ("csv:5", None)))
 
-    assert _kind(result) == "requirements"
+    assert _kind(result) != "extraction"
     [design] = run.analysed
     assert _decisions(design) == {
         "csv:2": (None, None),
@@ -148,7 +148,7 @@ def test_status_changes_with_the_extraction_check_follow_the_state_diagram() -> 
     run = _Run(_block(2, "review"))
     seen = [RunState.QUEUED]
     steps: list[Any] = [initial_state(DesignState(run_id="run-1"))]
-    steps += [Command(resume=_extraction()), Command(resume=REQUIREMENTS_OK)]
+    steps += [Command(resume=_extraction()), Command(resume=APPROVE)]  # HITL 1은 확인할 것이 없다
 
     for step in steps:
         for chunk in run.graph.stream(step, run.config, stream_mode="values"):

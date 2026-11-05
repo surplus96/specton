@@ -78,6 +78,7 @@ _STATUS_MESSAGES: dict[RunState, str] = {
     S.EXPORTING: "산출물을 내보내고 있습니다",
     S.COMPLETED: "설계를 완료했습니다",
 }
+_SKIPPED_REQUIREMENTS_CHECK = "확인할 항목이 없어 분석 확인을 생략했습니다"
 
 
 class _Stop(Exception):
@@ -315,6 +316,9 @@ class _Job:
         if status is self.status:
             return []
         message = _STATUS_MESSAGES.get(status, "진행 상태가 바뀌었습니다")
+        if (self.status, status) == (S.ANALYSING, S.DESIGNING):
+            # 분석 확인(HITL 1)을 거치지 않고 설계로 갔다. UI-04가 생략을 표시한다 (ADR-0015)
+            message = _SKIPPED_REQUIREMENTS_CHECK
         return [NewEvent(E.STATUS, message, stage=status.value)]
 
     def _record(

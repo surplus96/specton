@@ -83,6 +83,7 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 - `data`: `run_id`, `revision`, `stage`, `message`, 필요한 `payload`
 - `interrupt` 이벤트 `payload`: `interrupt_id`, `kind`. 최종 검토(`review`)는 `failed_branches`(실패하거나 빠진 리뷰 관점, 비어 있지 않으면 불완전 검토, TC-F14)와 자동 루프를 멈춘 사유 `hitl_reason`(있을 때)을 더한다.
 - `error` 이벤트 `payload`: `code`, `retryable`.
+- 분석 확인(HITL 1)에서 멈추지 않으면 `analysing` 다음 `status` 이벤트가 `stage: designing`이고 `message`는 「확인할 항목이 없어 분석 확인을 생략했습니다」다. UI-04는 이 전환으로 「분석 확인 생략」을 표시한다 (ADR-0015).
 - 원문 전체와 비밀값은 넣지 않는다. 연결 종료는 실행 취소가 아니다.
 - 재접속하면 `Last-Event-ID` 이후를 재생한다. 아직 없는 이벤트 ID거나 숫자가 아니면 409 `EVENT_REPLAY_EXPIRED`로, 상태를 조회한 뒤 다시 연결한다.
 - 서버는 새 이벤트를 짧은 간격(`SPECTON_SSE_POLL_SECONDS`)으로 확인하며, 확인할 때만 DB 연결을 빌린다 (ADR-0012). 오래 조용하면 `: keep-alive` 주석 줄을 보낸다.
