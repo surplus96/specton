@@ -330,7 +330,11 @@ def _pack_dir(pack: str, root: Path) -> Path:
 
 def _validate[ModelT: BaseModel](model: type[ModelT], path: Path) -> ModelT:
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:  # 파일 없음·폴더·권한·인코딩도 PackError 하나로
+        raise PackError(f"{path}: 팩 파일을 읽지 못했습니다 ({type(exc).__name__})") from exc
+    try:
+        data = yaml.safe_load(text)
         return model.model_validate(data)
     except (yaml.YAMLError, ValidationError) as exc:
         raise PackError(f"{path}: 형식이 틀렸습니다\n{exc}") from exc

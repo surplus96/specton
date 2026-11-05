@@ -253,6 +253,25 @@ def test_load_pack_reads_terms_words_patterns(tmp_path: Path) -> None:
     assert pack.patterns[0].suggests == {"attribute": "USE_YN"}
 
 
+@pytest.mark.parametrize(
+    "missing",
+    [
+        "inventory/terms.yaml",
+        "inventory/patterns.yaml",
+        "inventory/words.yaml",
+        "common/words.yaml",
+    ],
+)
+def test_missing_pack_file_is_a_pack_error(tmp_path: Path, missing: str) -> None:
+    """필수 팩 파일이 없으면 FileNotFoundError가 아니라 PackError로 알린다 (#132 R1 리뷰)."""
+    make_common(tmp_path)
+    make_full_pack(tmp_path, "inventory")
+    (tmp_path / missing).unlink()
+
+    with pytest.raises(PackError, match="읽지 못했습니다"):
+        load_pack("inventory", root=tmp_path)
+
+
 def test_real_inventory_and_maintenance_packs_load() -> None:
     root = REPO_ROOT / "domain_packs"
 
