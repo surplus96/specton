@@ -20,7 +20,9 @@ from specton.config import Settings
 from specton.contracts import DesignState
 from specton.graph import REVIEWERS, GraphState, Node
 from specton.llm.client import LLMClient
+from specton.llm.errors import LLMBudgetExceededError
 from specton.llm.openai_transport import openai_client
+from specton.llm.types import CallRecord
 from specton.nodes import (
     a01_requirements,
     a02_functions,
@@ -40,10 +42,17 @@ class _Agent:
     prompt_version: str
     run: Callable[..., NodeRun[Any]]
     apply: Callable[[DesignState, Any], DesignState]
+    options: Callable[[DesignState], dict[str, Any]] = lambda design: {}  # run()에 더 넘길 값
 
 
 def _apply_entities(design: DesignState, result: A03Result) -> DesignState:
     return design.evolve(entities=result.entities, functions=result.functions)
+
+
+def _analysis_options(design: DesignState) -> dict[str, Any]:
+    """다시 분석하면(요구사항 단계 재작업·수정 요청) 분석 버전을 올린다."""
+    previous = max((r.analysis_version for r in design.requirements), default=0)
+    return {"analysis_version": previous + 1}
 
 
 # 그래프 노드 이름 → 에이전트. 모두 설계 모델(role="design")을 쓴다.
@@ -53,6 +62,7 @@ _DESIGN_AGENTS: Mapping[str, _Agent] = {
         a01_requirements.PROMPT_VERSION,
         a01_requirements.run,
         lambda design, output: design.evolve(requirements=output),
+        _analysis_options,
     ),
     "a02": _Agent(
         "A02",
@@ -112,9 +122,14 @@ def router_node(get_client: Callable[[], LLMClient], settings: Settings) -> Node
             pack=_pack(design, "A09"),
             findings=findings,
             feedback=feedback or None,
+            token_budget=_remaining(state, settings, "A09"),
         )
         versions = _recorded(design, {"A09": (a09_rework_router.PROMPT_VERSION, _review(settings))})
-        return {"router_stage": result.output.stage, "design": design.evolve(versions=versions)}
+        return {
+            "router_stage": result.output.stage,
+            "design": design.evolve(versions=versions),
+            "tokens_used": _spent(result.calls),
+        }
 
     return node
 
@@ -132,11 +147,21 @@ def openai_agent_nodes(settings: Settings) -> dict[str, Node]:
 def _design_node(agent: _Agent, get_client: Callable[[], LLMClient], settings: Settings) -> Node:
     def node(state: GraphState) -> Mapping[str, Any]:
         design = state["design"]
-        result = agent.run(get_client(), design, settings, pack=_pack(design, agent.agent_id))
+        result = agent.run(
+            get_client(),
+            design,
+            settings,
+            pack=_pack(design, agent.agent_id),
+            token_budget=_remaining(state, settings, agent.agent_id),
+            **agent.options(design),
+        )
         versions = _recorded(
             design, {agent.agent_id: (agent.prompt_version, settings.design_model)}
         )
-        return {"design": agent.apply(design, result.output).evolve(versions=versions)}
+        return {
+            "design": agent.apply(design, result.output).evolve(versions=versions),
+            "tokens_used": _spent(result.calls),
+        }
 
     return node
 
@@ -147,7 +172,10 @@ def _reviewer_node(
     def node(state: GraphState) -> Mapping[str, Any]:
         design = state["design"]
         pack = _pack(design, perspective.reviewer_id)
-        run = review_perspective(get_client(), perspective, design, settings, pack=pack)
+        budget = _remaining(state, settings, perspective.reviewer_id)
+        run = review_perspective(
+            get_client(), perspective, design, settings, pack=pack, token_budget=budget
+        )
         return _branch_update(run, (perspective,), settings)
 
     return node
@@ -159,7 +187,10 @@ def _combined_node(
     def node(state: GraphState) -> Mapping[str, Any]:
         design = state["design"]
         pack = _pack(design, "REVIEW")
-        run = review_combined(get_client(), perspectives, design, settings, pack=pack)
+        budget = _remaining(state, settings, "REVIEW")
+        run = review_combined(
+            get_client(), perspectives, design, settings, pack=pack, token_budget=budget
+        )
         return _branch_update(run, perspectives, settings)
 
     return node
@@ -178,7 +209,22 @@ def _branch_update(
         "branch_versions": {
             p.reviewer_id: (p.prompt_version, _review(settings)) for p in perspectives
         },
+        "tokens_used": _spent(run.calls),
     }
+
+
+def _remaining(state: GraphState, settings: Settings, agent_id: str) -> int:
+    """이번 실행에 남은 토큰 예산 (`max_tokens_per_run`). 다 썼으면 부르지 않고 실패한다."""
+    remaining = settings.max_tokens_per_run - state.get("tokens_used", 0)
+    if remaining <= 0:
+        raise LLMBudgetExceededError(
+            f"{agent_id}: 실행 토큰 예산 {settings.max_tokens_per_run}을 다 썼습니다"
+        )
+    return remaining
+
+
+def _spent(calls: Sequence[CallRecord]) -> int:
+    return sum(c.input_tokens + c.output_tokens for c in calls)
 
 
 def _pack(design: DesignState, agent_id: str) -> str:
