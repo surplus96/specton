@@ -35,6 +35,7 @@ def _block(
         source_text=f"요구사항 {n}",
         source_related_requirements=related,
         extraction_status=status,
+        notice=None if status == "pass" else "확인이 필요한 블록",
     )
 
 
