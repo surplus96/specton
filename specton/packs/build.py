@@ -2,13 +2,16 @@
 
 사람이 쓰는 입력(`sources/`의 공식 공통표준 CSV, 각 팩의 `term_specs.yaml`·`words.yaml`)에서
 생성 파일(`common/words.yaml`, `common/domains.yaml`, `<pack>/terms.yaml`)을 만든다.
+팩마다 `pack.lock`(manifest 버전 + 팩 내용 sha256)도 함께 만들어, 내용이 바뀌었는데
+버전을 올리지 않은 경우를 `--check`가 잡아낸다.
 
     uv run python -m specton.packs.build            # 생성
-    uv run python -m specton.packs.build --check    # 커밋된 생성 파일이 최신인지 검사 (CI)
+    uv run python -m specton.packs.build --check    # 커밋된 생성 파일·lock이 최신인지 검사 (CI)
 """
 
 import argparse
 import csv
+import hashlib
 import re
 import sys
 from collections.abc import Iterable
@@ -23,6 +26,8 @@ Record = dict[str, Any]
 
 DEFAULT_ROOT = Path("domain_packs")
 MAX_IDENTIFIER_BYTES = 63  # PostgreSQL NAMEDATALEN - 1
+LOCK_NAME = "pack.lock"
+_COMMON_DIR = "common"  # specton.packs.loader.COMMON과 같은 값. 순환 import를 피하려고 따로 둔다.
 RETIRED = "폐기"
 RETIRED_COLUMN = "개정구분명(폐기 또는 변경)"
 HANJA_PREFIX = re.compile(r"^[一-鿿/]+\.\s*")  # 영문 어원 접두어는 유지한다
@@ -124,6 +129,51 @@ def discover_packs(root: Path) -> list[Path]:
     return sorted(p.parent for p in root.glob("*/term_specs.yaml"))
 
 
+def all_pack_dirs(root: Path) -> list[Path]:
+    """lock 파일을 두는 모든 팩 폴더: common + term_specs.yaml이 있는 팩들."""
+    return [root / _COMMON_DIR, *discover_packs(root)]
+
+
+def _normalise(text: str) -> str:
+    """CRLF를 LF로 맞춘다. `Path.read_text`가 텍스트 모드라 이미 줄바꿈을 변환해 주므로
+    디스크에서 읽은 내용에는 사실상 효과가 없다 — overrides로 들어오는, 파일을 거치지 않은
+    문자열에도 안전하도록 남겨 둔 보험용 정규화다.
+    """
+    return text.replace("\r\n", "\n")
+
+
+def pack_content_hash(pack_dir: Path, *, overrides: dict[Path, str] | None = None) -> str:
+    """팩 폴더의 모든 yaml(`examples/*.yaml` 포함)을 상대경로 순서로 묶어 sha256을 낸다.
+
+    `overrides`는 아직 디스크에 쓰지 않은, 이번 생성으로 바뀔 파일의 내용이다(생성 파일 포함).
+    `pack.lock`은 `*.yaml`이 아니라 글롭에 걸리지 않아 저절로 빠진다. `.md` 파일도 뺀다.
+    디스크 파일은 `utf-8-sig`로 읽어 BOM이 있어도 없는 파일과 같은 해시가 되게 한다.
+    """
+    overrides = overrides or {}
+    # 생성 파일은 아직 디스크에 없을 수도 있어(최초 생성 전), 디스크에 있는 파일과
+    # overrides로 받은 파일 경로를 합쳐야 매번 같은 파일 집합을 해시한다.
+    override_files = {p for p in overrides if p.suffix == ".yaml" and p.is_relative_to(pack_dir)}
+    digest = hashlib.sha256()
+    for path in sorted({*pack_dir.rglob("*.yaml"), *override_files}):
+        rel = path.relative_to(pack_dir).as_posix()
+        text = overrides[path] if path in overrides else path.read_text(encoding="utf-8-sig")
+        digest.update(f"{rel}\0".encode())
+        digest.update(f"{_normalise(text)}\0".encode())
+    return digest.hexdigest()
+
+
+def lock_content(versions: dict[str, str]) -> str:
+    return render({"versions": versions})
+
+
+def read_lock_versions(pack_dir: Path) -> dict[str, str]:
+    """기존 `pack.lock`의 version → sha256 기록. lock이 없으면(최초 생성) 빈 기록."""
+    path = pack_dir / LOCK_NAME
+    if not path.is_file():
+        return {}
+    return dict(read_yaml(path).get("versions") or {})
+
+
 def build_term(
     spec: Record,
     words: dict[str, Record],
@@ -215,7 +265,31 @@ def build(root: Path) -> dict[Path, str]:
             "on_unknown": "finding",
         }
     )
+    outputs.update(_lock_outputs(root, outputs))
     return outputs
+
+
+def _lock_outputs(root: Path, outputs: dict[Path, str]) -> dict[Path, str]:
+    """팩별 `pack.lock`. 이번 생성으로 바뀔 파일은 디스크 대신 `outputs`의 새 내용으로 해시한다.
+
+    `pack.lock`은 version → sha256 기록(history)이다. 같은 version에 다른 해시가 이미
+    기록돼 있으면(= 내용은 바뀌었는데 version을 올리지 않음) `BuildError`로 거절한다.
+    그 밖에는 이전 기록을 유지하면서 현재 version 항목을 추가/유지한다(lock이 없으면 최초 생성).
+    """
+    locks: dict[Path, str] = {}
+    for pack_dir in all_pack_dirs(root):
+        version = read_yaml(pack_dir / "manifest.yaml")["version"]
+        content_hash = pack_content_hash(pack_dir, overrides=outputs)
+        history = read_lock_versions(pack_dir)
+        previous_hash = history.get(version)
+        if previous_hash is not None and previous_hash != content_hash:
+            raise BuildError(
+                f"{pack_dir.name}: 내용이 바뀌었는데 manifest.yaml의 version({version})을 "
+                "올리지 않았습니다. version을 올린 뒤 다시 생성하세요"
+            )
+        history[version] = content_hash
+        locks[pack_dir / LOCK_NAME] = lock_content(history)
+    return locks
 
 
 def write(outputs: dict[Path, str]) -> None:
