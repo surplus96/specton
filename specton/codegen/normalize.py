@@ -217,18 +217,15 @@ def _entity_table(entity: Entity, run: _Run) -> Table:
             )
         )
     run.problems.extend(_duplicate_column_names(table_id, columns))
-    own_key = tuple(stable_id("COL", pack, a.id) for a in entity.attributes if a.is_key)
     return Table(
         id=table_id,
         name=entity.name,
         physical_name=table_name,
         columns=tuple(columns),
-        primary_key=own_key,
-        # PK와 같은 묶음은 이미 유일하므로 UNIQUE를 따로 두지 않는다
+        primary_key=tuple(stable_id("COL", pack, a.id) for a in entity.attributes if a.is_key),
+        # 최종 PK와 같은 UNIQUE는 PK가 정해진 뒤 뺀다 (_resolve_primary_keys)
         unique_keys=tuple(
-            (stable_id("COL", pack, a.id),)
-            for a in entity.attributes
-            if a.is_unique and own_key != (stable_id("COL", pack, a.id),)
+            (stable_id("COL", pack, a.id),) for a in entity.attributes if a.is_unique
         ),
         req_ids=entity.req_ids,
         entity_id=entity.id,
@@ -311,9 +308,10 @@ def _resolve_primary_keys(
                 )
             )
             run.blocked.add(entity_id)  # 이 엔티티를 부모로 둔 관계는 따로 보고하지 않는다
-        unique = [u for u in one_to_one if u != primary_key]  # PK와 같으면 이미 유일하다
+        # 최종 PK(물려받은 부모 키 포함)와 같은 UNIQUE는 이미 유일하므로 뺀다
+        unique = tuple(u for u in (*table.unique_keys, *one_to_one) if u != primary_key)
         run.tables[entity_id] = table.model_copy(
-            update={"primary_key": primary_key, "unique_keys": (*table.unique_keys, *unique)}
+            update={"primary_key": primary_key, "unique_keys": unique}
         )
 
 

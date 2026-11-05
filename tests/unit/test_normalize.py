@@ -871,6 +871,21 @@ def test_single_key_attribute_marked_unique_gets_no_extra_unique() -> None:
     assert table.unique_keys == ()
 
 
+def test_unique_key_stays_when_inherited_parent_key_makes_the_final_pk_wider() -> None:
+    """자기 키(입고번호)가 UNIQUE이고 식별 관계로 부모 키를 물려받으면 최종 PK는 창고코드+입고번호.
+
+    이때 입고번호 단독 UNIQUE는 최종 PK와 다르므로 남아야 한다 (창고만 달라도 같은 번호를 막음).
+    """
+    receipt = _entity(
+        "ENT-rc", "입고", _attr("ATTR-rc-no", "입고번호", is_key=True, is_unique=True)
+    )
+    rel = _rel("REL-01", "ENT-wh", "ENT-rc", identifying=True)
+    model = _ok(_design([WAREHOUSE, receipt], [rel]))
+    table = _table(model, "ENT-rc")
+    assert _names(table, table.primary_key) == ["wrhus_cd", "wrhsg_no"]
+    assert [_names(table, u) for u in table.unique_keys] == [["wrhsg_no"]]
+
+
 def test_relationships_are_ordered_by_number_not_text() -> None:
     """`REL-9`가 `REL-10`보다 먼저 처리되어 복합 PK 칸이 번호 순으로 놓인다."""
     rels = [
