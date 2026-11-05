@@ -5,11 +5,14 @@
 예시에 없는 길이·req_ids만 보충했다.
 """
 
+import re
 import shutil
+import unicodedata
 from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from specton.codegen import naming
 from specton.codegen.model import Normalized, NormalizeFailed, ProblemCode
@@ -123,6 +126,70 @@ def test_compose_uses_standard_words_and_pack_terms() -> None:
     lexicon = load_pack_lexicon("inventory")
     assert physical_name("설비코드", lexicon) == "eqpm_cd"  # 공통 단어 설비 + 코드
     assert physical_name("상위 설비코드", lexicon) == "up_eqpm_cd"  # 공백은 단어 경계
+
+
+def test_decomposed_hangul_name_finds_the_same_term_and_name() -> None:
+    """한글을 자모로 나눠 저장한 이름(NFD)도 같은 용어·물리명을 찾는다 (A03 ID와 같은 NFC 기준)."""
+    lexicon = load_pack_lexicon("inventory")
+    decomposed = unicodedata.normalize("NFD", "창고코드")
+    assert decomposed != "창고코드"
+    assert lexicon.term(decomposed) == lexicon.term("창고코드")
+    assert physical_name(decomposed, lexicon) == physical_name("창고코드", lexicon) == "wrhus_cd"
+    spaced = unicodedata.normalize("NFD", "창고 명")  # 띄어 쓴 이름도 조각마다 같은 기준
+    assert physical_name(spaced, lexicon) == "wrhus_nm"
+
+
+def _add_pack_word(root: Path, word: str, abbreviation: str) -> None:
+    path = root / "inventory" / "words.yaml"
+    data = read_yaml(path)
+    common = read_yaml(root / "common" / "words.yaml")["words"][0]
+    data["words"] = [
+        *(data.get("words") or []),
+        {**common, "word": word, "abbreviation": abbreviation},
+    ]
+    path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+
+
+def test_same_name_after_nfc_with_different_content_stops(tmp_path: Path) -> None:
+    """한 사전 파일 안에서 NFC로 같아지는 두 항목의 약어가 다르면 어느 쪽도 고르지 않고 멈춘다."""
+    root = _copy_pack(tmp_path, "inventory")
+    _add_pack_word(root, "보관함", "BOX")
+    _add_pack_word(root, unicodedata.normalize("NFD", "보관함"), "WRONG")
+    with pytest.raises(ValueError, match=re.escape("inventory/words.yaml: 같은 이름 보관함")):
+        load_pack_lexicon("inventory", root)
+
+
+@pytest.mark.parametrize(
+    "change", [{"physical_name": "WRONG_CD"}, {"domain": "명V200"}], ids=["physical_name", "domain"]
+)
+def test_same_term_after_nfc_with_different_name_or_domain_stops(
+    tmp_path: Path, change: dict[str, str]
+) -> None:
+    """팩 용어도 NFC로 같아지는 두 항목의 물리명이나 도메인이 다르면 멈춘다."""
+    root = _copy_pack(tmp_path, "inventory")
+    path = root / "inventory" / "terms.yaml"
+    data = read_yaml(path)
+    (original,) = [t for t in data["terms"] if t["term"] == "창고코드"]
+    decomposed = {**original, "term": unicodedata.normalize("NFD", "창고코드"), **change}
+    data["terms"] = [*data["terms"], decomposed]
+    path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    with pytest.raises(ValueError, match=re.escape("inventory/terms.yaml: 같은 이름 창고코드")):
+        load_pack_lexicon("inventory", root)
+
+
+def test_same_name_after_nfc_with_same_content_is_one_entry(tmp_path: Path) -> None:
+    root = _copy_pack(tmp_path, "inventory")
+    _add_pack_word(root, "보관함", "BOX")
+    _add_pack_word(root, unicodedata.normalize("NFD", "보관함"), "BOX")
+    assert physical_name("보관함", load_pack_lexicon("inventory", root)) == "box"
+
+
+def test_pack_word_still_overrides_common_word_of_the_same_name(tmp_path: Path) -> None:
+    """파일 사이의 우선순위(공통 단어 → 팩 단어)는 그대로다. 충돌로 보지 않는다."""
+    root = _copy_pack(tmp_path, "inventory")
+    common_word = read_yaml(root / "common" / "words.yaml")["words"][0]["word"]
+    _add_pack_word(root, common_word, "PACKONLY")
+    assert physical_name(common_word, load_pack_lexicon("inventory", root)) == "packonly"
 
 
 def test_unregistered_word_gives_no_name_instead_of_invented_abbreviation() -> None:
@@ -257,6 +324,82 @@ def test_maintenance_self_reference_is_blocked_with_current_naming_yaml() -> Non
     assert [(p.code, p.decision) for p in result.problems] == [
         (ProblemCode.NAMING_RULE_MISSING, "D4")
     ]
+
+
+def test_very_long_name_is_reported_as_too_long_instead_of_crashing() -> None:
+    """실제 inventory 사전과 정상 PK에서 엔티티 이름이 아주 길어도 멈추지 않고 정리 실패로 돌려준다.
+
+    #129 리뷰: 이전 분할 방식은 "명" * 1000에서 RecursionError로 끝났다.
+    """
+    design = DesignState(
+        run_id="run-long",
+        requirements=[_req("REQ-01")],
+        entities=[
+            _entity(
+                "inventory",
+                "ENT-long",
+                "명" * 1000,
+                {
+                    "id": "ATTR-wh-cd",
+                    "name": "창고코드",
+                    "data_type": "varchar",
+                    "length": 10,
+                    "is_key": True,
+                    "nullable": False,
+                },
+            )
+        ],
+    )
+    result = normalize(
+        design,
+        pack=_pack("inventory"),
+        lexicon=load_pack_lexicon("inventory"),
+        rules=load_naming_rules(),
+    )
+    assert isinstance(result, NormalizeFailed)
+    assert [p.code for p in result.problems] == [ProblemCode.NAME_TOO_LONG]
+
+
+def _long_name_result(entity_name: str, column_name: str = "창고코드") -> Any:
+    design = DesignState(
+        run_id="run-long",
+        requirements=[_req("REQ-01")],
+        entities=[
+            _entity(
+                "inventory",
+                "ENT-long",
+                entity_name,
+                {
+                    "id": "ATTR-key",
+                    "name": column_name,
+                    "data_type": "varchar",
+                    "length": 10,
+                    "is_key": True,
+                    "nullable": False,
+                },
+            )
+        ],
+    )
+    return normalize(
+        design,
+        pack=_pack("inventory"),
+        lexicon=load_pack_lexicon("inventory"),
+        rules=load_naming_rules(),
+    )
+
+
+def test_very_long_column_name_is_reported_as_too_long() -> None:
+    result = _long_name_result("창고", column_name="명" * 1000)
+    assert isinstance(result, NormalizeFailed)
+    assert [p.code for p in result.problems] == [ProblemCode.NAME_TOO_LONG]
+
+
+@pytest.mark.parametrize("name", ["X" + "명" * 1000, "명" * 1000 + "X"])
+def test_very_long_name_with_unregistered_letter_is_unresolved(name: str) -> None:
+    """사전에 없는 글자가 앞이나 뒤에 섞인 긴 이름은 물리명을 만들 수 없다고 알린다."""
+    result = _long_name_result(name)
+    assert isinstance(result, NormalizeFailed)
+    assert [p.code for p in result.problems] == [ProblemCode.UNRESOLVED_NAME]
 
 
 def test_inventory_inv005_reports_unregistered_words_as_pending_only() -> None:

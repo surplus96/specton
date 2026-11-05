@@ -8,9 +8,9 @@
 """
 
 import hashlib
-from collections.abc import Iterator, Mapping
+import unicodedata
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
-from functools import cache
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -114,12 +114,12 @@ class PackLexicon:
     digest: str
 
     def term(self, logical_name: str) -> TermInfo | None:
-        return self.terms.get(logical_name)
+        return self.terms.get(_nfc(logical_name))
 
     def compose(self, logical_name: str) -> str | None:
         """공백으로 나눈 뒤 각 조각을 사전 항목으로 끝까지 나눈다. 하나라도 못 나누면 None."""
         parts: list[str] = []
-        for chunk in logical_name.split():
+        for chunk in _nfc(logical_name).split():
             split = _segment(chunk, self.tokens)
             if split is None:
                 return None
@@ -127,27 +127,55 @@ class PackLexicon:
         return self.separator.join(parts) if parts else None
 
 
+def _nfc(name: str) -> str:
+    """한글 조합 방식 차이(NFC·NFD)를 맞춘다. A03 `_stable_id`와 같은 기준이다."""
+    return unicodedata.normalize("NFC", name)
+
+
+def _by_nfc_name[V](pairs: Iterable[tuple[str, V]], where: str) -> dict[str, V]:
+    """한 사전 파일의 항목을 NFC 이름으로 모은다.
+
+    NFC로 바꾸면 같은 이름인데 내용(물리명·도메인 등)이 다르면 순서에 따라 조용히 덮어쓰지 않고
+    멈춘다. 내용까지 같으면 하나로 본다.
+    """
+    found: dict[str, V] = {}
+    for name, value in pairs:
+        key = _nfc(name)
+        if key in found and found[key] != value:
+            raise ValueError(f"{where}: 같은 이름 {key}에 내용이 다른 항목이 둘 이상 있습니다")
+        found[key] = value
+    return found
+
+
 def _segment(text: str, tokens: Mapping[str, str]) -> tuple[str, ...] | None:
     """`text`를 사전 항목으로 빈틈없이 나눈다. 항목 수가 가장 적은 분할을 고른다.
 
     같은 수면 앞 조각이 긴 쪽을 고른다. 같은 입력이면 항상 같은 분할이다.
+    뒤에서부터 채우는 반복문이라 이름이 길어도 재귀 깊이 한도에 걸리지 않는다. 위치마다
+    최소 조각 수와 다음 조각의 끝 위치만 두고 마지막에 한 번 조립해, 메모리는 이름 길이에 비례한다.
     """
-
-    @cache
-    def best(start: int) -> tuple[str, ...] | None:
-        if start == len(text):
-            return ()
-        found: tuple[str, ...] | None = None
-        for end in range(len(text), start, -1):  # 긴 조각부터
-            piece = text[start:end]
-            if piece not in tokens:
+    size = len(text)
+    longest = max((len(t) for t in tokens), default=0)
+    pieces: list[int | None] = [None] * (size + 1)  # 그 위치부터 끝까지의 최소 조각 수
+    next_end: list[int] = [0] * (size + 1)  # 그 위치에서 고른 첫 조각의 끝 위치
+    pieces[size] = 0
+    for start in range(size - 1, -1, -1):
+        for end in range(min(size, start + longest), start, -1):  # 긴 조각부터
+            rest = pieces[end]
+            if rest is None or text[start:end] not in tokens:
                 continue
-            rest = best(end)
-            if rest is not None and (found is None or len(rest) + 1 < len(found)):
-                found = (piece, *rest)
-        return found
-
-    return best(0)
+            current = pieces[start]
+            if current is None or rest + 1 < current:  # 같은 수면 먼저 본 긴 조각을 둔다
+                pieces[start] = rest + 1
+                next_end[start] = end
+    if pieces[0] is None:
+        return None
+    result: list[str] = []
+    position = 0
+    while position < size:
+        result.append(text[position : next_end[position]])
+        position = next_end[position]
+    return tuple(result)
 
 
 def load_naming_rules(
@@ -209,10 +237,15 @@ def load_pack_lexicon(pack: str, root: Path = DEFAULT_PACK_ROOT) -> PackLexicon:
     naming, domains_file, common_words, pack_words, terms_file = (read_yaml(f) for f in files)
     profile = naming["type_profile"]
     domains = {d["name"]: d for d in domains_file["domains"]}
-    terms = {t["term"]: _term_info(t, domains[t["domain"]], profile) for t in terms_file["terms"]}
+    terms = _by_nfc_name(
+        ((t["term"], _term_info(t, domains[t["domain"]], profile)) for t in terms_file["terms"]),
+        f"{pack}/terms.yaml",
+    )
+    # 파일 사이에서는 공통 단어 → 팩 단어 → 팩 용어 순서로 뒤의 것이 덮는다 (정한 우선순위)
     tokens: dict[str, str] = {}
-    for source in (common_words.get("words") or [], pack_words.get("words") or []):
-        tokens.update({w["word"]: w["abbreviation"] for w in source})
+    for source, where in ((common_words, "common/words.yaml"), (pack_words, f"{pack}/words.yaml")):
+        words = ((w["word"], w["abbreviation"]) for w in source.get("words") or [])
+        tokens.update(_by_nfc_name(words, where))
     tokens.update({name: info.physical_name for name, info in terms.items()})
     digest = hashlib.sha256()
     for f in files:
