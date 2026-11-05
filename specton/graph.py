@@ -12,6 +12,7 @@
 - 지금은 빈 노드(stub)로 잇는다. 에이전트 노드는 담당 이슈가 끝나면 `nodes`로 넘겨 바꾼다.
 """
 
+import operator
 from collections import Counter
 from collections.abc import Callable, Mapping
 from typing import Annotated, Any, TypedDict
@@ -118,6 +119,7 @@ class GraphState(TypedDict, total=False):
     router_stage: TargetStage | None  # A09 답
     unrouted: tuple[Finding, ...]  # 코드가 복귀 단계를 정하지 못해 A09에 넘길 지적
     branch_versions: Annotated[dict[str, tuple[str, str]], _merge_versions]  # 합류에서 기록
+    tokens_used: Annotated[int, operator.add]  # 이번 실행에 쓴 LLM 토큰 (`max_tokens_per_run`)
     revising: bool  # HITL 2의 수정 요청으로 A09에 왔는지
     failed_branches: tuple[str, ...]  # 이번 검토에서 실패하거나 빠진 리뷰 가지 (불완전 검토)
     requirements_answer: dict[str, Any]
