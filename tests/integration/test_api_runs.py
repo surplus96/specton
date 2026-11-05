@@ -272,6 +272,61 @@ def test_extraction_not_confirmed_stops_the_run(client: TestClient, pool: Pool) 
     assert response.json()["status"] == "cancelled"
 
 
+def _judged(pool: Pool, run_id: str, **statuses: str) -> None:
+    """실행기가 파싱 뒤 남긴 추출 블록과 판정 (block_id=판정)."""
+    with pool.connection() as conn:
+        document = conn.execute("SELECT document_id FROM document WHERE run_id = %s", (run_id,))
+        document_id = document.fetchone()["document_id"]  # type: ignore[index]
+        for block_id, status in statuses.items():
+            conn.execute(
+                "INSERT INTO source_block (document_id, block_id, source_ref, source_text, "
+                "extraction_status, payload) VALUES (%s, %s, '{}', '원문', %s, '{}')",
+                (document_id, block_id, status),
+            )
+
+
+def _extraction(*excluded: dict[str, str], confirmed: bool = True) -> dict[str, Any]:
+    return {"kind": "extraction", "confirmed": confirmed, "excluded_blocks": list(excluded)}
+
+
+@pytest.mark.parametrize(
+    ("answer", "block"),
+    [
+        (_extraction({"block_id": "B1"}, confirmed=False), None),  # 중단하면서 제외
+        (_extraction({"block_id": "B2", "reason": "범위 밖"}), "B3"),  # fail을 남김
+        (_extraction({"block_id": "B9"}, {"block_id": "B3"}), "B9"),  # 없는 블록
+        (_extraction({"block_id": "B1"}, {"block_id": "B3"}), "B1"),  # pass 블록
+        (_extraction({"block_id": "B2", "reason": " "}, {"block_id": "B3"}), "B2"),  # 빈 사유
+        (_extraction({"block_id": "B3"}, {"block_id": "B3"}), "B3"),  # 두 번 제외
+    ],
+)
+def test_extraction_answer_must_match_the_block_judgements(
+    client: TestClient, pool: Pool, answer: dict[str, Any], block: str | None
+) -> None:
+    run_id = _create(client).json()["run_id"]
+    interrupt_id = _wait(pool, run_id, "extraction", S.AWAITING_INPUT)
+    _judged(pool, run_id, B1="pass", B2="review", B3="fail")
+
+    response = _resume(client, run_id, interrupt_id, answer)
+
+    assert _error(response) == (422, "INVALID_RESPONSE")
+    if block is not None:
+        assert response.json()["message"].startswith(f"{block}:")
+    assert client.get(f"/runs/{run_id}").json()["status"] == "awaiting_input"  # 그대로 기다린다
+
+
+def test_extraction_answer_with_valid_exclusions_moves_on(client: TestClient, pool: Pool) -> None:
+    run_id = _create(client).json()["run_id"]
+    interrupt_id = _wait(pool, run_id, "extraction", S.AWAITING_INPUT)
+    _judged(pool, run_id, B1="pass", B2="review", B3="review", B4="fail")
+    answer = _extraction({"block_id": "B2", "reason": "2차 범위"}, {"block_id": "B4"})
+
+    response = _resume(client, run_id, interrupt_id, answer)  # B3은 확인, B4는 사유 없이 제외
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "analysing"
+
+
 def test_review_hold_keeps_waiting_and_approve_is_blocked_by_critical(
     client: TestClient, pool: Pool
 ) -> None:

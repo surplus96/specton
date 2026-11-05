@@ -28,8 +28,8 @@ class ApiError(Exception):
         self.status, self.code, self.message, self.retryable = status, code, message, retryable
 
 
-# 저장 계층 예외 → (HTTP 상태, 코드, 메시지, 다시 시도)
-_PERSISTENCE: dict[type[pe.PersistenceError], tuple[int, ErrorCode, str, bool]] = {
+# 저장 계층 예외 → (HTTP 상태, 코드, 메시지, 다시 시도). 메시지가 None이면 예외의 메시지를 쓴다
+_PERSISTENCE: dict[type[pe.PersistenceError], tuple[int, ErrorCode, str | None, bool]] = {
     pe.RunNotFoundError: (404, ErrorCode.RUN_NOT_FOUND, "실행을 찾을 수 없습니다.", False),
     pe.RevisionConflictError: (
         409,
@@ -55,6 +55,7 @@ _PERSISTENCE: dict[type[pe.PersistenceError], tuple[int, ErrorCode, str, bool]] 
         "확인 요청 종류와 응답 종류가 다릅니다.",
         False,
     ),
+    pe.InvalidResponseError: (422, ErrorCode.INVALID_RESPONSE, None, False),
     pe.BlockingFindingsError: (
         422,
         ErrorCode.INVALID_RESPONSE,
@@ -118,7 +119,9 @@ def install_error_handlers(app: FastAPI) -> None:
                 500, ErrorCode.INTERNAL, "서버 오류입니다.", run_id=_run_id(request), retryable=True
             )
         status, code, message, retryable = mapped
-        return error_response(status, code, message, run_id=_run_id(request), retryable=retryable)
+        return error_response(
+            status, code, message or str(exc), run_id=_run_id(request), retryable=retryable
+        )
 
     @app.exception_handler(StarletteHTTPException)
     async def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:

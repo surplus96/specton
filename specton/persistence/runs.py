@@ -16,6 +16,8 @@ from psycopg.types.json import Jsonb
 from specton.contracts import (
     Contract,
     Error,
+    ExtractionResponse,
+    ExtractionStatus,
     Interrupt,
     InterruptKind,
     ResumeRequest,
@@ -30,6 +32,7 @@ from specton.persistence.errors import (
     BlockingFindingsError,
     EventReplayExpiredError,
     InterruptStaleError,
+    InvalidResponseError,
     InvalidTransitionError,
     ResponseMismatchError,
     RevisionConflictError,
@@ -291,9 +294,10 @@ def answer_interrupt(
         if interrupt["kind"] != response.kind:
             raise ResponseMismatchError(f"{interrupt['kind']} 확인에 {response.kind} 응답")
         if response.kind == "extraction":
+            _check_extraction(conn, run_id, response)
             new: RunState | None = _AFTER_ANSWER[InterruptKind.EXTRACTION]
             if not response.confirmed:
-                new = S.CANCELLED  # 확인하지 않으면 중단한다 (#95 결론에 따라 바뀔 수 있음)
+                new = S.CANCELLED  # 확인하지 않으면 중단한다 (ADR-0015)
             decision = "confirm" if response.confirmed else "stop"
         elif response.kind == "requirements":
             new, decision = _AFTER_ANSWER[InterruptKind.REQUIREMENTS], "answer"
@@ -373,6 +377,41 @@ def _lock_run(
     if row is None:
         raise RunNotFoundError(str(run_id))
     return {**row, "status": RunState(row["status"])}
+
+
+def _check_extraction(conn: Connection[DictRow], run_id: UUID, answer: ExtractionResponse) -> None:
+    """추출 확인 답이 블록 판정과 맞는지 본다 (06 문서, ADR-0015 결정 5).
+
+    맞지 않으면 해당 블록 ID를 담아 InvalidResponseError. 제외 결정을 블록에 남기는 일은
+    실행기(#17)가 한다.
+    """
+    if not answer.confirmed:
+        if answer.excluded_blocks:
+            raise InvalidResponseError("중단하는 답에는 제외할 블록을 넣지 않습니다")
+        return
+    rows = conn.execute(
+        """
+        SELECT b.block_id, b.extraction_status
+        FROM source_block b JOIN document d USING (document_id) WHERE d.run_id = %s
+        """,
+        (run_id,),
+    ).fetchall()
+    judged = {r["block_id"]: ExtractionStatus(r["extraction_status"]) for r in rows}
+    excluded: set[str] = set()
+    for block in answer.excluded_blocks:
+        status, block_id = judged.get(block.block_id), block.block_id
+        if block_id in excluded:
+            raise InvalidResponseError(f"{block_id}: 같은 블록을 두 번 제외했습니다")
+        if status is None:
+            raise InvalidResponseError(f"{block_id}: 없는 블록입니다")
+        if status is ExtractionStatus.PASS:
+            raise InvalidResponseError(f"{block_id}: 확인이 필요 없는 블록은 제외하지 않습니다")
+        if status is ExtractionStatus.REVIEW and not block.reason:
+            raise InvalidResponseError(f"{block_id}: 확인 필요 블록을 제외하려면 사유가 필요합니다")
+        excluded.add(block_id)
+    failed = sorted({b for b, s in judged.items() if s is ExtractionStatus.FAIL} - excluded)
+    if failed:
+        raise InvalidResponseError(f"{', '.join(failed)}: 추출에 실패한 블록은 제외해야 합니다")
 
 
 def _has_blocking_findings(conn: Connection[DictRow], run_id: UUID, revision: int) -> bool:
