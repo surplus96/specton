@@ -33,6 +33,10 @@ class ResponseMismatchError(PersistenceError):
     """확인 요청 종류와 다른 응답 (예: 추출 확인에 검토 응답)."""
 
 
+class InvalidResponseError(PersistenceError):
+    """확인 요청의 내용과 맞지 않는 답 (예: `pass` 블록 제외). 메시지에 블록 ID를 넣는다."""
+
+
 class BlockingFindingsError(PersistenceError):
     """차단 오류(critical)가 남아 있어 승인할 수 없다 (ADR-0010)."""
 
