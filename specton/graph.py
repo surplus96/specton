@@ -290,7 +290,7 @@ def _ask_extraction(state: GraphState) -> dict[str, Any]:
     blocks = _decide_blocks(design.source_requirements, answer)
     if not any(b.analysable for b in blocks):
         raise ExtractionFailedError(
-            "제외하고 남은 요구사항이 없어요. 요구사항을 확인한 뒤 다시 올려 주세요.",
+            "분석할 요구사항이 없어요. 요구사항을 적은 뒤 다시 올려 주세요.",
             "추출 확인에서 모든 원문을 제외했거나, 남은 원문에 요구사항 문장이 없어요.",
         )
     return {
