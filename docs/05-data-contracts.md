@@ -25,7 +25,9 @@
 | #119 | 추출 확인은 확인·제외만 (ADR-0015): `ExtractionResponse.edits` → `excluded_blocks`, `SourceRequirement`에 `notice`·`user_decision`·`excluded_reason`, `source_text` null 허용(`review`만), `extraction_status` 기본값 없음 |
 | #120 | `SourceRequirement.excluded_reason` 빈 문자열 금지, `analysable`이 결정 전 `fail` 블록도 뺀다 |
 
-남은 작업: requirements·추적 검사 설명 (#107), `review`·`fail` 블록의 `notice` 필수 검사 (#10 후속 PR 뒤), FK 파생·참조 키 (#12), 값 범위 제약 (#15)
+남은 작업: requirements·추적 검사 설명 (#107), `review`·`fail` 블록의 `notice` 필수 계약 검사 (R3 후속, #120·#128), FK 파생·참조 키 (#12), 값 범위 제약 (#15)
+
+- #128로 표 파서의 `review` 블록은 `notice`를 채운다. 계약 모델의 필수 검사는 아직 없다.
 
 ### 모델별 `kind` 뜻
 
