@@ -360,6 +360,25 @@ def test_requirements_are_saved_for_the_view_before_the_requirements_check(
     assert [item["id"] for item in view.items] == ["REQ-01"]
 
 
+def test_requirements_answer_is_applied_to_the_saved_model(world: Callable[..., _World]) -> None:
+    """HITL 1의 split 답이 설계 모델에 반영되고, 새 ID는 서버가 붙인다 (docs/06 resume)."""
+    w = world({"a01": _with_requirement})
+    run_id = w.create()
+    w.runner.run_pending()
+    split = {"req_id": "REQ-01", "action": "split", "texts": ["입고를 등록한다", "입고를 승인한다"]}
+
+    w.answer(run_id, {"kind": "requirements", "answers": [split]})
+    w.runner.run_pending()
+
+    with w.pool.connection() as conn:
+        view = get_view(conn, run_id, OWNER, "requirements")
+    assert w.status(run_id).status is RunState.AWAITING_REVIEW
+    assert [(item["id"], item["text"]) for item in view.items] == [
+        ("REQ-01", "입고를 등록한다"),
+        ("REQ-02", "입고를 승인한다"),
+    ]
+
+
 def test_findings_saved_before_final_review_block_approval(world: Callable[..., _World]) -> None:
     """HITL 2 전에 지적을 저장해야 approve가 차단 오류를 검사할 수 있다 (06 문서 resume)."""
     w = world({"a01": _with_requirement, "rules": _critical_rule})

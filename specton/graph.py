@@ -22,7 +22,16 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import interrupt
 
 from specton.config import get_settings
-from specton.contracts import BranchResult, DesignState, ExtractionResponse, Finding, RunState
+from specton.contracts import (
+    BranchResult,
+    DesignState,
+    ExtractionResponse,
+    Finding,
+    Requirement,
+    RequirementsResponse,
+    RunState,
+)
+from specton.contracts.api import RequirementAnswer
 from specton.contracts.base import ExtractionStatus, TargetStage, UserDecision
 from specton.contracts.requirements import SourceRequirement
 from specton.review.merge import merge_review
@@ -285,8 +294,68 @@ def _decide_blocks(
 
 def _ask_requirements(state: GraphState) -> dict[str, Any]:
     answer = interrupt({"kind": "requirements"})
-    design = state["design"].evolve(status=RunState.DESIGNING)
+    design = state["design"]
+    requirements = _answered(design.requirements, RequirementsResponse.model_validate(answer))
+    design = design.evolve(requirements=requirements, status=RunState.DESIGNING)
     return {"requirements_answer": answer, "design": design}
+
+
+def _answered(
+    requirements: tuple[Requirement, ...], response: RequirementsResponse
+) -> tuple[Requirement, ...]:
+    """분석 확인 답을 반영한다 (docs/06 resume). 답이 없는 요구사항은 그대로(keep) 둔다.
+
+    - edit: 문장 하나로 `text`를 바꾼다. A01이 낸 `draft_text`는 그대로 둔다 (docs/05).
+    - split: 문장 2개 이상. 첫 조각은 원래 ID, 나머지는 이어지는 새 ID다. 원문 연결·분류는
+      부모 값을 쓰고, `parent_id`는 A01 분할처럼 비운다(원문으로 잇는다).
+      경고 기록은 원래 ID에 남긴다.
+    """
+    answers = _answers_by_id(requirements, response)
+    next_number = max((_number(r.id) for r in requirements), default=0) + 1
+    result: list[Requirement] = []
+    for req in requirements:
+        answer = answers.get(req.id)
+        if answer is None or answer.action == "keep":
+            result.append(req)
+        elif answer.action == "edit":
+            result.append(req.evolve(text=answer.texts[0]))
+        else:
+            first, *rest = answer.texts
+            result.append(req.evolve(text=first))
+            for offset, text in enumerate(rest):
+                new_id = f"REQ-{next_number + offset:02d}"
+                result.append(req.evolve(id=new_id, text=text, quality_issues=()))
+            next_number += len(rest)
+    return tuple(result)
+
+
+_TEXT_COUNT: Mapping[str, tuple[int, int | None]] = {
+    "keep": (0, 0),
+    "edit": (1, 1),
+    "split": (2, None),
+}
+
+
+def _answers_by_id(
+    requirements: tuple[Requirement, ...], response: RequirementsResponse
+) -> dict[str, RequirementAnswer]:
+    """요구사항 ID별 답. 없는 ID·같은 ID 두 번·문장 수가 맞지 않는 답은 ValueError."""
+    known = {r.id for r in requirements}
+    answers: dict[str, RequirementAnswer] = {}
+    for answer in response.answers:
+        if answer.req_id not in known:
+            raise ValueError(f"{answer.req_id}: 없는 요구사항에 대한 답입니다")
+        if answer.req_id in answers:
+            raise ValueError(f"{answer.req_id}: 같은 요구사항에 답이 두 번 있습니다")
+        low, high = _TEXT_COUNT[answer.action]
+        if len(answer.texts) < low or (high is not None and len(answer.texts) > high):
+            raise ValueError(f"{answer.req_id}: {answer.action} 답의 문장 수가 맞지 않습니다")
+        answers[answer.req_id] = answer
+    return answers
+
+
+def _number(req_id: str) -> int:
+    return int(req_id.split("-", 1)[1])
 
 
 def _ask_review(state: GraphState) -> dict[str, Any]:
