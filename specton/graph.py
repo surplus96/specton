@@ -13,6 +13,7 @@
 """
 
 import operator
+import re
 from collections import Counter
 from collections.abc import Callable, Mapping
 from typing import Annotated, Any, TypedDict
@@ -84,6 +85,16 @@ class ExtractionFailedError(Exception):
         self.detail = detail
 
 
+class RunNote(TypedDict):
+    """노드가 실행 기록(`run_event`)에 남길 안내.
+
+    실행기가 그 노드를 저장할 때 status 이벤트로 쓴다.
+    """
+
+    message: str
+    payload: dict[str, Any]
+
+
 class DocumentRef(TypedDict):
     """실행에 올린 문서. 실행기가 첫 상태에 넣고 parse 노드가 읽는다."""
 
@@ -109,6 +120,9 @@ def _merge_versions(
 class GraphState(TypedDict, total=False):
     design: DesignState
     documents: tuple[DocumentRef, ...]  # 업로드 문서 (parse 노드 입력)
+    notes: tuple[
+        RunNote, ...
+    ]  # 방금 끝난 노드가 남긴 안내. 실행기는 노드 결과(update)에서만 읽는다
     branches: Annotated[dict[str, BranchResult], _merge_branches]
     rule_findings: tuple[Finding, ...]  # 규칙 검사(#15) 결과
     rework_count: int  # 자동 재작업 횟수 (사람의 수정 요청은 세지 않는다)
@@ -276,10 +290,45 @@ def _ask_extraction(state: GraphState) -> dict[str, Any]:
     blocks = _decide_blocks(design.source_requirements, answer)
     if not any(b.analysable for b in blocks):
         raise ExtractionFailedError(
-            "제외하고 남은 요구사항이 없어요. 요구사항을 확인한 뒤 다시 올려 주세요.",
-            "추출 확인 뒤 분석할 원문이 0건입니다",
+            "분석할 요구사항이 없어요. 요구사항을 적은 뒤 다시 올려 주세요.",
+            "추출 확인에서 모든 원문을 제외했거나, 남은 원문에 요구사항 문장이 없어요.",
         )
-    return {"design": design.evolve(source_requirements=blocks, status=RunState.ANALYSING)}
+    return {
+        "design": design.evolve(source_requirements=blocks, status=RunState.ANALYSING),
+        "notes": _related_warnings(blocks),
+    }
+
+
+def _related_warnings(blocks: tuple[SourceRequirement, ...]) -> tuple[RunNote, ...]:
+    """제외한 원문의 ID가 남은 원문의 「관련 요구사항」에 나오면 경고를 남긴다 (ADR-0015 결정 5).
+
+    제외는 막지 않는다. ID는 앞뒤가 다른 글자·숫자·`-`가 아닐 때만 같은 ID로 본다
+    (「SFR-0031」 ≠ 「SFR-003」).
+    """
+    excluded = [b for b in blocks if b.user_decision is UserDecision.EXCLUDED and b.source_id]
+    remaining = [
+        b
+        for b in blocks
+        if b.user_decision is not UserDecision.EXCLUDED and b.source_related_requirements
+    ]
+    notes: list[RunNote] = []
+    for block in excluded:
+        same_id = re.compile(rf"(?<![\w-]){re.escape(block.source_id or '')}(?![\w-])")
+        related = [
+            r.block_id for r in remaining if same_id.search(r.source_related_requirements or "")
+        ]
+        if related:
+            payload = {
+                "warning": "excluded_related",
+                "block_id": block.block_id,
+                "source_id": block.source_id,
+                "related_block_ids": related,
+            }
+            notes.append(RunNote(message=_EXCLUDED_RELATED, payload=payload))
+    return tuple(notes)
+
+
+_EXCLUDED_RELATED = "제외한 원문을 관련 요구사항으로 적은 원문이 있습니다"
 
 
 def _decide_blocks(

@@ -248,6 +248,68 @@ def test_unreadable_document_fails_the_run_as_extraction_failed(
     assert status.error.retryable is False
 
 
+def test_extraction_failure_shows_the_parser_notice_and_detail(
+    world: Callable[..., _World], tmp_path: Path
+) -> None:
+    """파서 안내 두 문장 (#19): `message`는 짧은 안내(notice).
+
+    SSE `error` payload의 `detail`은 「자세히 보기」 문장이다.
+    """
+    w = world({"parse": parse_node(tmp_path)})
+    run_id = _upload(w, tmp_path, "이름,값\n가,1\n")  # 요구사항 표 머리글이 없다
+
+    w.runner.run_pending()
+
+    status = w.status(run_id)
+    assert status.error is not None
+    assert status.error.message == "요구사항 표를 찾지 못했어요. 표의 칸 이름을 확인해 주세요."
+    with w.pool.connection() as conn:
+        [error] = [e for e in events_after(conn, run_id, OWNER, 0) if e.event is SseEventType.ERROR]
+    assert error.data.message == status.error.message
+    assert error.data.payload["code"] == "EXTRACTION_FAILED"
+    assert "위쪽 20행 안에" in error.data.payload["detail"]
+
+
+def test_other_failures_keep_the_fixed_message_without_detail(
+    world: Callable[..., _World],
+) -> None:
+    def refuse(state: GraphState) -> Mapping[str, Any]:
+        raise LLMRefusalError("내부 프롬프트 내용")
+
+    w = world({"a01": refuse})
+    run_id = w.create()
+
+    w.runner.run_pending()
+
+    with w.pool.connection() as conn:
+        [error] = [e for e in events_after(conn, run_id, OWNER, 0) if e.event is SseEventType.ERROR]
+    assert error.data.message == "모델이 응답을 거절했습니다. 입력을 확인해 주세요."
+    assert "detail" not in error.data.payload
+
+
+def test_excluding_a_related_requirement_is_recorded_as_a_run_event(
+    world: Callable[..., _World], tmp_path: Path
+) -> None:
+    """ADR-0015 결정 5: 제외는 막지 않고, 경고를 status 이벤트로 남긴다."""
+    w = world({"parse": parse_node(tmp_path)})
+    rows = "요구사항 ID,요구사항명,상세 내용,관련 요구사항\n"
+    # SFR-002는 상세 내용이 비어 review 블록이다 (pass 블록은 제외할 수 없다, #120)
+    rows += "SFR-001,입고 등록,입고를 등록한다,SFR-002\nSFR-003,출고,출고한다,\nSFR-002,반품,,\n"
+    run_id = _upload(w, tmp_path, rows)
+    w.runner.run_pending()
+    exclude = [{"block_id": "csv:4", "reason": "2차 범위"}]
+
+    w.answer(run_id, {"kind": "extraction", "confirmed": True, "excluded_blocks": exclude})
+    w.runner.run_pending()
+
+    with w.pool.connection() as conn:
+        events = events_after(conn, run_id, OWNER, 0)
+    [warning] = [e for e in events if e.data.payload.get("warning") == "excluded_related"]
+    assert warning.event is SseEventType.STATUS
+    assert warning.data.payload["block_id"] == "csv:4"
+    assert warning.data.payload["related_block_ids"] == ["csv:2"]
+
+
 def test_answers_resume_the_run_to_completion(world: Callable[..., _World]) -> None:
     w = world()
     run_id = w.create()
