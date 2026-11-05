@@ -255,7 +255,13 @@ class TestUserDecision:
 
     def test_review_block_needs_a_reason_to_be_excluded(self) -> None:
         with pytest.raises(ValidationError, match="사유"):
-            _block(user_decision="excluded", excluded_reason="  ")
+            _block(user_decision="excluded")
+
+    @pytest.mark.parametrize("status", ["review", "fail"])
+    def test_blank_reason_is_not_stored(self, status: str) -> None:
+        """공백만 있는 사유는 빈 칸으로 저장하지 않는다. RTM이 판정 이유로 채운다 (#119 리뷰)."""
+        with pytest.raises(ValidationError, match="excluded_reason"):
+            _block(extraction_status=status, user_decision="excluded", excluded_reason="   ")
 
     def test_fail_block_can_be_excluded_without_reason_but_not_confirmed(self) -> None:
         failed = _block(extraction_status="fail", notice="글자를 읽지 못했습니다")
@@ -263,6 +269,10 @@ class TestUserDecision:
         assert failed.evolve(user_decision="excluded").excluded_reason is None
         with pytest.raises(ValidationError, match="fail"):
             failed.evolve(user_decision="confirmed")
+
+    def test_undecided_fail_block_is_not_analysed(self) -> None:
+        """fail은 제외해야만 진행하므로 결정 전에도 분석에 넣지 않는다 (#119 리뷰)."""
+        assert not _block(extraction_status="fail").analysable
 
     def test_pass_block_takes_no_decision(self) -> None:
         with pytest.raises(ValidationError, match="pass"):

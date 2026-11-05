@@ -29,8 +29,8 @@ class SourceRequirement(Contract):
     """추출된 원문 한 건. 코드가 만들고 LLM은 만들지 않는다.
 
     `source_` 칸은 원문 그대로다. 추출 확인(UI-02)에서는 문장을 고치지 않고 확인 또는 제외만
-    하며, 그 결정을 `user_decision`에 둔다 (ADR-0015, #95). 노드는 제외한 블록과 원문이 없는
-    블록을 분석하지 않는다.
+    하며, 그 결정을 `user_decision`에 둔다 (ADR-0015, #95). 노드는 `analysable`인 블록만
+    분석한다.
     """
 
     document_id: NonEmptyText
@@ -45,7 +45,7 @@ class SourceRequirement(Contract):
     extraction_status: ExtractionStatus  # 기본값을 두지 않는다. 판정 없이 `pass`가 되지 않게
     notice: str | None = None  # 판정 이유: 화면·RTM에 보여 주는 문구. 자세한 오류는 로그에만
     user_decision: UserDecision | None = None  # 결정 전이거나 확인할 필요가 없으면 None
-    excluded_reason: str | None = None  # 제외 사유. `review`는 필수, `fail`은 선택
+    excluded_reason: NonEmptyText | None = None  # 제외 사유. `review`는 필수, `fail`은 선택
 
     @model_validator(mode="after")
     def _check_decision(self) -> Self:
@@ -59,15 +59,25 @@ class SourceRequirement(Contract):
             raise ValueError("fail 블록은 확인으로 넘기지 못하고 제외해야 합니다")
         if decision is not UserDecision.EXCLUDED and self.excluded_reason is not None:
             raise ValueError("제외하지 않은 블록에는 제외 사유를 두지 않습니다")
-        reason = (self.excluded_reason or "").strip()
-        if decision is UserDecision.EXCLUDED and status is ExtractionStatus.REVIEW and not reason:
+        if (
+            decision is UserDecision.EXCLUDED
+            and status is ExtractionStatus.REVIEW
+            and self.excluded_reason is None
+        ):
             raise ValueError("review 블록을 제외하려면 사유가 필요합니다")
         return self
 
     @property
     def analysable(self) -> bool:
-        """분석(A01)에 넣을 블록인지. 제외했거나 원문 문장이 없으면 넣지 않는다."""
-        return self.source_text is not None and self.user_decision is not UserDecision.EXCLUDED
+        """분석(A01)에 넣을 블록인지. 제외했거나 원문 문장이 없거나 `fail`이면 넣지 않는다.
+
+        `fail` 블록은 제외해야만 진행하므로(ADR-0015 결정 5) 결정 전이어도 분석하지 않는다.
+        """
+        return (
+            self.source_text is not None
+            and self.extraction_status is not ExtractionStatus.FAIL
+            and self.user_decision is not UserDecision.EXCLUDED
+        )
 
 
 class QualityIssue(Contract):
