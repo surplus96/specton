@@ -3,8 +3,9 @@
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
+from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -21,10 +22,12 @@ from specton.contracts import (
 )
 from specton.graph import GraphState, Node, build_graph, initial_state
 from specton.llm.errors import LLMRefusalError
+from specton.parse_node import parse_node
 from specton.persistence import lease
 from specton.persistence.db import Pool, create_checkpointer
 from specton.persistence.errors import BlockingFindingsError
 from specton.persistence.runs import (
+    add_document,
     answer_interrupt,
     create_run,
     events_after,
@@ -137,6 +140,109 @@ def test_queued_run_stops_at_requirements_check_and_releases_lease(
     assert status.interrupt is not None and status.interrupt.kind == "requirements"
     assert not w.lease_is_live(run_id)
     assert w.events(run_id)[-1] is SseEventType.INTERRUPT
+
+
+def test_a_new_run_starts_with_its_pack_in_the_design(world: Callable[..., _World]) -> None:
+    seen: list[DesignState] = []
+
+    def a01(state: GraphState) -> Mapping[str, Any]:
+        seen.append(state["design"])
+        return {}
+
+    w = world({"a01": a01})
+    with w.pool.connection() as conn:
+        create_run(conn, OWNER, "maintenance", pack_version="0.1.4")
+
+    w.runner.run_pending()
+
+    [design] = seen
+    assert design.versions.pack_id == "maintenance"
+    assert design.versions.pack_version == "0.1.4"
+
+
+CSV = "요구사항 ID,요구사항명,상세 내용\nSFR-001,입고 등록,입고를 등록한다\n,출고,출고한다\n"
+
+
+def _upload(w: _World, storage: Path, text: str) -> UUID:
+    """CSV 하나를 올린 실행. 파일은 업로드 API와 같은 위치(`<run_id>/<document_id>.csv`)에 둔다."""
+    document_id = uuid4()
+    with w.pool.connection() as conn:
+        run_id = create_run(conn, OWNER, "inventory").run_id
+        ref = f"{run_id}/{document_id}.csv"
+        (storage / str(run_id)).mkdir()
+        (storage / ref).write_text(text, encoding="utf-8")
+        add_document(
+            conn, run_id, document_id=document_id, file_name="a.csv", file_format="csv",
+            file_hash="h", storage_ref=ref,
+        )  # fmt: skip
+    return run_id
+
+
+def _decisions(w: _World, run_id: UUID) -> dict[str, tuple[str | None, str | None]]:
+    with w.pool.connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT block_id, user_decision, excluded_reason FROM source_block
+            JOIN document USING (document_id) WHERE run_id = %s ORDER BY block_id
+            """,
+            (run_id,),
+        ).fetchall()
+    return {r["block_id"]: (r["user_decision"], r["excluded_reason"]) for r in rows}
+
+
+def test_uploaded_document_is_read_and_stops_for_the_extraction_check(
+    world: Callable[..., _World], tmp_path: Path
+) -> None:
+    w = world({"parse": parse_node(tmp_path)})
+    run_id = _upload(w, tmp_path, CSV)
+
+    w.runner.run_pending()
+
+    status = w.status(run_id)
+    assert status.status is RunState.AWAITING_INPUT
+    assert status.interrupt is not None and status.interrupt.kind == "extraction"
+    assert _decisions(w, run_id) == {"csv:2": (None, None), "csv:3": (None, None)}
+    assert "a01" not in w.visited
+
+
+def test_extraction_answer_is_saved_on_the_blocks_and_moves_to_analysis(
+    world: Callable[..., _World], tmp_path: Path
+) -> None:
+    w = world({"parse": parse_node(tmp_path)})
+    run_id = _upload(w, tmp_path, CSV + ",반품,반품한다\n")
+    w.runner.run_pending()
+
+    w.answer(
+        run_id,
+        {
+            "kind": "extraction",
+            "confirmed": True,
+            "excluded_blocks": [{"block_id": "csv:4", "reason": "2차 범위"}],
+        },
+    )
+    w.runner.run_pending()
+
+    assert w.status(run_id).status is RunState.AWAITING_REQUIREMENTS
+    assert _decisions(w, run_id) == {
+        "csv:2": (None, None),
+        "csv:3": ("confirmed", None),
+        "csv:4": ("excluded", "2차 범위"),
+    }
+
+
+def test_unreadable_document_fails_the_run_as_extraction_failed(
+    world: Callable[..., _World], tmp_path: Path
+) -> None:
+    w = world({"parse": parse_node(tmp_path)})
+    run_id = _upload(w, tmp_path, "이름,값\n가,1\n")
+
+    w.runner.run_pending()
+
+    status = w.status(run_id)
+    assert status.status is RunState.FAILED
+    assert status.error is not None
+    assert status.error.code == "EXTRACTION_FAILED"
+    assert status.error.retryable is False
 
 
 def test_answers_resume_the_run_to_completion(world: Callable[..., _World]) -> None:
