@@ -70,6 +70,7 @@ def _sample_state(run_id: str, document_id: str) -> DesignState:
                 block_id="B-1",
                 source_ref=src,
                 source_text="주문을 취소할 수 있다",
+                extraction_status="pass",
             )
         ],
         requirements=[

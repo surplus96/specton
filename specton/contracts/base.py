@@ -121,12 +121,20 @@ class TargetStage(StrEnum):
 class ExtractionStatus(StrEnum):
     """원문 한 건의 추출 판정. `SourceRequirement`와 함께 코드가 채운다.
 
-    값별 판정 기준과 사람 확인 조건은 ADR-0015(제안, #95)에서 정한다.
+    `review`는 확인하거나 제외하고, `fail`은 제외해야 진행한다 (ADR-0015, #95).
+    `fail`을 정하는 기준은 #24에서 HWP·HWPX를 시험한 뒤 정한다.
     """
 
     PASS = "pass"
     REVIEW = "review"
     FAIL = "fail"
+
+
+class UserDecision(StrEnum):
+    """추출 확인(UI-02)에서 사용자가 원문 한 건에 내린 결정 (ADR-0015, #95)."""
+
+    CONFIRMED = "confirmed"  # 알고 넘긴다. 원문이 있으면 분석에 들어간다
+    EXCLUDED = "excluded"  # 이번 범위에서 뺀다. 분석에 넣지 않고 RTM에 「제외」 행으로 남긴다
 
 
 class SourceRef(Contract):

@@ -187,16 +187,18 @@ class TestSourceRef:
 class TestSourceText:
     def test_source_requirement_keeps_source_whitespace(self) -> None:
         raw = SourceRequirement(
-            document_id="DOC-1", block_id="B-1", source_ref=_src(), source_text="  ① 입고한다\n"
-        )
+            document_id="DOC-1", block_id="B-1", source_ref=_src(), source_text="  ① 입고한다\n",
+            extraction_status="pass",
+        )  # fmt: skip
 
         assert raw.source_text == "  ① 입고한다\n"
 
     def test_source_requirement_rejects_blank_text(self) -> None:
         with pytest.raises(ValidationError):
             SourceRequirement(
-                document_id="DOC-1", block_id="B-1", source_ref=_src(), source_text="  \n"
-            )
+                document_id="DOC-1", block_id="B-1", source_ref=_src(), source_text="  \n",
+                extraction_status="pass",
+            )  # fmt: skip
 
     def test_source_requirement_keeps_original_columns_as_is(self) -> None:
         raw = SourceRequirement(
@@ -206,11 +208,69 @@ class TestSourceText:
             source_text="입고를 등록한다",
             source_acceptance_level="필수",
             source_extra={"비고": "1차"},
+            extraction_status="pass",
         )
 
         assert raw.source_acceptance_level == "필수"
         assert raw.source_extra == {"비고": "1차"}
-        assert raw.extraction_status == "pass"
+
+    def test_extraction_status_has_no_default(self) -> None:
+        """판정 없이 `pass`가 되지 않는다 (#95, 조용한 누락 금지)."""
+        with pytest.raises(ValidationError, match="extraction_status"):
+            SourceRequirement(
+                document_id="DOC-1", block_id="B-1", source_ref=_src(), source_text="입고한다"
+            )  # type: ignore[call-arg]
+
+
+def _block(**changes: object) -> SourceRequirement:
+    base: dict[str, object] = {
+        "document_id": "DOC-1",
+        "block_id": "B-1",
+        "source_ref": _src(),
+        "source_text": "입고를 등록한다",
+        "extraction_status": "review",
+        "notice": "같은 원문 ID가 두 번 나옵니다",
+    }
+    return SourceRequirement.model_validate({**base, **changes})
+
+
+class TestUserDecision:
+    """추출 확인 결정과 판정 규칙 (ADR-0015, #95)."""
+
+    def test_blank_row_is_kept_as_a_review_block_without_text(self) -> None:
+        blank = _block(source_text=None, notice="요구사항명·상세 내용이 비어 있습니다")
+
+        assert blank.source_text is None
+        assert not blank.analysable  # 확인해도 분석에는 넣지 않는다
+        assert not blank.evolve(user_decision="confirmed").analysable
+
+    @pytest.mark.parametrize("status", ["pass", "fail"])
+    def test_only_review_blocks_may_have_no_text(self, status: str) -> None:
+        with pytest.raises(ValidationError, match="review"):
+            _block(source_text=None, extraction_status=status)
+
+    def test_confirmed_review_block_is_analysed_and_excluded_one_is_not(self) -> None:
+        assert _block(user_decision="confirmed").analysable
+        assert not _block(user_decision="excluded", excluded_reason="범위 밖").analysable
+
+    def test_review_block_needs_a_reason_to_be_excluded(self) -> None:
+        with pytest.raises(ValidationError, match="사유"):
+            _block(user_decision="excluded", excluded_reason="  ")
+
+    def test_fail_block_can_be_excluded_without_reason_but_not_confirmed(self) -> None:
+        failed = _block(extraction_status="fail", notice="글자를 읽지 못했습니다")
+
+        assert failed.evolve(user_decision="excluded").excluded_reason is None
+        with pytest.raises(ValidationError, match="fail"):
+            failed.evolve(user_decision="confirmed")
+
+    def test_pass_block_takes_no_decision(self) -> None:
+        with pytest.raises(ValidationError, match="pass"):
+            _block(extraction_status="pass", user_decision="excluded", excluded_reason="x")
+
+    def test_reason_only_with_exclusion(self) -> None:
+        with pytest.raises(ValidationError, match="제외 사유"):
+            _block(user_decision="confirmed", excluded_reason="범위 밖")
 
 
 class TestNfrCategory:

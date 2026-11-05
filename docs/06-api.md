@@ -1,6 +1,6 @@
 # API
 
-> 상태: **구현 중** (#16: 엔드포인트 모두 구현. extraction 응답 형식은 ADR-0015(#95) 결론 뒤 맞춤)
+> 상태: **구현 중** (#16: 엔드포인트 모두 구현. extraction 응답의 422 검사는 #16 마지막 PR)
 
 Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비 업무 API와 다르다. 웹은 이 API만 호출한다.
 
@@ -37,7 +37,7 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 
 | kind | 내용 | 규칙 |
 |---|---|---|
-| `extraction` | `block_id`별 수정 텍스트, `confirmed` | `confirmed=false`는 중단(`cancelled`). 응답은 approval에 그대로 저장하며, 수정본·제외 처리는 ADR-0015(#95) 결론에 따른다 |
+| `extraction` | `confirmed`, `excluded_blocks`(`block_id`, `reason` 선택) | 문장은 고치지 않고 확인 또는 제외만 한다 (ADR-0015). `confirmed=false`는 중단(`cancelled`). 제외 결정은 `source_block`과 `SourceRequirement.user_decision`에, 확인한 사람·시각은 approval에 남긴다. 제외 후 남은 블록이 0건이면 `EXTRACTION_FAILED` |
 | `requirements` | `req_id`별 `keep`/`edit`/`split`, `texts` | split의 새 ID는 서버가 부여 |
 | `review` | `approve`/`revise`/`hold`, `feedback` | approve는 현재 revision과 차단 오류 유무 확인. hold는 SSE `status` 이벤트만 남기고 같은 확인 요청으로 계속 기다린다 (approval을 저장하지 않고 실행을 재개하지 않음) |
 
@@ -53,6 +53,11 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 }
 ```
 
+- `extraction` 응답이 아래에 해당하면 422 `INVALID_RESPONSE`다. 메시지에 해당 `block_id`를 넣는다.
+  - `confirmed=false`인데 `excluded_blocks`가 있다
+  - `confirmed=true`인데 제외 목록에 없는 `fail` 블록이 있다
+  - 없는 `block_id`, 또는 `pass` 블록을 제외한다
+  - `review` 블록을 제외하면서 사유가 비었다
 - 동시에 보낸 같은 응답은 하나만 적용한다. 중복·오래된 응답은 409를 돌려주며 두 번째 실행을 만들지 않는다. 클라이언트는 상태를 다시 조회한다.
 - approve가 아니면 산출물을 완료본으로 승격하지 않는다.
 
@@ -154,7 +159,7 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 | `LLM_OUTPUT_INVALID` | 실행 실패: 재요청 후에도 출력 형식 위반 (`LLMContractError`) | 실행 상태 | 예 |
 | `LLM_UNAVAILABLE` | 실행 실패: LLM 타임아웃·API 오류 (`LLMTimeoutError`, `LLMAPIError`) | 실행 상태 | 예, 잠시 후 |
 | `BUDGET_EXCEEDED` | 실행 실패: 토큰·시간 예산 초과 (`LLMBudgetExceededError`) | 실행 상태 | 아니오, 입력 축소 |
-| `EXTRACTION_FAILED` | 실행 실패: 문서 추출 실패 (빈 PDF, 암호화, 손상) | 실행 상태 | 아니오, 다른 파일 |
+| `EXTRACTION_FAILED` | 실행 실패: 파일 단위로 읽지 못함(손상, 시트를 읽지 못함, 요구사항 표를 찾지 못함, 파일 전체가 빈 양식 등) 또는 추출 확인에서 제외한 뒤 남은 원문이 0건 | 실행 상태 | 아니오, 다른 파일 |
 | `INTERNAL` | 그 밖의 서버 오류 | 500 / 실행 상태 | 경우에 따라 |
 
 - "실행 상태"는 HTTP 오류가 아니라 실패한 실행의 `GET /runs/{id}` 응답 `error` 필드와 SSE `error` 이벤트로 전달된다는 뜻이다.

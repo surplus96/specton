@@ -8,6 +8,7 @@
 from specton.contracts.api import (
     Error,
     ErrorCode,
+    ExcludedBlock,
     ExtractionResponse,
     Interrupt,
     InterruptKind,
@@ -33,6 +34,7 @@ from specton.contracts.base import (
     SourceRef,
     SqlType,
     TargetStage,
+    UserDecision,
 )
 from specton.contracts.design import (
     Attribute,
@@ -90,6 +92,7 @@ __all__ = [
     "Error",
     "ErrorCode",
     "Evidence",
+    "ExcludedBlock",
     "ExtractionResponse",
     "ExtractionStatus",
     "Finding",
@@ -125,6 +128,7 @@ __all__ = [
     "SseEventType",
     "TargetStage",
     "TraceIssue",
+    "UserDecision",
     "VersionInfo",
     "find_trace_issues",
 ]

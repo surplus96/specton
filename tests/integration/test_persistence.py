@@ -75,6 +75,28 @@ def test_schema_adds_new_run_columns_to_an_existing_table(pool: Pool) -> None:
         assert get_run(conn, run.run_id, OWNER).stage is None
 
 
+def test_schema_updates_source_block_for_the_extraction_check(pool: Pool) -> None:
+    """#95 이전 스키마의 source_block에도 원문 없음 허용과 결정 칸이 생긴다."""
+    with pool.connection() as conn:
+        conn.execute(
+            "ALTER TABLE source_block DROP COLUMN notice, DROP COLUMN user_decision,"
+            " DROP COLUMN excluded_reason, ALTER COLUMN source_text SET NOT NULL"
+        )
+
+    apply_schema(pool)
+
+    with pool.connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT column_name, is_nullable FROM information_schema.columns
+            WHERE table_schema = current_schema() AND table_name = 'source_block'
+            """
+        ).fetchall()
+    columns = {r["column_name"]: r["is_nullable"] for r in rows}
+    assert {"notice", "user_decision", "excluded_reason"} <= columns.keys()
+    assert columns["source_text"] == "YES"
+
+
 def test_checkpointer_tables_are_created_in_the_same_database(pool: Pool) -> None:
     create_checkpointer(pool)
 

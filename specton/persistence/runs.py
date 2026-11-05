@@ -44,7 +44,8 @@ _FLOW: Mapping[RunState, frozenset[RunState]] = {
     S.QUEUED: frozenset({S.PARSING}),
     S.PARSING: frozenset({S.AWAITING_INPUT, S.ANALYSING}),
     S.AWAITING_INPUT: frozenset({S.ANALYSING}),
-    S.ANALYSING: frozenset({S.AWAITING_REQUIREMENTS}),
+    # 분석 확인(UI-03)은 확인할 것이 있을 때만 멈춘다 (ADR-0015, #95)
+    S.ANALYSING: frozenset({S.AWAITING_REQUIREMENTS, S.DESIGNING}),
     S.AWAITING_REQUIREMENTS: frozenset({S.DESIGNING}),
     # 요구사항 단계로 재작업하면 A01로 돌아간다 (03 문서 재작업 복귀, #111).
     # HITL 2 수정 요청을 A09가 판단하지 못하면 다시 최종 검토를 묻는다 (#114)

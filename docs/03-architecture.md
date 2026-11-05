@@ -27,7 +27,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    IN["문서 입력·추출<br/>Excel·CSV·PDF·HWPX"]:::r2 --> CHK{{"추출 확인<br/>필요 시 사용자 보완"}}:::human
+    IN["문서 입력·추출<br/>Excel·CSV·PDF·HWPX"]:::r2 --> CHK{{"추출 확인<br/>필요 시 확인·제외"}}:::human
     CHK --> A01["A01 요구사항 분석"]:::r2
     A01 --> H1{{"HITL 1<br/>요구사항 확인"}}:::human
 
@@ -108,8 +108,11 @@ stateDiagram-v2
     queued --> parsing
     parsing --> awaiting_input: 추출 확인 필요
     parsing --> analysing
+    parsing --> failed: EXTRACTION_FAILED
     awaiting_input --> analysing
+    awaiting_input --> failed: 남은 블록 0건
     analysing --> awaiting_requirements
+    analysing --> designing: 분석 확인 생략
     awaiting_requirements --> designing
     designing --> generating
     designing --> analysing: 수정 요청이 요구사항 단계로
@@ -124,6 +127,8 @@ stateDiagram-v2
     completed --> [*]
 ```
 
+- 추출 확인(UI-02)과 분석 확인(UI-03)은 확인할 것이 있을 때만 멈춘다 (ADR-0015). 모든 원문이 `pass`면 `parsing → analysing`, 분석 확인 조건이 없으면 `analysing → designing`으로 가고 UI-04에 「분석 확인 생략」을 표시한다.
+- 파일 단위로 읽지 못하거나(손상·빈 양식 등) 제외 뒤 남은 블록이 0건이면 `EXTRACTION_FAILED`로 `failed`가 된다.
 - HITL 2 수정 요청은 API가 먼저 `designing`으로 바꾸고, A09가 요구사항 단계로 보내면 `designing → analysing`이 된다. A09가 복귀 단계를 정하지 못하면 새 확인 요청으로 다시 최종 검토를 묻는다 (`designing → awaiting_review`).
 - 어느 단계에서든 `failed`, 또는 `cancel_requested` → `cancelled`로 갈 수 있다. `queued`와 사람 확인 대기 중에는 바로 `cancelled`로 간다 (ADR-0012).
 - `failed` 복구는 오류 종류와 마지막 checkpoint를 명시하며 무조건 처음부터 다시 실행하지 않는다.
