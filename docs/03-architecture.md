@@ -110,7 +110,7 @@ stateDiagram-v2
     parsing --> analysing
     parsing --> failed: EXTRACTION_FAILED
     awaiting_input --> analysing
-    awaiting_input --> failed: 남은 블록 0건
+    analysing --> failed: 추출 확인 뒤 남은 블록 0건
     analysing --> awaiting_requirements
     analysing --> designing: 분석 확인 생략
     awaiting_requirements --> designing

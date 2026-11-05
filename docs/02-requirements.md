@@ -20,11 +20,11 @@ ID 규칙: 이 문서의 프로젝트 요구사항은 `REQ-01`~`REQ-27`. 고객 
 
 | ID | 요구사항 | 핵심 내용 | 범위 | 설계 문서 | 작업 (이슈) | TC |
 |---|---|---|---|---|---|---|
-| REQ-01 | Excel·CSV 입력 | 원문 ID·명칭·상세·출처와 행 위치 보존. 필수 열 누락·중복 ID는 확인 대상 | 필수 | [10](10-io-and-packs.md) | [#10](https://github.com/surplus96/specton/issues/10) | TC-F01 |
+| REQ-01 | Excel·CSV 입력 | 원문 ID·명칭·상세·출처와 행 위치 보존. 필수 열 누락·중복 ID는 확인 대상 | 필수 | [10](10-io-and-packs.md) | [#10](https://github.com/surplus96/specton/issues/10) | TC-F01, TC-F22 |
 | REQ-02 | PDF 입력·추출 확인 | 텍스트·표 추출, 페이지·위치 보존, 사용자 확인 후 분석 | 필수 | [10](10-io-and-packs.md) | [#10](https://github.com/surplus96/specton/issues/10) | TC-F02 |
 | REQ-03 | 도메인 팩 적용 | 팩 명시 선택. 미지원 팩은 외부 검색 없이 안내 | 필수 | [10](10-io-and-packs.md) | [#11](https://github.com/surplus96/specton/issues/11) | TC-F03 |
 | REQ-04 | 요구사항 분석 (A01) | FR/NFR·복합 요구 분해·품질 경고·확인 질문 | 필수 | [04](04-agents.md) | [#5](https://github.com/surplus96/specton/issues/5) | TC-F04, TC-A01 |
-| REQ-05 | 요구사항 사용자 확인 | 해석·질문 답변, 수정·유지·분할. 답변 버전·재개 위치 저장 | 필수 | [03](03-architecture.md), [04](04-agents.md) | [#17](https://github.com/surplus96/specton/issues/17) | TC-F05 |
+| REQ-05 | 요구사항 사용자 확인 | 해석·질문 답변, 수정·유지·분할. 답변 버전·재개 위치 저장 | 필수 | [03](03-architecture.md), [04](04-agents.md) | [#17](https://github.com/surplus96/specton/issues/17) | TC-F05, TC-F22 |
 | REQ-06 | 기능 명세 도출 (A02) | 기능명·설명·우선순위 근거·req_ids. 미정 우선순위로 범위 제외 금지 | 필수 | [04](04-agents.md) | [#6](https://github.com/surplus96/specton/issues/6) | TC-F06, TC-A02 |
 | REQ-07 | 엔티티·속성·CRUD (A03) | 엔티티·속성·기능별 CRUD. 모든 참조는 현재 버전에서 유효 | 필수 | [04](04-agents.md) | [#7](https://github.com/surplus96/specton/issues/7) | TC-F07, TC-A03 |
 | REQ-08 | 관계 도출 (A04) | 방향·카디널리티·선택 여부·근거. FK·연결 테이블은 코드가 생성 | 필수 | [04](04-agents.md) | [#8](https://github.com/surplus96/specton/issues/8) | TC-F08, TC-A04 |
@@ -50,7 +50,7 @@ ID 규칙: 이 문서의 프로젝트 요구사항은 `REQ-01`~`REQ-27`. 고객 
 
 ## 주요 수용 기준
 
-전체 36개 시나리오(요구사항 27 + 에이전트 9)는 [12 테스트 케이스](12-test-cases.md)에 있다. 모두 미실행이다. 구현 시 판단이 갈리기 쉬운 기준만 옮긴다.
+전체 37개 시나리오(요구사항 27 + 에이전트 9 + 조건부 확인 TC-F22)는 [12 테스트 케이스](12-test-cases.md)에 있다. 모두 미실행이다. 구현 시 판단이 갈리기 쉬운 기준만 옮긴다.
 
 - **조용한 누락 금지:** 오류 행·추출 실패·리뷰어 실패를 버리거나 "문제 없음"으로 바꾸지 않는다 (TC-F01·F02·F14).
 - **추정으로 메우지 않기:** 우선순위 미지정 값은 근거 없이 확정하지 않는다. RTM 미연결은 LLM이 링크를 추정해 메우지 않는다 (TC-F06·F12).

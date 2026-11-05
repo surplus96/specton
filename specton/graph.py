@@ -7,9 +7,12 @@
   재개하면 그 노드를 처음부터 다시 돌기 때문이다.
 - 추출 확인(UI-02)은 `review`·`fail` 블록이 있을 때만 멈춘다 (ADR-0015 결정 1).
   답은 블록의 `user_decision`·`excluded_reason`으로 남기고 블록을 지우지 않는다 (RTM 「제외」 행).
+- 분석 확인(HITL 1, UI-03)은 품질 경고·질문이나 분할이 있을 때만 멈춘다 (ADR-0015 결정 1).
+  멈추지 않으면 `analysing → designing`으로 바로 간다.
 - 지금은 빈 노드(stub)로 잇는다. 에이전트 노드는 담당 이슈가 끝나면 `nodes`로 넘겨 바꾼다.
 """
 
+from collections import Counter
 from collections.abc import Callable, Mapping
 from typing import Annotated, Any, TypedDict
 
@@ -150,7 +153,8 @@ def build_graph(
     g.add_edge(START, "parse")
     g.add_conditional_edges("parse", _next_after_parse)
     _chain(g, "wait_extraction", "hitl_extraction", "a01")
-    _chain(g, "a01", "wait_requirements", "hitl_requirements")
+    g.add_conditional_edges("a01", _next_after_analysis)
+    g.add_edge("wait_requirements", "hitl_requirements")
     _chain(g, "hitl_requirements", "a02", "a03", "a04", "normalize", "generate")
     for name in GENERATORS:
         g.add_edge("generate", name)
@@ -220,6 +224,19 @@ def _waiting(status: RunState) -> Callable[[GraphState], dict[str, Any]]:
     interrupt 노드는 반환 전에 멈춰 상태를 남기지 못하므로 따로 둔다.
     """
     return lambda state: {"design": state["design"].evolve(status=status)}
+
+
+def _next_after_analysis(state: GraphState) -> str:
+    """확인할 것이 있을 때만 분석 확인(HITL 1)에서 멈춘다 (ADR-0015 결정 1).
+
+    품질 경고·질문(`quality_issues`)이 있거나, 같은 원문(`source_ref`)에서 요구사항이 2건 이상
+    나왔으면(분할) 멈춘다. 분할은 새 계약 칸 없이 A01 결과의 요구사항 수로 센다.
+    """
+    requirements = state["design"].requirements
+    per_source = Counter(r.source_ref for r in requirements)
+    flagged = any(r.quality_issues for r in requirements)
+    split = any(count > 1 for count in per_source.values())
+    return "wait_requirements" if flagged or split else "a02"
 
 
 def _next_after_parse(state: GraphState) -> str:
