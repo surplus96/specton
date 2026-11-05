@@ -15,11 +15,11 @@ from psycopg.types.json import Jsonb
 from specton.api.main import create_app
 from specton.api.session import SESSION_COOKIE
 from specton.config import Settings
-from specton.contracts import ArtifactRef, DesignState, Interrupt, SseEventType
+from specton.contracts import ArtifactRef, DesignState, Interrupt, ResumeRequest, SseEventType
 from specton.contracts import RunState as S
-from specton.persistence import lease
+from specton.persistence import lease, runs
 from specton.persistence.db import Pool
-from specton.persistence.runs import NewEvent, record_progress
+from specton.persistence.runs import NewEvent, answer_interrupt, events_after, record_progress
 from specton.persistence.snapshots import add_artifact, save_model
 
 pytestmark = pytest.mark.db
@@ -325,6 +325,99 @@ def test_extraction_answer_with_valid_exclusions_moves_on(client: TestClient, po
 
     assert response.status_code == 202
     assert response.json()["status"] == "analysing"
+
+
+def _confirmed_events(pool: Pool, client: TestClient, run_id: str) -> list[dict[str, Any]]:
+    """재생한 이벤트 중 추출 확인 목록을 담은 것의 payload."""
+    with pool.connection() as conn:
+        events = events_after(conn, UUID(run_id), _owner(client), 0)
+    return [e.data.payload for e in events if "confirmed_block_ids" in e.data.payload]
+
+
+def _blank(pool: Pool, block_id: str) -> None:
+    """원문 문장이 없는 블록(범례·각주 줄)으로 바꾼다."""
+    with pool.connection() as conn:
+        conn.execute("UPDATE source_block SET source_text = NULL WHERE block_id = %s", (block_id,))
+
+
+def test_extraction_answer_records_the_confirmed_review_blocks(
+    client: TestClient, pool: Pool
+) -> None:
+    run_id = _create(client).json()["run_id"]
+    interrupt_id = _wait(pool, run_id, "extraction", S.AWAITING_INPUT)
+    _judged(pool, run_id, B1="pass", B2="review", B3="review", B4="review", B5="review", B6="fail")
+    _blank(pool, "B3")  # 원문 없는 review를 확인
+    _blank(pool, "B5")  # 원문 없는 review를 제외
+    answer = _extraction(
+        {"block_id": "B4", "reason": "2차 범위"},
+        {"block_id": "B5", "reason": "범례"},
+        {"block_id": "B6"},
+    )
+
+    response = _resume(client, run_id, interrupt_id, answer)
+    again = _resume(client, run_id, interrupt_id, answer)
+
+    assert response.status_code == 202
+    assert _error(again) == (409, "INTERRUPT_STALE")
+    expected = {
+        "kind": "extraction",
+        "interrupt_id": interrupt_id,
+        "confirmed_block_ids": ["B2", "B3"],
+    }
+    assert _confirmed_events(pool, client, run_id) == [expected]  # 재생할 수 있고 한 번만 남는다
+
+
+def test_excluding_every_review_block_records_an_empty_list(client: TestClient, pool: Pool) -> None:
+    run_id = _create(client).json()["run_id"]
+    interrupt_id = _wait(pool, run_id, "extraction", S.AWAITING_INPUT)
+    _judged(pool, run_id, B1="pass", B2="review")
+
+    response = _resume(
+        client, run_id, interrupt_id, _extraction({"block_id": "B2", "reason": "범위 밖"})
+    )
+
+    assert response.status_code == 202
+    assert [p["confirmed_block_ids"] for p in _confirmed_events(pool, client, run_id)] == [[]]
+
+
+def test_stopped_or_rejected_extraction_answer_records_no_confirmation(
+    client: TestClient, pool: Pool
+) -> None:
+    run_id = _create(client).json()["run_id"]
+    interrupt_id = _wait(pool, run_id, "extraction", S.AWAITING_INPUT)
+    _judged(pool, run_id, B1="review", B2="fail")
+
+    rejected = _resume(client, run_id, interrupt_id, _extraction())  # fail을 남김
+    stopped = _resume(client, run_id, interrupt_id, _extraction(confirmed=False))
+
+    assert _error(rejected) == (422, "INVALID_RESPONSE")
+    assert stopped.json()["status"] == "cancelled"
+    assert _confirmed_events(pool, client, run_id) == []
+
+
+def test_extraction_answer_rolls_back_together_when_saving_fails(
+    client: TestClient, pool: Pool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_id = _create(client).json()["run_id"]
+    interrupt_id = _wait(pool, run_id, "extraction", S.AWAITING_INPUT)
+    _judged(pool, run_id, B1="review")
+    request = ResumeRequest.model_validate(
+        {"interrupt_id": interrupt_id, "expected_revision": 0, "response": _extraction()}
+    )
+
+    def broken(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("이벤트 저장 실패")
+
+    monkeypatch.setattr(runs, "_append_events", broken)
+    with pool.connection() as conn, pytest.raises(RuntimeError):
+        answer_interrupt(conn, UUID(run_id), _owner(client), request)
+    monkeypatch.undo()
+
+    with pool.connection() as conn:
+        approvals = conn.execute("SELECT count(*) AS n FROM approval WHERE run_id = %s", (run_id,))
+        assert approvals.fetchone()["n"] == 0  # type: ignore[index]
+    assert client.get(f"/runs/{run_id}").json()["status"] == "awaiting_input"
+    assert _confirmed_events(pool, client, run_id) == []
 
 
 def _analysed(pool: Pool, run_id: str, *req_ids: str) -> None:
