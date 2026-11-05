@@ -1,6 +1,7 @@
 """A01 요구사항 분석 노드 (04 문서, REQ-04, TC-A01).
 
 추출된 원문 블록(`DesignState.source_requirements`)을 읽어 요구사항 초안으로 나누고 분류한다.
+- 추출 확인에서 제외한 블록과 원문 문장이 없는 블록은 넣지 않는다 (`analysable`, ADR-0015).
 - 한 블록에 요구가 여러 개면 나눈다(분할). 블록마다 적어도 요구사항 하나에 연결돼야 한다.
 - FR/NFR을 정하고 NFR이면 `nfr_category`를 붙인다. 데이터 정합성 요구는 FR이다 (05 문서).
 - 모호한 표현은 품질 경고로 남기고, 사용자에게 물을 것은 `question`에 쓴다.
@@ -79,9 +80,9 @@ def run(
     analysis_version: int = 1,
 ) -> NodeRun[tuple[Requirement, ...]]:
     """원문 블록을 요구사항으로 나누고 코드가 ID·원문 연결을 붙인 Requirement를 돌려준다."""
-    if not state.source_requirements:
+    blocks = {b.block_id: b for b in state.source_requirements if b.analysable}
+    if not blocks:
         raise ValueError("A01: 분석할 원문 블록이 없습니다")
-    blocks = {b.block_id: b for b in state.source_requirements}
     request = build_request(
         settings,
         role="design",
@@ -91,7 +92,7 @@ def run(
         data=input_data(state),
         examples=load_examples(pack, "A01", A01Output),
     )
-    output_model = _checked_against({k: b.source_text for k, b in blocks.items()})
+    output_model = _checked_against({k: _text(b) for k, b in blocks.items()})
     result = client.complete(request, output_model, token_budget=token_budget)
     drafts = result.output.requirements
     ids = assign_ids("REQ", len(drafts))
@@ -113,11 +114,12 @@ def input_data(state: DesignState) -> dict[str, Any]:
         "source_blocks": [
             {
                 "block_id": b.block_id,
-                "text": b.source_text,
+                "text": _text(b),
                 "acceptance_level": b.source_acceptance_level,
                 "extra": dict(b.source_extra),
             }
             for b in state.source_requirements
+            if b.analysable
         ]
     }
 
@@ -173,7 +175,7 @@ def _flag_added_numbers(
     draft: RequirementDraft, blocks: Mapping[str, SourceRequirement]
 ) -> RequirementDraft:
     """원문 없는 조건 추가 검출: 원문에 없는 수치가 있으면 품질 경고를 붙인다."""
-    added = _numbers_not_in(draft.text, blocks[draft.source_block_ids[0]].source_text)
+    added = _numbers_not_in(draft.text, _text(blocks[draft.source_block_ids[0]]))
     if not added:
         return draft
     issue = QualityIssue(
@@ -191,6 +193,13 @@ def _numbers(text: str) -> set[str]:
     """
     plain = re.sub(r"(?<=\d),(?=\d{3}(?!\d))", "", text)
     return {n.lstrip("0") or "0" for n in _NUMBER.findall(plain)}
+
+
+def _text(block: SourceRequirement) -> str:
+    """분석할 블록의 원문 문장. `analysable` 블록만 들어오므로 비어 있지 않다."""
+    if block.source_text is None:
+        raise ValueError(f"A01: 원문 문장이 없는 블록 {block.block_id}은 분석하지 않습니다")
+    return block.source_text
 
 
 def _numbers_not_in(text: str, source: str) -> list[str]:

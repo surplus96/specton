@@ -35,6 +35,7 @@ def _block(row: int, text: str, source_id: str | None = None) -> SourceRequireme
         source_ref={"file_format": "xlsx", "sheet": "요구사항", "row": row},
         source_text=text,
         source_acceptance_level="필수",
+        extraction_status="pass",
     )
 
 
@@ -97,6 +98,27 @@ def test_a01_sends_only_block_text_and_extra() -> None:
     data = json.loads(unwrap_data(transport.sent[0].messages[-1].content))
     assert data == input_data(_state())
     assert set(data["source_blocks"][0]) == {"block_id", "text", "acceptance_level", "extra"}
+
+
+def test_a01_skips_excluded_and_textless_blocks() -> None:
+    """제외한 블록과 원문 문장이 없는 블록은 넣지 않고, 빠뜨렸다고 보지도 않는다 (#95)."""
+    excluded = _block(4, "범위 밖 요구", "SFR-003").evolve(
+        extraction_status="review", user_decision="excluded", excluded_reason="2차 범위"
+    )
+    blank = SourceRequirement(
+        document_id="doc-1", block_id="xlsx:요구사항:5", source_text=None,
+        source_ref={"file_format": "xlsx", "sheet": "요구사항", "row": 5},
+        extraction_status="review", user_decision="confirmed", notice="내용 칸이 비어 있습니다",
+    )  # fmt: skip
+    state = _state().evolve(source_requirements=(*_state().source_requirements, excluded, blank))
+    client, transport = stub_client(reply(_normal()))
+
+    result = run(client, state, _settings(), pack="inventory")
+
+    data = json.loads(unwrap_data(transport.sent[0].messages[-1].content))
+    assert [b["block_id"] for b in data["source_blocks"]] == ["xlsx:요구사항:2", "xlsx:요구사항:3"]
+    assert len(transport.sent) == 1  # 두 블록을 빠뜨렸다고 재요청하지 않는다
+    assert len(result.output) == 3
 
 
 def test_a01_retries_when_a_block_is_dropped() -> None:

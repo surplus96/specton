@@ -267,9 +267,7 @@ def test_extraction_not_confirmed_stops_the_run(client: TestClient, pool: Pool) 
     run_id = _create(client).json()["run_id"]
     interrupt_id = _wait(pool, run_id, "extraction", S.AWAITING_INPUT)
 
-    response = _resume(
-        client, run_id, interrupt_id, {"kind": "extraction", "confirmed": False, "edits": []}
-    )
+    response = _resume(client, run_id, interrupt_id, {"kind": "extraction", "confirmed": False})
 
     assert response.json()["status"] == "cancelled"
 
