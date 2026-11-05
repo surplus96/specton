@@ -25,6 +25,7 @@ from specton.contracts import (
     SseEvent,
     SseEventData,
     SseEventType,
+    VersionInfo,
 )
 from specton.persistence.errors import (
     BlockingFindingsError,
@@ -150,6 +151,14 @@ def load_run(conn: Connection[DictRow], run_id: UUID) -> RunStatus:
     if row is None:
         raise RunNotFoundError(str(run_id))
     return RunStatus.model_validate(row)
+
+
+def load_versions(conn: Connection[DictRow], run_id: UUID) -> VersionInfo:
+    """실행기용: 첫 설계 상태에 넣을 팩 버전. 노드는 상태의 팩으로 few-shot을 읽는다 (#17)."""
+    row = conn.execute("SELECT pack, pack_version FROM run WHERE run_id = %s", (run_id,)).fetchone()
+    if row is None:
+        raise RunNotFoundError(str(run_id))
+    return VersionInfo(pack_id=row["pack"], pack_version=row["pack_version"])
 
 
 def answer_for(conn: Connection[DictRow], run_id: UUID, interrupt_id: str) -> dict[str, Any] | None:

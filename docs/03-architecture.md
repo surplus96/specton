@@ -169,6 +169,7 @@ stateDiagram-v2
 | `specton/export/` | 중간 Markdown, 최종 PDF·SQL·Excel/CSV |
 | `specton/api/` | FastAPI |
 | `specton/graph.py` | 전체 그래프 연결 (통합 담당 R1만 수정) |
+| `specton/agent_nodes.py` | 에이전트 노드를 그래프 노드로 연결, 팩·프롬프트·모델 버전 기록 (통합 담당 R1만 수정) |
 
 ## 품질 시나리오
 

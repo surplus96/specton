@@ -249,7 +249,9 @@ class _Job:
         """
         snapshot = self.runner.graph.get_state(self.config)
         if not snapshot.values:
-            return initial_state(DesignState(run_id=str(self.run_id)))
+            with self.runner.pool.connection() as conn:
+                versions = runs.load_versions(conn, self.run_id)
+            return initial_state(DesignState(run_id=str(self.run_id), versions=versions))
         if _checkpoint_id(snapshot) != self._saved_checkpoint():
             if snapshot.interrupts:
                 self._pause(snapshot)

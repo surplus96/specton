@@ -139,6 +139,24 @@ def test_queued_run_stops_at_requirements_check_and_releases_lease(
     assert w.events(run_id)[-1] is SseEventType.INTERRUPT
 
 
+def test_a_new_run_starts_with_its_pack_in_the_design(world: Callable[..., _World]) -> None:
+    seen: list[DesignState] = []
+
+    def a01(state: GraphState) -> Mapping[str, Any]:
+        seen.append(state["design"])
+        return {}
+
+    w = world({"a01": a01})
+    with w.pool.connection() as conn:
+        create_run(conn, OWNER, "maintenance", pack_version="0.1.4")
+
+    w.runner.run_pending()
+
+    [design] = seen
+    assert design.versions.pack_id == "maintenance"
+    assert design.versions.pack_version == "0.1.4"
+
+
 def test_answers_resume_the_run_to_completion(world: Callable[..., _World]) -> None:
     w = world()
     run_id = w.create()
