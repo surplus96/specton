@@ -4,8 +4,9 @@
   `DesignState.source_requirements`에 둔다. 판정(`pass`·`review`·`fail`)은 파서가 정한다.
 - 파일 단위로 읽지 못하면(`UnsupportedInput`) `ExtractionFailedError`로 실행을 끝낸다.
 - HWPX 파서는 #24에서 만든다. 그때까지 HWPX는 읽지 못한 파일로 끝낸다.
-- 원문을 만들지 못한 행(`ExtractionIssue`)과 건너뛴 시트는 지금 로그에만 남긴다.
-  빈 행은 R2 후속 PR에서 원문 블록으로 돌려주고, 건너뛴 시트를 화면에 보일 자리는 #19와 정한다.
+- 요구사항명·상세 내용이 모두 빈 행은 파서가 원문 문장 없는 `review` 블록으로 돌려준다(#10).
+  `ExtractionIssue`는 지금 표 파서가 만들지 않지만 오면 로그에 남긴다.
+  건너뛴 시트는 지금 로그에만 남기고, 화면에 보일 자리는 #19와 정한다.
 """
 
 import logging

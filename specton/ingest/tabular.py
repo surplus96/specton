@@ -12,8 +12,9 @@
   위에서부터 줄바꿈으로 잇는다.
 - 수식은 실행하지 않고 엑셀에 저장된 결과값만 쓴다. 결과값이 없으면 `review`로 둔다.
 - 작성자가 숨긴 행·시트도 읽되 `review`로 둔다(왜 숨겼는지는 사람이 확인한다).
-- 행을 조용히 버리지 않는다. 원문 문장을 만들 수 없는 행은
-  `ExtractionIssue`(확인 필요 1건)로 돌려준다.
+- 행을 조용히 버리지 않는다. 요구사항명·상세 내용이 모두 빈 행(범례·각주 줄 등)도
+  원문 문장 없는(`source_text=None`) `review` 블록으로 돌려준다 (ADR-0015, #10).
+- `review` 블록에는 판정 이유(`notice`)를 이유마다 한 줄씩 줄바꿈으로 이어 채운다.
 """
 
 import csv
@@ -82,9 +83,22 @@ class UnsupportedInput(ValueError):
         self.detail = detail
 
 
+# 판정 이유(notice) 문장. 화면(UI-02)과 결과표(RTM)에 그대로 보인다.
+# 팀원과 사용자가 같은 문장을 읽으므로 고객 원문은 넣지 않고 명사형으로 끝낸다.
+NOTICE_EMPTY = "요구사항명과 요구사항 세부내용이 모두 비어 있음"
+NOTICE_NO_ID = "요구사항 ID 없음"
+NOTICE_NAME_ONLY = "요구사항 세부내용이 없어 요구사항명을 원문 문장으로 씀"
+NOTICE_UNCACHED = "저장된 결과값이 없는 수식 칸"
+NOTICE_FORMULA_ERROR = "수식 오류값(#REF! 등)이 있는 칸"
+NOTICE_HIDDEN = "숨겨진 행 또는 시트"
+NOTICE_DUPLICATE = "같은 요구사항 ID가 두 번 이상 나옴"
+
+
 @dataclass(frozen=True)
 class ExtractionIssue:
     """확인 필요 1건. 원문 한 건(`SourceRequirement`)으로 만들지 못한 자리를 위치와 함께 남긴다.
+
+    지금 표 파서는 만들지 않는다(빈 행도 `review` 블록으로 돌려줌, #10). 자리는 남겨 둔다.
 
     화면에서는 「확인 필요」 목록의 한 건으로 보이고, 개수는 「확인 필요 3건」처럼 센다.
     실패(코드가 읽지 못함)도 확인 필요의 한 종류로 여기에 담는다.
@@ -471,25 +485,24 @@ def _build_row(
         (header.columns["description"],) if "description" in header.columns else ()
     )
     description = _Cell("\n".join(row[c].value for c in desc_cols if c < len(row) and row[c].value))
-    text = description.value or name.value
-    if not text:
-        return ExtractionIssue(
-            ref,
-            notice="요구사항명과 상세 내용이 모두 비어 있어 요구사항으로 읽지 못했습니다",
-            detail="name·description 칸이 비어 있음 (같은 행의 다른 칸에는 값이 있음)",
-        )
-
-    reasons = []
-    if not source_id.value:
-        reasons.append("요구사항 ID 없음")
-    if not description.value:
-        reasons.append("상세 내용이 없어 요구사항명을 원문으로 씀")
+    text = description.value or name.value or None
+    if text is None:  # 빈 행에는 ID 없음·세부내용 없음을 따로 적지 않는다
+        reasons = [NOTICE_EMPTY]
+    else:
+        reasons = [
+            reason
+            for reason, applies in (
+                (NOTICE_NO_ID, not source_id.value),
+                (NOTICE_NAME_ONLY, not description.value),
+            )
+            if applies
+        ]
     if any(cell.uncached_formula for cell in row):
-        reasons.append("저장된 결과값이 없는 수식 칸")
+        reasons.append(NOTICE_UNCACHED)
     if any(cell.value in _EXCEL_ERRORS for cell in row):
-        reasons.append("수식 오류값(#REF! 등)이 있는 칸")
+        reasons.append(NOTICE_FORMULA_ERROR)
     if any(cell.hidden for cell in row):
-        reasons.append("작성자가 숨긴 행 또는 시트")
+        reasons.append(NOTICE_HIDDEN)
 
     used = {
         header.columns[k]
@@ -511,15 +524,22 @@ def _build_row(
         source_related_requirements=get("related_ids").value or None,
         source_extra=extra,
         extraction_status=ExtractionStatus.REVIEW if reasons else ExtractionStatus.PASS,
+        notice="\n".join(reasons) or None,
     )
 
 
 def _mark_duplicates(requirements: list[SourceRequirement]) -> tuple[SourceRequirement, ...]:
-    """같은 원문 ID가 두 번 이상 나오면 모두 확인 대상으로 둔다."""
-    counts = Counter(r.source_id for r in requirements if r.source_id)
+    """같은 원문 ID가 두 번 이상 나오면 모두 확인 대상으로 두고 판정 이유에 한 줄 더한다.
+
+    원문 문장이 없는 빈 행의 ID는 세지 않는다. 범례·각주 줄 때문에 정상 행이 review가 되지 않게.
+    """
+    counts = Counter(r.source_id for r in requirements if r.source_id and r.source_text)
     return tuple(
-        r.evolve(extraction_status=ExtractionStatus.REVIEW)
-        if r.source_id and counts[r.source_id] > 1
+        r.evolve(
+            extraction_status=ExtractionStatus.REVIEW,
+            notice="\n".join(filter(None, (r.notice, NOTICE_DUPLICATE))),
+        )
+        if r.source_id and r.source_text and counts[r.source_id] > 1
         else r
         for r in requirements
     )
