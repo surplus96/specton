@@ -7,6 +7,13 @@ from specton.contracts.base import ExtractionStatus
 from specton.ingest.tabular import UnsupportedInput, read_csv, read_excel
 
 HEADER = ["요구사항 ID", "구분", "요구사항명", "상세 내용", "출처", "관련 요구사항"]
+# 판정 이유(notice) 문장. 파서와 화면·RTM이 같은 문장을 쓰는지 여기서 지킨다
+EMPTY = "요구사항명과 요구사항 세부내용이 모두 비어 있음"
+NO_ID = "요구사항 ID 없음"
+NAME_ONLY = "요구사항 세부내용이 없어 요구사항명을 원문 문장으로 씀"
+FORMULA_ERROR = "수식 오류값(#REF! 등)이 있는 칸"
+HIDDEN = "숨겨진 행 또는 시트"
+DUPLICATE = "같은 요구사항 ID가 두 번 이상 나옴"
 
 
 def _xlsx(path: Path, rows: list[list[object]], *, title_rows: int = 0) -> Path:
@@ -227,13 +234,75 @@ class TestExcel:
         reqs = read_excel(path, "doc-1").requirements
         assert [r.extraction_status for r in reqs] == [ExtractionStatus.REVIEW] * 3
 
-    def test_row_without_text_is_reported_not_dropped(self, tmp_path: Path) -> None:
+    def test_row_without_text_becomes_review_block(self, tmp_path: Path) -> None:
+        """요구사항명·상세 내용이 모두 빈 행은 원문 문장 없는 review 블록으로 돌려준다 (#10)."""
         path = _xlsx(tmp_path / "e.xlsx", [HEADER, ["INV-001", "기능", None, None]])
         result = read_excel(path, "doc-1")
-        assert result.requirements == ()
-        [issue] = result.issues
-        assert issue.source_ref.row == 2
-        assert issue.notice and issue.detail
+        assert result.issues == ()
+        [req] = result.requirements
+        assert req.source_ref.row == 2
+        assert req.source_text is None
+        assert req.extraction_status is ExtractionStatus.REVIEW
+        assert req.notice == EMPTY
+        assert req.source_extra == {"구분": "기능"}
+
+    def test_hidden_empty_row_keeps_only_extra_reasons(self, tmp_path: Path) -> None:
+        """빈 행의 판정 이유는 빈 행 문장 + 숨김·수식·중복 이유만. ID 없음은 넣지 않는다."""
+        from openpyxl import load_workbook
+
+        # 머리글 바로 아래 ID 없는 행은 2단 머리글로 읽히므로 정상 행을 먼저 둔다
+        path = _xlsx(
+            tmp_path / "he.xlsx",
+            [HEADER, ["INV-001", "기능", "입고", "입고 등록"], [None, "범례", None, None]],
+        )
+        book = load_workbook(path)
+        book.active.row_dimensions[3].hidden = True
+        book.save(path)
+
+        _, req = read_excel(path, "doc-1").requirements
+        assert req.notice == f"{EMPTY}\n{HIDDEN}"
+
+    def test_row_without_any_value_is_skipped(self, tmp_path: Path) -> None:
+        """값이 하나도 없는 행은 블록을 만들지 않는다. 빈 행 블록은 다른 칸에 값이 있는 행만."""
+        path = _xlsx(
+            tmp_path / "blank.xlsx",
+            [
+                HEADER,
+                ["INV-001", "기능", "입고", "입고 등록"],
+                [None] * 6,
+                ["INV-002", "기능", "출고", "출고"],
+            ],
+        )
+        assert [r.source_id for r in read_excel(path, "doc-1").requirements] == [
+            "INV-001",
+            "INV-002",
+        ]
+
+    def test_reasons_keep_their_order_and_duplicate_comes_last(self, tmp_path: Path) -> None:
+        """이유 순서: ID 없음 → 세부내용 없음 → 수식 → 숨김 → 중복. 중복은 맨 뒤에 붙는다."""
+        path = _xlsx(
+            tmp_path / "o.xlsx",
+            [
+                HEADER,
+                ["INV-001", "기능", "입고", "입고 등록"],
+                ["INV-002", "#REF!", "출고", None],
+                ["INV-002", "기능", "반품", "반품 등록"],
+            ],
+        )
+        _, error_row, plain_dup = read_excel(path, "doc-1").requirements
+        assert error_row.notice == f"{NAME_ONLY}\n{FORMULA_ERROR}\n{DUPLICATE}"
+        assert plain_dup.notice == DUPLICATE
+
+    def test_review_notice_joins_every_reason(self, tmp_path: Path) -> None:
+        """review 블록의 판정 이유는 이유마다 한 줄로 잇는다. pass 블록은 notice가 없다."""
+        path = _xlsx(
+            tmp_path / "n.xlsx",
+            [HEADER, ["INV-001", "기능", "입고", "입고 등록"], [None, "기능", "출고", None]],
+        )
+        first, second = read_excel(path, "doc-1").requirements
+        assert first.extraction_status is ExtractionStatus.PASS
+        assert first.notice is None
+        assert second.notice == f"{NO_ID}\n{NAME_ONLY}"
 
     def test_formula_without_cached_value_goes_to_review(self, tmp_path: Path) -> None:
         path = _xlsx(tmp_path / "f.xlsx", [HEADER, ["INV-001", "기능", "입고", '="입고"&"등록"']])
@@ -349,7 +418,7 @@ class TestCsv:
         assert req.source_id == "INV-001"
 
     def test_missing_id_duplicate_id_and_empty_text(self, tmp_path: Path) -> None:
-        """TC-F01 CSV: ID 없음·중복 ID는 확인 대상, 원문이 빈 행은 확인 필요로 남긴다."""
+        """TC-F01 CSV: ID 없음·중복 ID·원문이 빈 행 모두 review 블록으로 남긴다."""
         path = tmp_path / "d.csv"
         path.write_text(
             "요구사항 ID,요구사항명,상세 내용\n"
@@ -357,9 +426,32 @@ class TestCsv:
             encoding="utf-8",
         )
         result = read_csv(path, "doc-1")
-        assert [r.extraction_status for r in result.requirements] == [ExtractionStatus.REVIEW] * 3
-        [issue] = result.issues
-        assert issue.source_ref.row == 5
+        assert result.issues == ()
+        assert [r.extraction_status for r in result.requirements] == [ExtractionStatus.REVIEW] * 4
+        assert [r.notice for r in result.requirements] == [NO_ID, DUPLICATE, DUPLICATE, EMPTY]
+        assert result.requirements[3].source_ref.row == 5
+
+    def test_empty_row_is_not_counted_as_duplicate(self, tmp_path: Path) -> None:
+        """빈 행의 ID는 중복으로 세지 않는다. 범례 줄 때문에 정상 행이 review가 되지 않게."""
+        path = tmp_path / "dup.csv"
+        path.write_text(
+            "요구사항 ID,요구사항명,상세 내용\nINV-001,입고,입고 등록\nINV-001,,\n",
+            encoding="utf-8",
+        )
+        first, second = read_csv(path, "doc-1").requirements
+        assert first.extraction_status is ExtractionStatus.PASS
+        assert second.notice == EMPTY
+
+    def test_empty_row_keeps_other_cells(self, tmp_path: Path) -> None:
+        """CSV 빈 행도 같은 행의 다른 칸 값을 source_extra에 남긴다."""
+        path = tmp_path / "x.csv"
+        path.write_text(
+            "요구사항 ID,구분,요구사항명,상세 내용\nINV-001,기능,입고,입고 등록\n,범례,,\n",
+            encoding="utf-8",
+        )
+        _, empty = read_csv(path, "doc-1").requirements
+        assert empty.source_text is None
+        assert empty.source_extra == {"구분": "범례"}
 
     def test_header_without_id_column(self, tmp_path: Path) -> None:
         path = tmp_path / "e.csv"
