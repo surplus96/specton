@@ -15,6 +15,7 @@ from specton.api.errors import install_error_handlers
 from specton.api.runs import router as runs_router
 from specton.config import Settings, get_settings
 from specton.graph import GraphState, build_graph
+from specton.parse_node import parse_node
 from specton.persistence.db import Pool, apply_schema, create_checkpointer, create_pool
 from specton.runner import Runner
 
@@ -27,8 +28,9 @@ class HealthResponse(BaseModel):
 def create_graph(
     settings: Settings, checkpointer: BaseCheckpointSaver[Any]
 ) -> CompiledStateGraph[GraphState, None, GraphState, GraphState]:
-    """실행기가 돌릴 그래프. 설계 노드(A01~A04)는 실제 에이전트, 나머지는 아직 빈 노드다 (#17)."""
-    return build_graph(openai_design_nodes(settings), checkpointer=checkpointer)
+    """실행기가 돌릴 그래프 (#17). 문서 읽기·설계 노드(A01~A04)는 실제 노드, 나머지는 빈 노드다."""
+    nodes = {"parse": parse_node(settings.storage_dir), **openai_design_nodes(settings)}
+    return build_graph(nodes, checkpointer=checkpointer)
 
 
 def create_app(settings: Settings | None = None, pool: Pool | None = None) -> FastAPI:

@@ -164,6 +164,18 @@ def load_versions(conn: Connection[DictRow], run_id: UUID) -> VersionInfo:
     return VersionInfo(pack_id=row["pack"], pack_version=row["pack_version"])
 
 
+def load_documents(conn: Connection[DictRow], run_id: UUID) -> list[dict[str, str]]:
+    """실행기용: parse 노드가 읽을 업로드 문서 (`document_id`·`file_format`·`storage_ref`, #17)."""
+    rows = conn.execute(
+        """
+        SELECT document_id, file_format, storage_ref FROM document
+        WHERE run_id = %s ORDER BY created_at, document_id
+        """,
+        (run_id,),
+    ).fetchall()
+    return [{**r, "document_id": str(r["document_id"])} for r in rows]
+
+
 def answer_for(conn: Connection[DictRow], run_id: UUID, interrupt_id: str) -> dict[str, Any] | None:
     """실행기용: 확인 요청에 받은 응답(`ResumeRequest.response`). 아직 답이 없으면 None (#17)."""
     row = conn.execute(

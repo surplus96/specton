@@ -1,10 +1,12 @@
 """설계 그래프 (03 문서 "실행 흐름", #17). 통합 담당(R1)만 수정한다.
 
-입력 → A01 → HITL 1 → A02 → A03 → A04 → 모델 정리 → 생성(병렬) → 규칙 → 검토(병렬) → 병합
-→ 재작업 판단 → HITL 2 → 내보내기 순서로 잇는다.
+입력 → 추출 확인 → A01 → HITL 1 → A02 → A03 → A04 → 모델 정리 → 생성(병렬) → 규칙
+→ 검토(병렬) → 병합 → 재작업 판단 → HITL 2 → 내보내기 순서로 잇는다.
 - 노드는 상태만 반환하고 DB에 쓰지 않는다. 앱 저장은 실행기가 노드가 끝난 뒤 한다 (ADR-0012).
 - 사람 확인(interrupt)은 LLM을 부르지 않는 전용 노드에서만 한다.
   재개하면 그 노드를 처음부터 다시 돌기 때문이다.
+- 추출 확인(UI-02)은 `review`·`fail` 블록이 있을 때만 멈춘다 (ADR-0015 결정 1).
+  답은 블록의 `user_decision`·`excluded_reason`으로 남기고 블록을 지우지 않는다 (RTM 「제외」 행).
 - 지금은 빈 노드(stub)로 잇는다. 에이전트 노드는 담당 이슈가 끝나면 `nodes`로 넘겨 바꾼다.
 """
 
@@ -17,8 +19,9 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import interrupt
 
 from specton.config import get_settings
-from specton.contracts import BranchResult, DesignState, Finding, RunState
-from specton.contracts.base import TargetStage
+from specton.contracts import BranchResult, DesignState, ExtractionResponse, Finding, RunState
+from specton.contracts.base import ExtractionStatus, TargetStage, UserDecision
+from specton.contracts.requirements import SourceRequirement
 from specton.review.merge import merge_review
 from specton.review.rework import (
     HitlReason,
@@ -55,6 +58,27 @@ REVIEW_STATUS: Mapping[str, RunState] = {
 }
 
 
+class ExtractionFailedError(Exception):
+    """분석할 원문을 얻지 못했다. 실행은 `EXTRACTION_FAILED`로 끝난다 (ADR-0015 결정 3·5).
+
+    파일 단위로 읽지 못했거나, 추출 확인에서 제외하고 남은 원문이 0건일 때다.
+    `notice`는 화면에 보일 짧은 안내, `detail`은 원인이다.
+    """
+
+    def __init__(self, notice: str, detail: str = "") -> None:
+        super().__init__(f"{notice} {detail}".strip())
+        self.notice = notice
+        self.detail = detail
+
+
+class DocumentRef(TypedDict):
+    """실행에 올린 문서. 실행기가 첫 상태에 넣고 parse 노드가 읽는다."""
+
+    document_id: str
+    file_format: str
+    storage_ref: str  # 저장소 기준 상대 위치 (`Settings.storage_dir`)
+
+
 def _merge_branches(
     old: Mapping[str, BranchResult], new: Mapping[str, BranchResult]
 ) -> dict[str, BranchResult]:
@@ -64,6 +88,7 @@ def _merge_branches(
 
 class GraphState(TypedDict, total=False):
     design: DesignState
+    documents: tuple[DocumentRef, ...]  # 업로드 문서 (parse 노드 입력)
     branches: Annotated[dict[str, BranchResult], _merge_branches]
     rule_findings: tuple[Finding, ...]  # 규칙 검사(#15) 결과
     rework_count: int  # 자동 재작업 횟수 (사람의 수정 요청은 세지 않는다)
@@ -81,8 +106,15 @@ class GraphState(TypedDict, total=False):
 Node = Callable[[GraphState], Mapping[str, Any]]
 
 
-def initial_state(design: DesignState) -> GraphState:
-    return GraphState(design=design, branches={}, rule_findings=(), rework_count=0, fingerprints=())
+def initial_state(design: DesignState, documents: tuple[DocumentRef, ...] = ()) -> GraphState:
+    return GraphState(
+        design=design,
+        documents=documents,
+        branches={},
+        rule_findings=(),
+        rework_count=0,
+        fingerprints=(),
+    )
 
 
 def build_graph(
@@ -104,6 +136,8 @@ def build_graph(
     for name in (*GENERATORS, *REVIEWERS, "a09"):
         _add(g, name, _as_dict(impl[name]))
     _add(g, "complete", _waiting(RunState.COMPLETED))
+    _add(g, "wait_extraction", _waiting(RunState.AWAITING_INPUT))
+    _add(g, "hitl_extraction", _ask_extraction)
     _add(g, "wait_requirements", _waiting(RunState.AWAITING_REQUIREMENTS))
     _add(g, "hitl_requirements", _ask_requirements)
     _add(g, "generate", _with_status(_noop, RunState.GENERATING))
@@ -113,7 +147,10 @@ def build_graph(
     _add(g, "wait_review", _waiting(RunState.AWAITING_REVIEW))
     _add(g, "hitl_review", _ask_review)
 
-    _chain(g, START, "parse", "a01", "wait_requirements", "hitl_requirements")
+    g.add_edge(START, "parse")
+    g.add_conditional_edges("parse", _next_after_parse)
+    _chain(g, "wait_extraction", "hitl_extraction", "a01")
+    _chain(g, "a01", "wait_requirements", "hitl_requirements")
     _chain(g, "hitl_requirements", "a02", "a03", "a04", "normalize", "generate")
     for name in GENERATORS:
         g.add_edge("generate", name)
@@ -183,6 +220,50 @@ def _waiting(status: RunState) -> Callable[[GraphState], dict[str, Any]]:
     interrupt 노드는 반환 전에 멈춰 상태를 남기지 못하므로 따로 둔다.
     """
     return lambda state: {"design": state["design"].evolve(status=status)}
+
+
+def _next_after_parse(state: GraphState) -> str:
+    """확인할 블록(`review`·`fail`)이 있을 때만 추출 확인에서 멈춘다 (ADR-0015 결정 1)."""
+    checked = (ExtractionStatus.REVIEW, ExtractionStatus.FAIL)
+    blocks = state["design"].source_requirements
+    return "wait_extraction" if any(b.extraction_status in checked for b in blocks) else "a01"
+
+
+def _ask_extraction(state: GraphState) -> dict[str, Any]:
+    """추출 확인 답을 블록 결정으로 남긴다. 판정과 맞지 않는 답은 resume API가 422로 막는다 (#120).
+
+    중단(`confirmed=false`)은 API가 실행을 `cancelled`로 끝내므로 여기까지 오지 않는다.
+    """
+    answer = ExtractionResponse.model_validate(interrupt({"kind": "extraction"}))
+    design = state["design"]
+    blocks = _decide_blocks(design.source_requirements, answer)
+    if not any(b.analysable for b in blocks):
+        raise ExtractionFailedError(
+            "제외하고 남은 요구사항이 없어요. 요구사항을 확인한 뒤 다시 올려 주세요.",
+            "추출 확인 뒤 분석할 원문이 0건입니다",
+        )
+    return {"design": design.evolve(source_requirements=blocks, status=RunState.ANALYSING)}
+
+
+def _decide_blocks(
+    blocks: tuple[SourceRequirement, ...], answer: ExtractionResponse
+) -> tuple[SourceRequirement, ...]:
+    """제외 목록의 블록은 `excluded`, 목록에 없는 `review` 블록은 `confirmed`로 둔다 (ADR-0015).
+
+    빈 사유(`""`)는 사유 없음(None)으로 넣는다. 계약의 `excluded_reason`은 빈 문자열을 받지 않는다.
+    """
+    reasons = {b.block_id: b.reason or None for b in answer.excluded_blocks}
+
+    def decided(block: SourceRequirement) -> SourceRequirement:
+        if block.block_id in reasons:
+            return block.evolve(
+                user_decision=UserDecision.EXCLUDED, excluded_reason=reasons[block.block_id]
+            )
+        if block.extraction_status is ExtractionStatus.REVIEW:
+            return block.evolve(user_decision=UserDecision.CONFIRMED)
+        return block
+
+    return tuple(decided(b) for b in blocks)
 
 
 def _ask_requirements(state: GraphState) -> dict[str, Any]:

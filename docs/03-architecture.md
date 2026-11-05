@@ -170,6 +170,7 @@ stateDiagram-v2
 | `specton/api/` | FastAPI |
 | `specton/graph.py` | 전체 그래프 연결 (통합 담당 R1만 수정) |
 | `specton/agent_nodes.py` | 에이전트 노드를 그래프 노드로 연결, 팩·프롬프트·모델 버전 기록 (통합 담당 R1만 수정) |
+| `specton/parse_node.py` | 업로드 문서를 `ingest/` 파서로 읽는 parse 노드, 파일 단위 실패는 `EXTRACTION_FAILED` (통합 담당 R1만 수정) |
 
 ## 품질 시나리오
 

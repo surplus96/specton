@@ -22,7 +22,7 @@
 
 | 역할 | 폴더 |
 |---|---|
-| R1 | `specton/llm/`, `specton/graph.py`, `specton/agent_nodes.py`, `specton/review/`(리뷰어 노드 틀·병합), `.github/workflows/`, `tests/integration/` |
+| R1 | `specton/llm/`, `specton/graph.py`, `specton/agent_nodes.py`, `specton/parse_node.py`, `specton/review/`(리뷰어 노드 틀·병합), `.github/workflows/`, `tests/integration/` |
 | R2 | `specton/ingest/`, `specton/packs/`, `domain_packs/`, `eval/` |
 | R3 | `specton/contracts/`, `specton/api/`, `specton/persistence/`, `specton/export/`(기능 명세·RTM) |
 | R4 | `specton/codegen/`(모델 정리·DDL), `specton/validate/`, `specton/review/`(규칙), `docker/postgres/` |

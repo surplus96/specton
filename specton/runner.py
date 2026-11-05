@@ -36,7 +36,7 @@ from specton.contracts import (
     RunStatus,
 )
 from specton.contracts import SseEventType as E
-from specton.graph import GraphState, initial_state
+from specton.graph import DocumentRef, ExtractionFailedError, GraphState, initial_state
 from specton.llm.errors import LLMError
 from specton.persistence import lease, runs, snapshots
 from specton.persistence.db import Pool
@@ -251,7 +251,16 @@ class _Job:
         if not snapshot.values:
             with self.runner.pool.connection() as conn:
                 versions = runs.load_versions(conn, self.run_id)
-            return initial_state(DesignState(run_id=str(self.run_id), versions=versions))
+                documents = tuple(
+                    DocumentRef(
+                        document_id=d["document_id"],
+                        file_format=d["file_format"],
+                        storage_ref=d["storage_ref"],
+                    )
+                    for d in runs.load_documents(conn, self.run_id)
+                )
+            design = DesignState(run_id=str(self.run_id), versions=versions)
+            return initial_state(design, documents)
         if _checkpoint_id(snapshot) != self._saved_checkpoint():
             if snapshot.interrupts:
                 self._pause(snapshot)
@@ -345,7 +354,7 @@ class _Job:
 
     def _fail(self, exc: Exception) -> None:
         logger.error("run %s 실패", self.run_id, exc_info=exc)
-        code = ErrorCode(exc.code) if isinstance(exc, LLMError) else ErrorCode.INTERNAL
+        code = _error_code(exc)
         error = Error(
             code=code.value,
             message=_ERROR_MESSAGES[code],
@@ -379,6 +388,15 @@ class _Job:
     def _saved_checkpoint(self) -> str | None:
         with self.runner.pool.connection() as conn, conn.transaction():
             return lease.check_holder(conn, self.run_id, self.runner.holder)
+
+
+def _error_code(exc: Exception) -> ErrorCode:
+    """실패 원인 → 06 문서 오류 코드. 문서를 읽지 못한 실패는 다시 시도해도 같다."""
+    if isinstance(exc, LLMError):
+        return ErrorCode(exc.code)
+    if isinstance(exc, ExtractionFailedError):
+        return ErrorCode.EXTRACTION_FAILED
+    return ErrorCode.INTERNAL
 
 
 def _checkpoint_id(snapshot: StateSnapshot) -> str:
