@@ -30,6 +30,7 @@ class ReworkAction(StrEnum):
 
 
 class HitlReason(StrEnum):
+    MANUAL = "manual_review"
     LIMIT = "rework_limit"
     REPEATED = "repeated_findings"
     UNDECIDED = "router_undecided"
