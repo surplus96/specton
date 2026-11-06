@@ -16,6 +16,34 @@ export type SourceRef = {
 
 export type ExtractionStatus = 'pass' | 'review' | 'fail'
 
+/** 품질 경고와 확인 질문 (specton/contracts/requirements.py QualityIssue) */
+export type QualityIssue = {
+  kind: string
+  message: string
+  question: string | null
+}
+
+export type NfrCategory = 'security' | 'audit' | 'retention' | 'performance' | 'availability' | 'usability' | 'other'
+
+/** section=requirements 한 건 (specton/contracts/requirements.py Requirement) */
+export type AnalysedRequirement = {
+  id: string
+  source_id: string | null
+  source_ref: SourceRef
+  /** 분할로 생긴 요구사항이면 원래 요구사항 ID */
+  parent_id: string | null
+  /** 최종 문장 (사용자 확인 후) */
+  text: string
+  /** A01이 낸 문장 */
+  draft_text: string
+  source_text: string | null
+  source_acceptance_level: string | null
+  type: 'FR' | 'NFR'
+  nfr_category: NfrCategory | null
+  quality_issues: QualityIssue[]
+  analysis_version: number
+}
+
 /** section=extraction 한 건 (specton/contracts/requirements.py SourceRequirement) */
 export type ExtractionBlock = {
   document_id: string

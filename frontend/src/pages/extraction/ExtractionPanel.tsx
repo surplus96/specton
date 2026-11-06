@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Checkbox, Collapse, Flex, Input, Popconfirm, Radio, Spin, Table, Tag, Typography } from 'antd'
 import type { TableColumnsType } from 'antd'
-import { getView, resumeRun } from '../../api/client.ts'
-import { ApiError, errorMessage } from '../../api/errors.ts'
-import type { ExtractionResponse, RunStatus, SseEvent } from '../../api/types.ts'
+import { getView } from '../../api/client.ts'
+import { errorMessage } from '../../api/errors.ts'
+import type { RunStatus, SseEvent } from '../../api/types.ts'
 import type { ExtractionBlock } from '../../api/viewItems.ts'
 import PageCard from '../../layout/PageCard.tsx'
+import { useResume } from '../run/useResume.ts'
 import {
   STATUS_LABEL,
   STOP_RESPONSE,
@@ -39,10 +40,7 @@ function ExtractionPanel({ run, events, onChanged }: Props) {
   const [blocks, setBlocks] = useState<ExtractionBlock[] | null>(null)
   const [loadError, setLoadError] = useState<unknown>(null)
   const [decisions, setDecisions] = useState<Decisions>({})
-  const [sending, setSending] = useState(false)
-  const [actionError, setActionError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
-  const [reloadKey, setReloadKey] = useState(0)
+  const { send, sending, error: actionError, notice, reloadKey, reload, canAnswer } = useResume(run, onChanged)
 
   // 확인 요청이 바뀌면(다른 곳에서 답한 뒤 새 요청 등) 블록을 다시 읽고 결정을 처음으로 돌린다
   useEffect(() => {
@@ -71,28 +69,6 @@ function ExtractionPanel({ run, events, onChanged }: Props) {
 
   const decide = (blockId: string, change: Partial<Decision>) =>
     setDecisions((prev) => ({ ...prev, [blockId]: { ...prev[blockId], ...change } }))
-
-  async function send(response: ExtractionResponse) {
-    if (!interruptId) return
-    setSending(true)
-    setActionError(null)
-    setNotice(null)
-    try {
-      await resumeRun(run.run_id, { interrupt_id: interruptId, expected_revision: run.revision, response })
-      await onChanged()
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        // 자동으로 다시 보내지 않는다. 최신 상태를 읽고 사용자가 다시 고르게 한다 (강의 04·11)
-        setNotice('다른 곳에서 먼저 처리되었습니다. 최신 상태를 불러왔습니다.')
-        await onChanged().catch(() => {})
-        setReloadKey((k) => k + 1)
-      } else {
-        setActionError(errorMessage(err)) // 422면 「B3: …」처럼 블록 ID로 시작한다
-      }
-    } finally {
-      setSending(false)
-    }
-  }
 
   const columns: TableColumnsType<ExtractionBlock> = [
     {
@@ -157,7 +133,7 @@ function ExtractionPanel({ run, events, onChanged }: Props) {
           type="error"
           showIcon
           title={errorMessage(loadError)}
-          action={<Button onClick={() => setReloadKey((k) => k + 1)}>다시 불러오기</Button>}
+          action={<Button onClick={reload}>다시 불러오기</Button>}
         />
       ) : !blocks ? (
         <Flex justify="center">
@@ -247,7 +223,7 @@ function ExtractionPanel({ run, events, onChanged }: Props) {
               type="primary"
               size="large"
               loading={sending}
-              disabled={blocking.length > 0 || !interruptId}
+              disabled={blocking.length > 0 || !canAnswer}
               onClick={() => send(buildResponse(blocks, decisions))}
             >
               확인하고 분석 시작
@@ -259,7 +235,7 @@ function ExtractionPanel({ run, events, onChanged }: Props) {
               cancelText="계속 확인"
               onConfirm={() => send(STOP_RESPONSE)}
             >
-              <Button danger size="large" disabled={sending || !interruptId}>
+              <Button danger size="large" disabled={sending || !canAnswer}>
                 전체 중단
               </Button>
             </Popconfirm>

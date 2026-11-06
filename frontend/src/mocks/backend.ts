@@ -13,6 +13,7 @@
 //   fail         분석 중 모델 호출 실패 (LLM_UNAVAILABLE)
 //   unreadable   문서를 읽지 못함 (EXTRACTION_FAILED + 자세히 보기 문장)
 //   conflict     첫 확인 답이 409 INTERRUPT_STALE (다른 탭에서 먼저 답한 상황)
+//   no-questions 추출 확인은 멈추고, 분석 확인은 확인할 것이 없어 건너뜀 (ADR-0015)
 import { delay, http, HttpResponse } from 'msw'
 import type {
   ApiErrorBody,
@@ -68,7 +69,7 @@ type MockRun = {
   pack: string
   fileName: string
   created_at: string
-  scenario: 'normal' | 'quick' | 'slow-queue' | 'fail' | 'unreadable' | 'conflict'
+  scenario: 'normal' | 'quick' | 'slow-queue' | 'fail' | 'unreadable' | 'conflict' | 'no-questions'
   conflictPending: boolean // conflict: 다음 답을 409로 돌려준다
   status: RunState
   revision: number
@@ -299,7 +300,9 @@ export function createMockBackend(options: MockOptions = {}) {
             ? 'fail'
             : name.includes('conflict')
               ? 'conflict'
-              : 'normal'
+              : name.includes('no-questions')
+                ? 'no-questions'
+                : 'normal'
 
     const run: MockRun = {
       run_id: crypto.randomUUID(),
@@ -419,6 +422,11 @@ export function createMockBackend(options: MockOptions = {}) {
             stage: 'analysing',
             error: { code: 'LLM_UNAVAILABLE', message: '모델을 호출하지 못했습니다. 잠시 후 다시 시도해 주세요.' },
           },
+        ])
+      } else if (run.scenario === 'no-questions') {
+        moveTo(run, analysing, [
+          { status: 'designing', stage: 'designing', message: SKIPPED_REQUIREMENTS_CHECK },
+          ...toReview,
         ])
       } else {
         moveTo(run, analysing, [
