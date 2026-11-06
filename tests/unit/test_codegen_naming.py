@@ -45,6 +45,32 @@ def _copy_pack(tmp_path: Path, pack: str) -> Path:
     return tmp_path
 
 
+# #11 R2 답(명명 규칙 빈칸 답)에 적힌 값. 실제 naming.yaml에는 R2 후속 PR이 채운다.
+# 임시(#11): 값 이름은 공통 팩 draft·ADR-0009 제안 상태라 바뀔 수 있음 (naming.py와 함께 고친다).
+AGREED_NAMING = {
+    ("term", "max_words"): "unlimited",
+    ("table", "prefix"): "none",
+    ("table", "form"): "as_dictionary",
+    ("table", "junction_name"): "parent_child",
+    ("column", "primary_key"): "term_physical_name",
+    ("column", "foreign_key"): "parent_key_physical_name",
+    ("column", "self_reference_prefix"): "상위",
+}
+
+
+# 위 칸을 모두 빈칸(미정)으로. 실제 팩 값과 상관없이 시험할 칸만 채우려고 먼저 덮는다.
+UNSET_NAMING: dict[tuple[str, str], Any] = dict.fromkeys(AGREED_NAMING)
+
+
+def _set_naming(root: Path, values: dict[tuple[str, str], Any]) -> None:
+    """복사한 naming.yaml의 명명 규칙 칸에 값을 넣는다 (없는 키는 새로 만든다)."""
+    path = root / "common/naming.yaml"
+    data = read_yaml(path)
+    for (section, key), value in values.items():
+        data[section][key] = value
+    path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+
 # ── 이름 규칙 ─────────────────────────────────────────────────────────
 
 
@@ -52,7 +78,10 @@ def test_naming_rules_come_from_naming_yaml() -> None:
     physical = read_yaml(DEFAULT_PACK_ROOT / "common/naming.yaml")["physical_name"]
     rules = load_naming_rules()
     assert (rules.max_bytes, rules.separator) == (physical["max_bytes"], physical["word_separator"])
-    assert rules.self_reference_prefix is None  # naming.yaml column.foreign_key 빈칸 (D4)
+    # 새 키는 R2 후속 PR이 채운다. 그 전(키 없음)이든 뒤든 파일 값을 그대로 읽는다.
+    naming = read_yaml(DEFAULT_PACK_ROOT / "common/naming.yaml")
+    assert rules.self_reference_prefix == naming["column"].get("self_reference_prefix")
+    assert rules.junction_name == naming["table"].get("junction_name")
 
 
 def test_reserved_words_follow_postgresql_keyword_table() -> None:
@@ -72,26 +101,112 @@ def test_unknown_reserved_word_source_or_postgres_version_fails(
         reserved_words("postgresql_18_sql_key_words")
 
 
+def test_agreed_naming_values_are_read(tmp_path: Path) -> None:
+    """#11에서 맞춘 값 이름 5개와 새 키 2개를 모두 알아듣는다."""
+    root = _copy_pack(tmp_path, "inventory")
+    _set_naming(root, AGREED_NAMING)
+    rules = load_naming_rules(root)
+    assert (rules.self_reference_prefix, rules.junction_name) == ("상위", "parent_child")
+
+
+@pytest.mark.parametrize(("section", "key"), list(AGREED_NAMING))
+def test_each_agreed_value_alone_is_read(tmp_path: Path, section: str, key: str) -> None:
+    """칸 하나만 채우고 나머지는 빈칸(미정)이어도 읽는다 (팩 상태 draft)."""
+    root = _copy_pack(tmp_path, "inventory")
+    _set_naming(root, {**UNSET_NAMING, (section, key): AGREED_NAMING[section, key]})
+    rules = load_naming_rules(root)
+    assert rules.self_reference_prefix == (
+        "상위" if (section, key) == ("column", "self_reference_prefix") else None
+    )
+    assert rules.junction_name == (
+        "parent_child" if (section, key) == ("table", "junction_name") else None
+    )
+
+
 @pytest.mark.parametrize(
     ("section", "key", "value"),
     [
         ("table", "prefix", "TB_"),
         ("table", "form", "plural"),
+        ("table", "junction_name", "child_parent"),
+        ("column", "primary_key", "id"),
         ("column", "foreign_key", "x"),
         ("term", "max_words", 5),
+        ("term", "max_words", "None"),  # 글자 None은 null(미정)이 아니다
     ],
 )
-def test_filled_naming_rule_not_yet_interpreted_stops_instead_of_being_ignored(
+def test_unknown_naming_value_stops_instead_of_being_ignored(
     tmp_path: Path, section: str, key: str, value: str | int
 ) -> None:
     root = _copy_pack(tmp_path, "inventory")
-    path = root / "common/naming.yaml"
-    text = path.read_text(encoding="utf-8")
-    line = next(ln for ln in text.splitlines() if ln.strip().startswith(f"{key}:"))
-    path.write_text(text.replace(line, f"  {key}: {value}", 1), encoding="utf-8")
-    assert read_yaml(path)[section][key] == value
-    with pytest.raises(ValueError, match="아직 해석하지 않음"):
+    _set_naming(root, {**UNSET_NAMING, (section, key): value})
+    assert read_yaml(root / "common/naming.yaml")[section][key] == value
+    with pytest.raises(ValueError, match=f"모르는 값이 있음: .*{section}.{key}"):
         load_naming_rules(root)
+
+
+@pytest.mark.parametrize("value", [5, ["상위"]])
+def test_self_reference_prefix_must_be_a_word(tmp_path: Path, value: object) -> None:
+    root = _copy_pack(tmp_path, "inventory")
+    _set_naming(root, {("column", "self_reference_prefix"): value})
+    with pytest.raises(ValueError, match="사전 단어여야 함"):
+        load_naming_rules(root)
+
+
+@pytest.mark.parametrize(
+    ("section", "key"),
+    [
+        ("table", "prefix"),
+        ("table", "form"),
+        ("column", "primary_key"),
+        ("column", "foreign_key"),
+        ("term", "max_words"),
+    ],
+)
+def test_missing_existing_naming_key_stops(tmp_path: Path, section: str, key: str) -> None:
+    """기존 키를 잘못 지우면 미정으로 넘기지 않고 멈춘다 (미정이면 null로 적는다)."""
+    root = _copy_pack(tmp_path, "inventory")
+    path = root / "common/naming.yaml"
+    data = read_yaml(path)
+    del data[section][key]
+    path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    with pytest.raises(ValueError, match=f"{section}.{key} 키가 없음"):
+        load_naming_rules(root)
+
+
+@pytest.mark.parametrize("section", ["table", "column", "term"])
+def test_missing_naming_section_stops(tmp_path: Path, section: str) -> None:
+    root = _copy_pack(tmp_path, "inventory")
+    path = root / "common/naming.yaml"
+    data = read_yaml(path)
+    del data[section]
+    path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    with pytest.raises(ValueError, match="키가 없음"):
+        load_naming_rules(root)
+
+
+def test_new_naming_keys_may_be_missing(tmp_path: Path) -> None:
+    """새 키 두 개는 팩 파일에 들어오기 전(common 0.1.1)에도 읽을 수 있게 없어도 미정이다."""
+    root = _copy_pack(tmp_path, "inventory")
+    path = root / "common/naming.yaml"
+    data = read_yaml(path)
+    data["table"].pop("junction_name", None)
+    data["column"].pop("self_reference_prefix", None)
+    path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    rules = load_naming_rules(root)
+    assert (rules.self_reference_prefix, rules.junction_name) == (None, None)
+
+
+@pytest.mark.parametrize("value", [None, ""])
+def test_empty_naming_value_is_unset(tmp_path: Path, value: str | None) -> None:
+    """null과 빈 문자열은 미정이다. 새 키도 마찬가지다.
+
+    빈 문자열은 #11에서 새로 정한 것이 아니라 이전 load_naming_rules 동작을 그대로 둔 것이다.
+    """
+    root = _copy_pack(tmp_path, "inventory")
+    _set_naming(root, {k: value for k in AGREED_NAMING})
+    rules = load_naming_rules(root)
+    assert (rules.self_reference_prefix, rules.junction_name) == (None, None)
 
 
 # ── 사전 ──────────────────────────────────────────────────────────────
@@ -300,9 +415,12 @@ MNT_002 = DesignState(  # maintenance A04 MNT-002: 설비 → 상위 설비 (선
 )
 
 
-def test_maintenance_self_reference_runs_with_real_pack_when_prefix_is_given() -> None:
-    lexicon = load_pack_lexicon("maintenance")
-    rules = load_naming_rules(self_reference_prefix="상위")  # D4 제안값 (naming.yaml 빈칸)
+def test_maintenance_self_reference_reads_prefix_from_naming_yaml(tmp_path: Path) -> None:
+    """접두어를 코드로 넘기지 않고 naming.yaml column.self_reference_prefix(상위 → UP)로 읽는다."""
+    root = _copy_pack(tmp_path, "maintenance")
+    _set_naming(root, {("column", "self_reference_prefix"): "상위"})
+    lexicon = load_pack_lexicon("maintenance", root)
+    rules = load_naming_rules(root)
     result = normalize(MNT_002, pack=_pack("maintenance"), lexicon=lexicon, rules=rules)
     assert isinstance(result, Normalized), result
     (table,) = result.model.tables
@@ -312,13 +430,38 @@ def test_maintenance_self_reference_runs_with_real_pack_when_prefix_is_given() -
     assert result.model.lexicon_digest == lexicon.digest
 
 
-def test_maintenance_self_reference_is_blocked_with_current_naming_yaml() -> None:
-    """지금 팩 그대로면 자기참조 이름 규칙이 없어 막힌다. R2가 naming.yaml에 반영하면 바뀐다."""
+def test_agreed_naming_values_do_not_change_names(tmp_path: Path) -> None:
+    """#11 값은 모두 미정일 때의 D4 제안 동작과 같은 뜻이라, 채워도 이름이 바뀌지 않는다.
+
+    자기참조 접두어만 새로 생겨 막혀 있던 자기참조가 풀린다.
+    """
+    unset = _copy_pack(tmp_path / "unset", "maintenance")
+    _set_naming(unset, {**UNSET_NAMING, ("column", "self_reference_prefix"): "상위"})
+    agreed = _copy_pack(tmp_path / "agreed", "maintenance")
+    _set_naming(agreed, AGREED_NAMING)
+    results = [
+        normalize(
+            MNT_002,
+            pack=_pack("maintenance"),
+            lexicon=load_pack_lexicon("maintenance", root),
+            rules=load_naming_rules(root),
+        )
+        for root in (unset, agreed)
+    ]
+    assert all(isinstance(r, Normalized) for r in results), results
+    tables = [r.model.tables for r in results if isinstance(r, Normalized)]
+    assert tables[0] == tables[1]
+
+
+def test_maintenance_self_reference_is_blocked_when_prefix_is_unset(tmp_path: Path) -> None:
+    """column.self_reference_prefix가 빈칸(미정)이면 막힌다. 실제 팩 값과 상관없이 빈칸으로 본다."""
+    root = _copy_pack(tmp_path, "maintenance")
+    _set_naming(root, {("column", "self_reference_prefix"): None})
     result = normalize(
         MNT_002,
         pack=_pack("maintenance"),
-        lexicon=load_pack_lexicon("maintenance"),
-        rules=load_naming_rules(),
+        lexicon=load_pack_lexicon("maintenance", root),
+        rules=load_naming_rules(root),
     )
     assert isinstance(result, NormalizeFailed)
     assert [(p.code, p.decision) for p in result.problems] == [
