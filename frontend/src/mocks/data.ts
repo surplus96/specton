@@ -5,7 +5,7 @@
 
 const ref = (row: number) => ({ file_format: 'xlsx', sheet: '요구사항', row })
 
-/** section=extraction: 추출 블록 (pass 3, review 1, fail 1) */
+/** section=extraction: 추출 블록 (pass 3, review 2, fail 1). B6은 원문 문장이 없는 행(계약상 review) */
 export const extractionItems = [
   {
     document_id: 'doc-1',
@@ -56,7 +56,7 @@ export const extractionItems = [
     source_ref: ref(5),
     source_text: '재고 수량이 안전재고보다 적으면 담당자에게 알린다.',
     source_acceptance_level: '선택',
-    source_related_requirements: null,
+    source_related_requirements: 'SFR-002',
     source_extra: {},
     extraction_status: 'pass',
     notice: null,
@@ -74,6 +74,20 @@ export const extractionItems = [
     source_extra: {},
     extraction_status: 'fail',
     notice: '요구사항이 아닌 각주로 보입니다. 제외해 주세요.',
+    user_decision: null,
+    excluded_reason: null,
+  },
+  {
+    document_id: 'doc-1',
+    block_id: 'B6',
+    source_id: 'SFR-004',
+    source_ref: ref(7),
+    source_text: null,
+    source_acceptance_level: null,
+    source_related_requirements: null,
+    source_extra: {},
+    extraction_status: 'review',
+    notice: '요구사항명과 요구사항 세부내용이 모두 비어 있음',
     user_decision: null,
     excluded_reason: null,
   },

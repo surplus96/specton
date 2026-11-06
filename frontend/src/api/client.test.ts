@@ -100,7 +100,7 @@ describe('처음부터 끝까지', () => {
   it('추출 확인 → 요구사항 확인 → 최종 승인 → 완료, PDF는 승인 뒤에만', async () => {
     let run = await startAndWait()
     const extraction = await getView(run.run_id, 'extraction')
-    expect(extraction.items.length).toBe(5)
+    expect(extraction.items.length).toBe(6)
 
     // UI-02: fail 블록(B5)은 제외, review 블록(B3)은 확인
     run = await resumeRun(run.run_id, {

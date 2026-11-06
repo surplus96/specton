@@ -12,6 +12,7 @@
 //   slow-queue   한동안 queued로 기다림 (동시 실행 한도)
 //   fail         분석 중 모델 호출 실패 (LLM_UNAVAILABLE)
 //   unreadable   문서를 읽지 못함 (EXTRACTION_FAILED + 자세히 보기 문장)
+//   conflict     첫 확인 답이 409 INTERRUPT_STALE (다른 탭에서 먼저 답한 상황)
 import { delay, http, HttpResponse } from 'msw'
 import type {
   ApiErrorBody,
@@ -58,6 +59,7 @@ type Step = {
   interrupt?: InterruptKind
   error?: { code: ErrorCode; message: string; detail?: string }
   message?: string // SSE status 이벤트 문구를 바꿀 때
+  payload?: Item // SSE status 이벤트 payload (건너뛴 시트 안내 등)
   nextRevision?: boolean
 }
 
@@ -66,7 +68,8 @@ type MockRun = {
   pack: string
   fileName: string
   created_at: string
-  scenario: 'normal' | 'quick' | 'slow-queue' | 'fail' | 'unreadable'
+  scenario: 'normal' | 'quick' | 'slow-queue' | 'fail' | 'unreadable' | 'conflict'
+  conflictPending: boolean // conflict: 다음 답을 409로 돌려준다
   status: RunState
   revision: number
   stage: string | null
@@ -174,7 +177,7 @@ export function createMockBackend(options: MockOptions = {}) {
     } else if (step.status === 'cancelled') {
       pushEvent(run, 'cancelled', STATUS_MESSAGES.cancelled!)
     } else {
-      pushEvent(run, 'status', step.message ?? STATUS_MESSAGES[step.status] ?? step.status)
+      pushEvent(run, 'status', step.message ?? STATUS_MESSAGES[step.status] ?? step.status, step.payload)
     }
   }
 
@@ -235,7 +238,18 @@ export function createMockBackend(options: MockOptions = {}) {
           { status: 'awaiting_input', stage: 'parsing', interrupt: 'extraction' },
         ]
       default:
-        return [parsing, { status: 'awaiting_input', stage: 'parsing', interrupt: 'extraction' }]
+        return [
+          parsing,
+          // 엑셀에서 요구사항 표가 없는 시트는 정보 한 줄로 알린다 (docs/06 SSE). 확인을 멈추게 하지는 않는다
+          {
+            status: 'parsing',
+            stage: 'parsing',
+            ms: 0,
+            message: '요구사항을 읽지 않은 시트가 있습니다',
+            payload: { info: 'skipped_sheets', document_id: 'doc-1', sheets: ['표지', '개정이력'] },
+          },
+          { status: 'awaiting_input', stage: 'parsing', interrupt: 'extraction' },
+        ]
     }
   }
 
@@ -283,7 +297,9 @@ export function createMockBackend(options: MockOptions = {}) {
           ? 'quick'
           : name.includes('fail')
             ? 'fail'
-            : 'normal'
+            : name.includes('conflict')
+              ? 'conflict'
+              : 'normal'
 
     const run: MockRun = {
       run_id: crypto.randomUUID(),
@@ -291,6 +307,7 @@ export function createMockBackend(options: MockOptions = {}) {
       fileName: file.name,
       created_at: new Date(now()).toISOString(),
       scenario,
+      conflictPending: scenario === 'conflict',
       status: 'queued',
       revision: 0,
       stage: null,
@@ -361,6 +378,13 @@ export function createMockBackend(options: MockOptions = {}) {
     if (!run.interrupt || body.interrupt_id !== run.interrupt.interrupt_id) {
       throw new Reject(409, 'INTERRUPT_STALE', STALE_MESSAGE, run.run_id)
     }
+    if (run.conflictPending) {
+      // 다른 탭에서 먼저 답해 확인 요청이 새로 나온 상황을 흉내 낸다. 화면은 상태를 다시 읽고 다시 고른다
+      run.conflictPending = false
+      const kind = run.interrupt.kind
+      apply(run, { status: run.status, stage: run.stage, interrupt: kind })
+      throw new Reject(409, 'INTERRUPT_STALE', STALE_MESSAGE, run.run_id)
+    }
     if (body.expected_revision !== run.revision) {
       throw new Reject(409, 'RUN_REVISION_CONFLICT', REVISION_MESSAGE, run.run_id)
     }
@@ -387,6 +411,7 @@ export function createMockBackend(options: MockOptions = {}) {
         }
       }
       const analysing: Step = { status: 'analysing', stage: 'analysing', nextRevision: true }
+      const warnings = relatedWarningsOf(run.extraction)
       if (run.scenario === 'fail') {
         moveTo(run, analysing, [
           {
@@ -399,6 +424,10 @@ export function createMockBackend(options: MockOptions = {}) {
         moveTo(run, analysing, [
           { status: 'awaiting_requirements', stage: 'analysing', interrupt: 'requirements' },
         ])
+      }
+      // 백엔드(graph.py _related_warnings)처럼 경고만 남기고 제외는 막지 않는다
+      for (const payload of warnings) {
+        pushEvent(run, 'status', '제외한 원문을 관련 요구사항으로 적은 원문이 있습니다', payload)
       }
       return statusOf(run)
     }
@@ -588,6 +617,20 @@ export function createMockBackend(options: MockOptions = {}) {
       return run?.events ?? []
     },
   }
+}
+
+/** 제외한 원문의 ID가 남은 원문의 「관련 요구사항」에 나오면 경고 payload (백엔드 graph.py와 같은 기준) */
+function relatedWarningsOf(blocks: Item[]): Item[] {
+  const excluded = blocks.filter((b) => b.user_decision === 'excluded' && typeof b.source_id === 'string')
+  const remaining = blocks.filter((b) => b.user_decision !== 'excluded' && typeof b.source_related_requirements === 'string')
+  return excluded.flatMap((block) => {
+    const id = (block.source_id as string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const sameId = new RegExp(`(?<![\\p{L}\\p{N}_-])${id}(?![\\p{L}\\p{N}_-])`, 'u')
+    const related = remaining.filter((r) => sameId.test(r.source_related_requirements as string)).map((r) => r.block_id)
+    return related.length
+      ? [{ warning: 'excluded_related', block_id: block.block_id, source_id: block.source_id, related_block_ids: related }]
+      : []
+  })
 }
 
 // ── 답변 검사 (백엔드와 같은 422 조건) ────────────────────

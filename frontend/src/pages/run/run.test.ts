@@ -35,13 +35,20 @@ describe('screenFor: 상태 → 화면 (docs/09)', () => {
     ['designing', 'UI-04'],
     ['reviewing', 'UI-04'],
     ['awaiting_review', 'UI-06'],
-    ['exporting', 'UI-07'],
+    ['exporting', 'UI-04'],
     ['completed', 'UI-07'],
     ['failed', 'UI-04'],
     ['cancel_requested', 'UI-04'],
     ['cancelled', 'UI-04'],
   ] as const)('%s → %s', (status, screen) => {
     expect(screenFor(status)).toBe(screen)
+  })
+
+  it('확인 화면은 status보다 interrupt.kind로 고른다 (강의 09)', () => {
+    expect(screenFor('awaiting_input', 'extraction')).toBe('UI-02')
+    expect(screenFor('awaiting_input', 'requirements')).toBe('UI-03')
+    expect(screenFor('awaiting_review', 'review')).toBe('UI-06')
+    expect(screenFor('cancelled', 'extraction')).toBe('UI-04') // 끝난 실행은 확인 화면이 아니다
   })
 
   it('취소 버튼은 진행·대기 중에만', () => {

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { ApiError, errorMessage } from '../api/errors.ts'
 import StageSteps, { SCREENS } from '../layout/StageSteps.tsx'
 import PageCard from '../layout/PageCard.tsx'
+import ExtractionPanel from './extraction/ExtractionPanel.tsx'
 import ProgressPanel from './run/ProgressPanel.tsx'
 import { screenFor } from './run/screens.ts'
 import { useRunStatus } from './run/useRunStatus.ts'
@@ -37,12 +38,14 @@ function RunPage({ runId }: { runId: string }) {
     )
   }
 
-  const screen = screenFor(run.status)
+  const screen = screenFor(run.status, run.interrupt?.kind)
   return (
     <Flex vertical gap={24}>
       <StageSteps current={screen} />
       {screen === 'UI-04' ? (
         <ProgressPanel run={run} events={events} connection={connection} onChanged={refresh} />
+      ) : screen === 'UI-02' ? (
+        <ExtractionPanel run={run} events={events} onChanged={refresh} />
       ) : (
         <PageCard
           title={SCREENS.find((s) => s.id === screen)?.title ?? screen}

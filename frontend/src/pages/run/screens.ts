@@ -1,6 +1,6 @@
 // 실행 상태 → 화면 규칙. 화면 코드(RunPage)와 분리해 테스트한다.
 // 상태 목록은 계약(RunState), 화면 대응은 docs/09-ui-flow.md 화면 목록·흐름도를 따른다.
-import type { ApiErrorBody, RunState, SseEvent } from '../../api/types.ts'
+import type { ApiErrorBody, InterruptKind, RunState, SseEvent } from '../../api/types.ts'
 import type { ScreenId } from '../../layout/StageSteps.tsx'
 
 /** 상태마다 보일 화면. Record라서 계약에 상태가 늘면 여기서 타입 오류가 난다. */
@@ -14,7 +14,7 @@ const SCREEN_OF: Record<RunState, ScreenId> = {
   generating: 'UI-04',
   reviewing: 'UI-04',
   awaiting_review: 'UI-06', // 최종 검토 (HITL 2)
-  exporting: 'UI-07', // 승인 뒤 파일 생성 중 → 다운로드 화면에서 「생성 대기」
+  exporting: 'UI-04', // 승인 뒤 파일 생성 중 = 결과 보기(진행) (강의 09)
   completed: 'UI-07',
   // 실패·취소는 진행 화면에서 원인과 다음 행동을 보인다 (docs/09 UI-04 「호출 실패·한도 초과 안내」)
   failed: 'UI-04',
@@ -22,7 +22,19 @@ const SCREEN_OF: Record<RunState, ScreenId> = {
   cancelled: 'UI-04',
 }
 
-export function screenFor(status: RunState): ScreenId {
+/** 확인 요청 종류마다 보일 화면 */
+const SCREEN_OF_INTERRUPT: Record<InterruptKind, ScreenId> = {
+  extraction: 'UI-02',
+  requirements: 'UI-03',
+  review: 'UI-06',
+}
+
+/**
+ * 지금 보일 화면. 확인 화면은 status보다 interrupt.kind로 고른다 (구현 가이드 강의 09).
+ * interrupt는 사람 확인을 기다릴 때만 값이 있다.
+ */
+export function screenFor(status: RunState, interrupt?: InterruptKind | null): ScreenId {
+  if (interrupt && !isFinished(status)) return SCREEN_OF_INTERRUPT[interrupt]
   return SCREEN_OF[status]
 }
 
