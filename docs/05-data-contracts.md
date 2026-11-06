@@ -25,6 +25,7 @@
 | #119 | 추출 확인은 확인·제외만 (ADR-0015): `ExtractionResponse.edits` → `excluded_blocks`, `SourceRequirement`에 `notice`·`user_decision`·`excluded_reason`, `source_text` null 허용(`review`만), `extraction_status` 기본값 없음 |
 | #120 | `SourceRequirement.excluded_reason` 빈 문자열 금지, `analysable`이 결정 전 `fail` 블록도 뺀다 |
 | #140 | `SourceRequirement`: `review`·`fail` 블록은 `notice` 필수 |
+| #143 | 정리 결과 모델을 계약으로 이전하고 `DesignState.normalized` 추가. 정리 결과가 있으면 스냅샷 저장·해시에 포함하고 체크포인트 허용 타입에 등록 |
 
 남은 작업: requirements·추적 검사 설명 (#107), FK 파생·참조 키 (#12), 값 범위 제약 (#15)
 
