@@ -1,95 +1,67 @@
-// 실행 진행 이벤트(SSE) 읽기. GET /runs/{id}/events (docs/06-api.md「SSE」)
+// 실행 진행 이벤트(SSE) 받기. GET /runs/{id}/events (docs/06-api.md「SSE」, 구현 가이드 강의 08)
 //
-// 브라우저 EventSource 대신 fetch로 읽는다.
-// - EventSource는 409(EVENT_REPLAY_EXPIRED) 같은 오류 본문을 읽지 못해 다음 행동을 정할 수 없다.
-// - fetch는 Node 테스트에서도 돌고, 세션 쿠키·Last-Event-ID를 직접 다룰 수 있다.
-// 다시 연결하기는 이 파일이 아니라 화면 훅(useRunStatus)이 맡는다.
+// - 서버는 이름 있는 이벤트(event: status 등)를 보낸다. onmessage로는 받지 못해 이름마다 addEventListener로 받는다.
+// - 끊기면 브라우저가 Last-Event-ID를 붙여 알아서 다시 연결한다. 직접 다시 열지 않는다.
+// - 실행이 끝나면 서버가 스트림을 닫는데, 브라우저는 이것도 끊김으로 보고 다시 연결한다.
+//   그래서 끝 이벤트(completed·cancelled·error)를 받으면 직접 close()한다.
+// - 브라우저가 다시 연결하지 못하고 연결을 닫으면(404·409 응답 등) onClosed를 부른다.
+//   그때 할 일(상태 다시 읽기·새로 열기)은 부른 쪽(followRun)이 정한다.
 import { eventsUrl } from './client.ts'
-import { ApiError } from './errors.ts'
 import type { SseEvent } from './types.ts'
 
-const EVENT_NAMES: ReadonlySet<string> = new Set([
-  'status',
-  'interrupt',
-  'artifact',
-  'error',
-  'completed',
-  'cancelled',
-])
+type EventName = SseEvent['event']
 
-/** 끝난 실행을 알리는 이벤트. 이 이벤트 뒤에는 다시 연결하지 않는다. */
-export const FINAL_EVENTS: ReadonlySet<SseEvent['event']> = new Set(['completed', 'cancelled'])
+const EVENT_NAMES: readonly EventName[] = ['status', 'interrupt', 'artifact', 'error', 'completed', 'cancelled']
 
-/**
- * SSE 한 덩어리("id: …\nevent: …\ndata: …")를 이벤트로 바꾼다.
- * 주석 줄(": keep-alive")만 있거나 모양이 맞지 않으면 null.
- */
-export function parseFrame(frame: string): SseEvent | null {
-  let id: number | null = null
-  let event: string | null = null
-  const data: string[] = []
-  for (const line of frame.split(/\r?\n/)) {
-    if (line === '' || line.startsWith(':')) continue
-    const colon = line.indexOf(':')
-    const field = colon < 0 ? line : line.slice(0, colon)
-    const value = colon < 0 ? '' : line.slice(colon + 1).replace(/^ /, '')
-    if (field === 'id') id = /^\d+$/.test(value) ? Number(value) : null
-    else if (field === 'event') event = value
-    else if (field === 'data') data.push(value)
-  }
-  if (id === null || event === null || !EVENT_NAMES.has(event) || data.length === 0) return null
-  try {
-    return { id, event: event as SseEvent['event'], data: JSON.parse(data.join('\n')) }
-  } catch {
-    return null
-  }
+/** EventSource.CLOSED. 전역 EventSource가 없는 테스트 환경에서도 읽히게 값으로 둔다. */
+const CLOSED = 2
+
+/** 받으면 연결을 닫는 이벤트 */
+export const FINAL_EVENTS: ReadonlySet<EventName> = new Set(['completed', 'cancelled', 'error'])
+
+/** EventSource 생성자. 테스트에서 바꿔 넣는다 (Node에는 EventSource가 없다). */
+export type EventSourceFactory = (url: string) => EventSource
+
+const browserEventSource: EventSourceFactory = (url) => new EventSource(url)
+
+export type WatchHandlers = {
+  onEvent: (event: SseEvent) => void
+  /** 연결이 열렸다(처음·다시 연결 모두) */
+  onOpen?: () => void
+  /** 연결이 완전히 닫혔다. finished: 끝 이벤트를 받아 직접 닫음 / lost: 브라우저가 다시 연결을 포기함 */
+  onClosed: (reason: 'finished' | 'lost') => void
 }
 
-/**
- * 이벤트 스트림을 연결해 이벤트마다 onEvent를 부른다. 서버가 스트림을 닫으면 끝난다.
- * - after: 마지막으로 받은 이벤트 ID. 0이면 처음부터 받는다.
- * - 연결 전 오류(404·409 등)는 ApiError로 던진다. 도중에 끊기면 그냥 끝난다.
- */
-export async function readEvents(
-  runId: string,
-  options: { after: number; signal?: AbortSignal; onEvent: (event: SseEvent) => void },
-): Promise<void> {
-  const headers: Record<string, string> = { Accept: 'text/event-stream' }
-  if (options.after > 0) headers['Last-Event-ID'] = String(options.after)
-  let res: Response
-  try {
-    res = await fetch(eventsUrl(runId), { credentials: 'same-origin', headers, signal: options.signal })
-  } catch (cause) {
-    if (options.signal?.aborted) return
-    throw new ApiError(0, null, cause)
+/** 이벤트 연결을 연다. 돌려준 함수를 부르면 닫는다 (React useEffect 정리 함수에서 부른다). */
+export function watchRun(runId: string, handlers: WatchHandlers, open: EventSourceFactory = browserEventSource): () => void {
+  const source = open(eventsUrl(runId))
+  let closed = false
+  const close = (reason?: 'finished' | 'lost') => {
+    if (closed) return
+    closed = true
+    source.close()
+    if (reason) handlers.onClosed(reason)
   }
-  if (!res.ok) throw await ApiError.fromResponse(res)
-  if (!res.body) return
 
-  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
-  // fetch를 중단해도 읽기가 바로 끝나지 않는 환경이 있어(테스트의 mock 등) 읽기도 직접 끊는다
-  const stop = () => void reader.cancel().catch(() => {})
-  options.signal?.addEventListener('abort', stop, { once: true })
-  let buffer = ''
-  try {
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += value
-      const frames = buffer.split(/\r?\n\r?\n/)
-      buffer = frames.pop() ?? ''
-      for (const frame of frames) {
-        const event = parseFrame(frame)
-        if (event) options.onEvent(event)
+  source.addEventListener('open', () => handlers.onOpen?.())
+
+  for (const name of EVENT_NAMES) {
+    source.addEventListener(name, (raw: Event) => {
+      // 'error'는 서버가 보낸 error 이벤트(data 있음)와 브라우저의 연결 오류(data 없음)가 같은 이름으로 온다
+      if (!(raw instanceof MessageEvent) || typeof raw.data !== 'string') {
+        if (name === 'error' && source.readyState === CLOSED) close('lost')
+        return // 연결 중(CONNECTING)이면 브라우저가 다시 붙는다
       }
-    }
-  } catch (err) {
-    if (options.signal?.aborted) return
-    // 도중에 끊긴 연결은 실패가 아니다(docs/06: 연결 종료는 실행 취소가 아님). 부른 쪽이 다시 연결한다.
-    if (err instanceof TypeError || (err instanceof DOMException && err.name === 'AbortError')) return
-    throw err
-  } finally {
-    options.signal?.removeEventListener('abort', stop)
-    reader.releaseLock()
+      let data: SseEvent['data']
+      try {
+        data = JSON.parse(raw.data) as SseEvent['data']
+      } catch {
+        return // 모양이 깨진 이벤트는 버린다
+      }
+      handlers.onEvent({ id: Number(raw.lastEventId), event: name, data })
+      if (FINAL_EVENTS.has(name)) close('finished')
+    })
   }
+
+  return () => close()
 }

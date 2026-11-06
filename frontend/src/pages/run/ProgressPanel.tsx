@@ -78,10 +78,10 @@ function ProgressPanel({ run, events, connection, onChanged }: Props) {
             type="info"
             showIcon
             title="실행을 취소했습니다"
-            action={<Button onClick={() => navigate('/new')}>새로 시작</Button>}
+            action={<Button onClick={() => navigate('/')}>새 실행</Button>}
           />
         )}
-        {failure && <FailureNotice failure={failure} onRestart={() => navigate('/new')} />}
+        {failure && <FailureNotice failure={failure} onRestart={() => navigate('/')} />}
 
         {messages.length > 0 && (
           <section aria-label="진행 기록">

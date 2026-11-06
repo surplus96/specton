@@ -8,7 +8,7 @@ export type RunLive = {
   run: RunStatus | null
   events: SseEvent[]
   connection: Connection
-  /** 처음 상태 조회 실패(없는 실행 등). 화면 전체를 안내로 바꾼다. */
+  /** 상태 조회 실패(없는 실행 등). 화면 전체를 안내로 바꾼다. */
   loadError: unknown
   /** 취소처럼 화면에서 요청을 보낸 뒤 상태를 바로 다시 읽는다 */
   refresh: () => Promise<void>
@@ -21,6 +21,7 @@ export function useRunStatus(runId: string): RunLive {
   const [loadError, setLoadError] = useState<unknown>(null)
 
   useEffect(() => {
+    // 연결은 useEffect 안에서 열고, 정리 함수에서 닫는다 (강의 08)
     const controller = new AbortController()
     setRun(null)
     setEvents([])
@@ -30,7 +31,6 @@ export function useRunStatus(runId: string): RunLive {
       {
         onStatus: setRun,
         onEvent: (event) => setEvents((prev) => [...prev, event]),
-        onReset: () => setEvents([]),
         onConnection: setConnection,
       },
       { signal: controller.signal },

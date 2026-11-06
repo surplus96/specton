@@ -18,7 +18,7 @@ import {
 
 // UI-01 실행 시작 (docs/09-ui-flow.md): 파일 업로드, 팩 선택, 지원 형식·한도 안내.
 // - 파일·팩 오류는 해당 칸 아래에 보인다. 그 밖의 오류는 버튼 위 안내로 보인다.
-// - 실행 요청 중에는 버튼을 잠근다(중복 클릭 방지). 202를 받으면 /run/{id}로 간다.
+// - 실행 요청 중에는 버튼을 잠근다(중복 클릭 방지). 202를 받으면 실행 ID를 주소(/?run=<id>)에 넣는다.
 // 배치는 기본 부품을 세로로 쌓은 임시 모양이다. 디자인은 나중에 이 파일만 고친다.
 function UploadPage() {
   const navigate = useNavigate()
@@ -60,7 +60,7 @@ function UploadPage() {
     setFormError(null)
     try {
       const run = await createRun(file, pack)
-      navigate(`/run/${encodeURIComponent(run.run_id)}`)
+      navigate(`/?run=${encodeURIComponent(run.run_id)}`)
     } catch (err) {
       const { place, message } = placeError(err)
       if (place === 'file') setFileError(message)
@@ -79,7 +79,7 @@ function UploadPage() {
       <StageSteps current="UI-01" />
       <PageCard
         title="요구사항 문서 올리기"
-        subtitle="요구사항 정의서(.xlsx · .csv · .hwpx)를 올리면 기능 명세·ERD·DDL·RTM을 만듭니다."
+        subtitle="요구사항 정의서(.xlsx · .csv)를 올리면 기능 명세·ERD·DDL·RTM을 만듭니다."
       >
         <Form layout="vertical" onFinish={submit} disabled={submitting}>
           <Form.Item
@@ -103,7 +103,7 @@ function UploadPage() {
             >
               <Typography.Paragraph>파일을 끌어다 놓거나 눌러서 고르세요</Typography.Paragraph>
               <Typography.Text type="secondary">
-                HWP는 한글에서 HWPX로 저장해 올려 주세요. PDF는 지원하지 않습니다.
+                한글(HWP·HWPX)·PDF 문서는 엑셀이나 CSV로 저장해 올려 주세요.
               </Typography.Text>
             </Upload.Dragger>
           </Form.Item>

@@ -1,5 +1,5 @@
 import { Alert, Button, Flex, Spin, Typography } from 'antd'
-import { useNavigate, useParams } from 'react-router'
+import { useNavigate } from 'react-router'
 import { ApiError, errorMessage } from '../api/errors.ts'
 import StageSteps, { SCREENS } from '../layout/StageSteps.tsx'
 import PageCard from '../layout/PageCard.tsx'
@@ -7,11 +7,10 @@ import ProgressPanel from './run/ProgressPanel.tsx'
 import { screenFor } from './run/screens.ts'
 import { useRunStatus } from './run/useRunStatus.ts'
 
-// 실행 하나의 화면 (/run/:runId).
+// 실행 하나의 화면 (/?run=<runId>, App.tsx).
 // 상태를 조회하고 이벤트(SSE)로 따라가며, 상태에 맞는 화면(UI-02~07)을 고른다 (run/screens.ts).
 // 새로고침해도 상태 조회로 같은 화면에 돌아온다.
-function RunPage() {
-  const { runId = '' } = useParams()
+function RunPage({ runId }: { runId: string }) {
   const navigate = useNavigate()
   const { run, events, connection, loadError, refresh } = useRunStatus(runId)
 
@@ -23,7 +22,7 @@ function RunPage() {
           type={notFound ? 'warning' : 'error'}
           showIcon
           title={errorMessage(loadError)}
-          action={<Button onClick={() => navigate('/new')}>새로 시작</Button>}
+          action={<Button onClick={() => navigate('/')}>업로드로 돌아가기</Button>}
         />
       </PageCard>
     )
