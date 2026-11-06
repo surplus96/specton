@@ -103,7 +103,10 @@ def test_a01_sends_only_block_text_and_extra() -> None:
 def test_a01_skips_excluded_and_textless_blocks() -> None:
     """제외한 블록과 원문 문장이 없는 블록은 넣지 않고, 빠뜨렸다고 보지도 않는다 (#95)."""
     excluded = _block(4, "범위 밖 요구", "SFR-003").evolve(
-        extraction_status="review", user_decision="excluded", excluded_reason="2차 범위"
+        extraction_status="review",
+        notice="같은 요구사항 ID가 두 번 이상 나옴",
+        user_decision="excluded",
+        excluded_reason="2차 범위",
     )
     blank = SourceRequirement(
         document_id="doc-1", block_id="xlsx:요구사항:5", source_text=None,
