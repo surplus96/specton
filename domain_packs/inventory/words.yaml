@@ -1,3 +1,79 @@
-# 표준단어 사전 (inventory). 공통표준(common/words.yaml)에 없는 재고 전용 단어만 둔다.
-# "수불"은 공통표준 단어가 없어 재고+거래(INVT_DLNG)로 표준화하고 terms의 synonyms로만 남긴다.
-words: []
+# 표준단어 사전 (inventory). 공통표준에 없는 재고 전용 단어와, 정리(normalize)가 이름을 풀 때
+# 필요한데 어떤 용어의 구성 단어로도 쓰이지 않아 `common/words.yaml`(생성 파일)에 오르지 않는
+# 공통표준 단어를 둔다. 후자는 공통표준 CSV 값(약어·영문명·설명)을 그대로 옮긴 것이다.
+# 장부(BK)만 공통표준에 없다. 약어 BK는 공통표준 장부가액(BKVL = Book Value)의 앞부분을 따랐다
+# (LDGR은 공통표준 「대장」이 이미 쓴다). "수불"은 공통표준 단어가 없어 재고+거래(INVT_DLNG)로 표준화하고 terms의
+# synonyms로만 남긴다.
+words:
+- word: 기록
+  abbreviation: RCD
+  english: Record
+  definition: 記錄. 주로 후일에 남길 목적으로 어떤 사실을 적음 또는 그런 글
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 로트
+  abbreviation: LT
+  english: Lot
+  definition: LOT. 동일한 제조 조건하에서 제조되고 균일한 특성 및 품질을 갖는 완제품, 구성부품 및 원자재의 단위를 말한다
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 보관
+  abbreviation: KPNG
+  english: Keeping
+  definition: 保管. 물건을 맡아서 간직하고 관리함
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 실사
+  abbreviation: ACINSP
+  english: Actual Inspection
+  definition: 實査. 실제를 조사하거나 검사함
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 안전
+  abbreviation: SFTY
+  english: Safety
+  definition: 安全. 위험이 생기거나 사고가 날 염려가 없음. 또는 그런 상태
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 이력
+  abbreviation: HSTRY
+  english: History
+  definition: 履歷. 지금까지 거쳐 온 학업, 직업, 경험 등의 내력
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 입고
+  abbreviation: WRHS
+  english: Warehousing
+  definition: 入庫. 물건을 창고에 넣음
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 자재
+  abbreviation: MTRL
+  english: Materials
+  definition: 資材. 무엇을 만들기 위한 기본적인 재료
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 장부
+  abbreviation: BK
+  english: Book
+  definition: 帳簿. 금전이나 물품의 출납을 적는 책
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
