@@ -507,6 +507,53 @@ def test_findings_saved_before_final_review_block_approval(world: Callable[..., 
         w.answer(run_id, APPROVE)
 
 
+def test_normalization_manual_review_is_saved_and_blocks_approval_after_restart(
+    world: Callable[..., _World],
+) -> None:
+    """생성·리뷰 없이 저장한 정리 지적도 승인 검사와 체크포인트 재개에 사용한다 (#17)."""
+
+    def normalize(state: GraphState) -> Mapping[str, Any]:
+        return {
+            **_critical_rule(state),
+            "normalization_failed": True,
+            "requires_manual_review": True,
+        }
+
+    def forbidden(state: GraphState) -> Mapping[str, Any]:
+        pytest.fail("정리 실패 뒤 생성·LLM 검토·A09·내보내기가 실행됐습니다")
+
+    skipped = ("ddl", "erd", "rtm", "rules", "A05", "A06", "A07", "A08", "a09", "export")
+    nodes = {name: forbidden for name in skipped} | {"normalize": normalize}
+    w = world(nodes)
+    run_id = w.create()
+    w.runner.run_pending()
+    w.answer(run_id, REQUIREMENTS_OK)
+    w.runner.run_pending()
+
+    before = w.status(run_id)
+    assert before.status is RunState.AWAITING_REVIEW
+    assert before.revision == 0
+    assert not w.lease_is_live(run_id)
+    assert not set(skipped).intersection(w.visited)
+    assert "generating" not in w.status_stages(run_id)
+    with w.pool.connection() as conn:
+        view = get_view(conn, run_id, OWNER, "review")
+        events = events_after(conn, run_id, OWNER, 0)
+    assert [item["fingerprint"] for item in view.items] == ["fp-critical"]
+    assert events[-1].data.payload["hitl_reason"] == "manual_review"
+    assert events[-1].data.payload["failed_branches"] == []
+
+    w.runner.stop()
+    restarted = world(nodes)
+    with pytest.raises(BlockingFindingsError):
+        restarted.answer(run_id, APPROVE)
+    assert restarted.status(run_id) == before
+    restarted.answer(run_id, {"kind": "review", "decision": "hold", "feedback": "보류"})
+    restarted.runner.run_pending()
+    assert restarted.status(run_id).status is RunState.AWAITING_REVIEW
+    assert restarted.visited == []
+
+
 def test_approval_is_linked_to_the_saved_model_and_completes(
     world: Callable[..., _World],
 ) -> None:
