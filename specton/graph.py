@@ -512,7 +512,7 @@ def _apply(state: GraphState, decision: ReworkDecision, *, counted: bool = True)
     elif decision.action is ReworkAction.REWORK:
         design = state["design"]
         update["design"] = design.evolve(
-            revision=design.revision + 1, iteration=design.iteration + 1
+            revision=design.revision + 1, iteration=design.iteration + 1, normalized=None
         )
         update["rework_count"] = state.get("rework_count", 0) + (1 if counted else 0)
         update.update(normalization_failed=False, requires_manual_review=False, rule_findings=())
