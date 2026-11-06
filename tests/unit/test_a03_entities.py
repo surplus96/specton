@@ -693,8 +693,34 @@ def test_synonym_or_spacing_variant_of_a_pack_term_is_requested_again(name: str)
         _checked_with_synonyms().model_validate(data)
 
 
+@pytest.mark.parametrize("name", ["보관소 코드", "창고 코드"])
+def test_nfd_synonym_or_spacing_variant_is_requested_again(name: str) -> None:
+    """NFD로 저장된 동의어·띄어쓰기 변형도 NFC와 똑같이 재요청된다 (#141 리뷰)."""
+    nfd = unicodedata.normalize("NFD", name)
+    assert nfd != name
+    data = _output()
+    data["entities"][0]["attributes"][0]["name"] = nfd
+
+    with pytest.raises(
+        ValidationError, match=re.escape(f"정식 용어명으로 쓰세요: 창고.{nfd} → 창고코드")
+    ):
+        _checked_with_synonyms().model_validate(data)
+
+
 def test_official_term_name_passes_the_synonym_check() -> None:
     _checked_with_synonyms().model_validate(_output())
+
+
+def test_nfd_official_term_name_passes_and_is_type_checked() -> None:
+    """NFD 정식 용어명은 동의어로 보지 않고, 타입 대조는 그대로 한다."""
+    data = _output()
+    attribute = data["entities"][0]["attributes"][0]
+    attribute["name"] = unicodedata.normalize("NFD", "창고코드")
+    _checked_with_synonyms().model_validate(data)
+
+    attribute["length"] = (attribute.get("length") or 0) + 1
+    with pytest.raises(ValidationError, match="팩 용어와 타입·길이가 다릅니다"):
+        _checked_with_synonyms().model_validate(data)
 
 
 def test_pack_context_reads_synonyms_but_input_data_does_not_show_them() -> None:
@@ -720,3 +746,19 @@ def test_run_requests_again_when_a_synonym_is_used_and_accepts_the_official_term
     names = [a.name for e in result.output.entities for a in e.attributes]
     assert "창고코드" in names
     assert "보관소 코드" not in names
+
+
+def test_run_requests_again_when_an_nfd_synonym_is_used() -> None:
+    """NFD 동의어 응답도 재요청된다. 그대로 확정되면 모델 정리가 unresolved_name으로 실패한다."""
+    nfd = unicodedata.normalize("NFD", "보관소 코드")
+    data = _output()
+    data["entities"][0]["attributes"][0]["name"] = nfd
+    client, transport = stub_client(reply(_raw(data)), reply(_example_output()))
+
+    result = run(client, _a02_state(), _settings(), pack="inventory")
+
+    assert len(transport.sent) == 2
+    assert "정식 용어명으로 쓰세요" in transport.sent[1].messages[-1].content
+    names = [a.name for e in result.output.entities for a in e.attributes]
+    assert "창고코드" in names
+    assert nfd not in names

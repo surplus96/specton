@@ -11,6 +11,7 @@
 - 팩 타입은 strict 프로필로 읽는다 (프로필 확정 전).
 """
 
+import unicodedata
 from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Self
@@ -179,7 +180,7 @@ def _checked_against(
     속성 이름이 팩 용어의 동의어이거나 띄어쓰기만 다르면 정식 용어명으로 다시 요청한다.
     면제 사유는 팩이 인정하는 것만, 면제 조작은 그 사유에 나열된 것만 허용한다.
     """
-    by_term = {t.term: t for t in terms}
+    by_term = {_nfc(t.term): t for t in terms}
     official = _official_names(terms)
 
     class CheckedA03Output(A03Output):
@@ -217,7 +218,7 @@ def _checked_against(
                 f"{e.name}.{a.name} → {'/'.join(official[_compact(a.name)])}"
                 for e in self.entities
                 for a in e.attributes
-                if a.name not in by_term and _compact(a.name) in official
+                if _nfc(a.name) not in by_term and _compact(a.name) in official
             ]
             if renamed:
                 raise ValueError(
@@ -228,7 +229,7 @@ def _checked_against(
                 f"{e.name}.{a.name}"
                 for e in self.entities
                 for a in e.attributes
-                if a.name in by_term and not _same_type(a, by_term[a.name])
+                if _nfc(a.name) in by_term and not _same_type(a, by_term[_nfc(a.name)])
             ]
             if mismatched:
                 raise ValueError(f"팩 용어와 타입·길이가 다릅니다: {', '.join(mismatched)}")
@@ -237,9 +238,14 @@ def _checked_against(
     return CheckedA03Output
 
 
+def _nfc(name: str) -> str:
+    """한글 조합 방식 차이(NFC·NFD)를 맞춘다. ID 계산(`specton.ids.stable_id`)과 같은 기준이다."""
+    return unicodedata.normalize("NFC", name)
+
+
 def _compact(name: str) -> str:
-    """띄어쓰기 차이를 무시하고 비교하기 위한 이름."""
-    return "".join(name.split())
+    """조합 방식(NFC·NFD)과 띄어쓰기 차이를 무시하고 비교하기 위한 이름."""
+    return "".join(_nfc(name).split())
 
 
 def _official_names(terms: Sequence[PackTerm]) -> dict[str, tuple[str, ...]]:
