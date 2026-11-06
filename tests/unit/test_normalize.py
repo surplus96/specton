@@ -38,7 +38,8 @@ RULES = NamingRules(
     max_bytes=read_yaml(ROOT / "domain_packs/common/naming.yaml")["physical_name"]["max_bytes"],
     reserved_words=frozenset({"end", "order", "user"}),
 )
-# 자기참조 접두어는 naming.yaml이 빈칸이라 D4 제안값을 주입한다
+# 자기참조 접두어. 실제로는 naming.yaml column.self_reference_prefix에서 읽는다
+# (파일에서 읽는 경로는 test_codegen_naming.py). 여기서는 사전 조회만 보려고 값을 직접 넣는다.
 RULES_SELF = replace(RULES, self_reference_prefix="상위")
 
 
@@ -469,6 +470,8 @@ def test_d4_two_relationships_to_same_parent_key_conflict() -> None:
     result = _failed(_design([WAREHOUSE, RECEIPT], rels))
     assert _codes(result) == {(ProblemCode.FK_COLUMN_CONFLICT, "D4")}
     assert result.problems[0].target == "REL-02"
+    # 읽는 사람이 왜 멈췄는지 알 수 있게 이유를 함께 적는다 (#11 R2 요청)
+    assert "역할 구분이 필요합니다" in result.problems[0].detail
 
 
 def test_d5_unregistered_word_is_reported_as_pending() -> None:
@@ -588,9 +591,32 @@ def test_d13_identifying_child_already_holding_parent_key_conflicts() -> None:
 
 
 def test_d4_self_reference_without_naming_rule_fails() -> None:
-    """naming.yaml column.foreign_key가 빈칸이라 접두어가 주어지지 않으면 막는다."""
+    """naming.yaml column.self_reference_prefix가 빈칸(미정)이면 접두어가 없어 막는다."""
     design = _design([WAREHOUSE], [_rel("REL-01", "ENT-wh", "ENT-wh", optional=True)])
-    assert _codes(_failed(design)) == {(ProblemCode.NAMING_RULE_MISSING, "D4")}
+    result = _failed(design)
+    assert _codes(result) == {(ProblemCode.NAMING_RULE_MISSING, "D4")}
+    assert "column.self_reference_prefix" in result.problems[0].detail
+
+
+def test_d4_junction_name_parent_child_is_the_same_as_unset() -> None:
+    """table.junction_name의 parent_child는 미정일 때의 D4 제안 동작(부모 + 자식)과 같다."""
+    rel = _rel("REL-01", "ENT-wh", "ENT-sp", cardinality="N:M", optional=True)
+    design = _design([WAREHOUSE, SUPPLIER], [rel])
+    unset = _ok(design)
+    named = _ok(design, rules=replace(RULES, junction_name="parent_child"))
+    assert named == unset
+    (junction,) = (t for t in named.tables if t.relationship_id == "REL-01")
+    assert junction.physical_name == "wrhus_bcnc"
+
+
+def test_unknown_junction_name_rule_is_not_silently_ignored() -> None:
+    """load_naming_rules가 거르지만, 규칙 객체를 직접 만든 경우도 조용히 넘기지 않는다."""
+    rel = _rel("REL-01", "ENT-wh", "ENT-sp", cardinality="N:M", optional=True)
+    design = _design([WAREHOUSE, SUPPLIER], [rel])
+    with pytest.raises(ValueError, match="연결 테이블 이름 규칙"):
+        normalize(
+            design, pack=PACK, lexicon=LEXICON, rules=replace(RULES, junction_name="child_parent")
+        )
 
 
 def test_d5_self_reference_prefix_not_in_dictionary_is_pending() -> None:

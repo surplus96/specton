@@ -1,9 +1,9 @@
 """그래프 상태에서 모델 정리를 부르는 연결 함수 (#12 → #17). **그래프 연결은 R1이 한다.**
 
 R1의 설계 노드(#121 `agent_nodes.py`)처럼 상태에서 입력을 꺼내 정리하고 결과를 돌려준다.
-상태에 결과를 넣을 칸(`GraphState`·`DesignState`)이 아직 없어서, 여기서는 노드 모양
-(`{"칸 이름": 값}`)으로 감싸지 않는다. 그래프에 없는 칸 이름을 돌려주면 LangGraph가 오류 없이
-버리기 때문이다. 칸이 생기면 R1이 `lambda state: {"<칸>": normalize_from_state(state)}`처럼 감싼다.
+여기서는 성공·실패 결과만 반환한다. R1의 `specton/normalization_node.py`가 성공 모델을
+`DesignState.normalized`에 담고, 실패는 #15 변환 콜백을 통해 규칙 지적·사람 조치 표시로 감싼다.
+API 그래프 등록은 실제 변환 함수가 제공된 뒤 진행한다.
 
 - 팩은 실행기가 첫 상태에 넣은 `versions.pack_id`·`pack_version`을 쓴다 (#121). 둘 중 하나라도
   없으면 실행 오류(`ValueError`)로 멈춘다. 버전을 모르는 실행을 지금 팩 파일 버전으로

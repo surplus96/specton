@@ -36,6 +36,7 @@ from specton.persistence.errors import (
     InterruptStaleError,
     InvalidResponseError,
     InvalidTransitionError,
+    MissingSnapshotError,
     ResponseMismatchError,
     RevisionConflictError,
     RunNotFoundError,
@@ -456,7 +457,8 @@ def _check_requirements(
     """분석 확인 답이 멈출 때 저장한 요구사항과 맞는지 본다 (06 문서, #130).
 
     대조 기준은 실행기가 HITL 1에서 멈추며 저장한 그 revision 모델이다. 맞지 않으면 해당
-    `req_id`를 담아 InvalidResponseError. 답을 요구사항에 반영하는 일은 그래프가 한다 (#123).
+    `req_id`를 담아 InvalidResponseError. 그 모델이 없으면 사용자 잘못이 아니므로
+    MissingSnapshotError(내부 오류, #146). 답을 요구사항에 반영하는 일은 그래프가 한다 (#123).
     """
     row = conn.execute(
         """
@@ -465,7 +467,9 @@ def _check_requirements(
         """,
         (run_id, revision),
     ).fetchone()
-    req_ids = [r["id"] for r in row["requirements"] or ()] if row else []
+    if row is None or row["requirements"] is None:
+        raise MissingSnapshotError(f"{run_id} revision {revision}: 분석 확인 대조 모델이 없습니다")
+    req_ids = [r["id"] for r in row["requirements"]]
     try:
         answer.answers_for(req_ids)
     except ValueError as exc:
