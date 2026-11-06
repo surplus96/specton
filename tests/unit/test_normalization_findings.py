@@ -473,3 +473,22 @@ def test_only_many_to_many_relationships_count_as_junction_tables() -> None:
     unresolved = [f for f in review["findings"] if f.kind == "unresolved_name"]
     assert [_targets(f) for f in unresolved] == [[("entity", "REL-01")]]
     assert {p.code for p in problems} == {ProblemCode.UNRESOLVED_NAME}
+
+
+def test_parent_without_key_maps_to_a_relationship_rework() -> None:
+    """부모 PK 없음은 RULE-04 재작업이고 대상은 관계다.
+
+    지금 정리 코드는 PK 없는 부모를 먼저 막아(한 원인은 한 번만 보고) 이 문제가 실제로는 잘 나오지
+    않지만, 변환 규칙에 있으므로 직접 만든 문제로 확인한다.
+    """
+    review = map_normalization_failure(
+        _design_with_versions(),
+        (problem(ProblemCode.PARENT_WITHOUT_KEY, "REL-01", "부모 창고에 PK가 없음"),),
+        severities=SEVERITIES,
+    )
+    (finding,) = review["findings"]
+    assert (finding.rule_code, finding.kind) == ("RULE-04", "parent_without_key")
+    assert _targets(finding) == [("relationship", "REL-01")]
+    assert finding.target_stage is TargetStage.DATA_MODEL
+    assert finding.severity is Severity.CRITICAL
+    assert review["requires_manual_review"] is False
