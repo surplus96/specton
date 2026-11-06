@@ -239,6 +239,7 @@ ANSWERS = {"kind": "requirements", "answers": []}
 def test_resume_moves_on_and_rejects_a_second_answer(client: TestClient, pool: Pool) -> None:
     run_id = _create(client).json()["run_id"]
     interrupt_id = _wait(pool, run_id, "requirements", S.AWAITING_REQUIREMENTS)
+    _analysed(pool, run_id)
 
     first = _resume(client, run_id, interrupt_id, ANSWERS)
     second = _resume(client, run_id, interrupt_id, ANSWERS)
@@ -474,6 +475,39 @@ def test_requirements_answer_that_fits_moves_on(client: TestClient, pool: Pool) 
 
     assert response.status_code == 202
     assert response.json()["status"] == "designing"
+
+
+@pytest.mark.parametrize("answer", [_answers(), _answers(("REQ-01", "keep", []))])
+def test_missing_requirements_snapshot_is_internal_and_keeps_waiting(
+    settings: Settings, pool: Pool, answer: dict[str, Any]
+) -> None:
+    """저장 누락은 빈 답도 내부 오류로 처리하고 승인·상태·이벤트를 남기지 않는다 (#144)."""
+    with TestClient(create_app(settings, pool), raise_server_exceptions=False) as client:
+        run_id = _create(client).json()["run_id"]
+        interrupt_id = _wait(pool, run_id, "requirements", S.AWAITING_REQUIREMENTS)
+        with pool.connection() as conn:
+            before = runs.get_run(conn, UUID(run_id), _owner(client))
+            before_events = events_after(conn, UUID(run_id), _owner(client), 0)
+
+        response = _resume(client, run_id, interrupt_id, answer)
+
+        assert _error(response) == (500, "INTERNAL")
+        assert response.json() == {
+            "code": "INTERNAL",
+            "message": "서버 오류입니다.",
+            "run_id": run_id,
+            "retryable": True,
+        }
+        with pool.connection() as conn:
+            assert runs.get_run(conn, UUID(run_id), _owner(client)) == before
+            assert events_after(conn, UUID(run_id), _owner(client), 0) == before_events
+            assert (
+                conn.execute("SELECT 1 FROM approval WHERE run_id = %s", (run_id,)).fetchone()
+                is None
+            )
+
+        _analysed(pool, run_id, "REQ-01")
+        assert _resume(client, run_id, interrupt_id, answer).status_code == 202
 
 
 def test_review_hold_keeps_waiting_and_approve_is_blocked_by_critical(

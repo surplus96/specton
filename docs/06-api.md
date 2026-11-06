@@ -21,7 +21,7 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 | `GET /runs/{id}` | — | 200 상태·revision·진행·interrupt·요약 오류 | 404 없음/접근 불가 |
 | `GET /runs/{id}/events` | `Last-Event-ID` 선택 | 200 SSE 스트림 | 404, 409 이벤트 재조회 필요 |
 | `GET /runs/{id}/view` | `section`, `revision` 선택 | 200 화면용 JSON (추출 블록·요구사항·설계 모델·지적·산출물 목록) | 404, 409 현재보다 큰 revision |
-| `POST /runs/{id}/resume` | `interrupt_id`, `expected_revision`, `response` | 202 재개 상태 | 409 오래된/이미 응답한 interrupt, 422 잘못된 답변 |
+| `POST /runs/{id}/resume` | `interrupt_id`, `expected_revision`, `response` | 202 재개 상태 | 409 오래된/이미 응답한 interrupt, 422 잘못된 답변, 500 분석 확인 스냅샷 누락 |
 | `POST /runs/{id}/cancel` | `expected_revision` | 202 취소 요청 상태 (`queued`·사람 확인 대기 중이면 바로 `cancelled`, ADR-0012) | 409 이미 완료/충돌 |
 | `GET /runs/{id}/artifacts/{kind}` | `file_format`, `revision` | 200 파일 | 404, 409 미생성(PDF는 승인본만), 422 형식 불가 |
 | `GET /health` | — | 200 기동 상태 (구현됨) | — |
@@ -64,6 +64,7 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
   - 같은 `req_id`에 두 번 답한다
   - 문장 수가 맞지 않는다: `keep` 0개, `edit` 1개, `split` 2개 이상
   - 빈 문장이 있다 (공백만 있는 문장도 빈 것으로 본다)
+- 분석 확인에서 현재 revision의 `model_snapshot` 행이 없으면 사용자 답변 오류가 아닌 500 `INTERNAL`이다. 빈 답변도 같으며, approval·실행 상태·이벤트는 바꾸지 않고 같은 확인 요청으로 계속 기다린다. 스냅샷을 복구한 뒤 같은 답변을 다시 보낼 수 있다 (#144).
 - 422로 거절한 답은 기록하지 않는다. 실행은 같은 확인 요청으로 계속 기다리고, 사용자는 고쳐서 다시 보낼 수 있다.
 - 동시에 보낸 같은 응답은 하나만 적용한다. 중복·오래된 응답은 409를 돌려주며 두 번째 실행을 만들지 않는다. 클라이언트는 상태를 다시 조회한다.
 - approve가 아니면 산출물을 완료본으로 승격하지 않는다.

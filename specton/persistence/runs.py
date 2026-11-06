@@ -465,7 +465,9 @@ def _check_requirements(
         """,
         (run_id, revision),
     ).fetchone()
-    req_ids = [r["id"] for r in row["requirements"] or ()] if row else []
+    if row is None:
+        raise RuntimeError(f"run {run_id} revision {revision}: 분석 확인 모델 스냅샷이 없습니다")
+    req_ids = [r["id"] for r in row["requirements"] or ()]
     try:
         answer.answers_for(req_ids)
     except ValueError as exc:
