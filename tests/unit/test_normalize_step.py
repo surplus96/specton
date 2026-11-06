@@ -4,9 +4,12 @@ R1이 그래프 노드로 감쌀 때 받게 되는 값(성공·실패)을 고정
 용어(설비코드·고장접수번호 등)로 만든 작은 설계 상태다.
 """
 
+import shutil
+from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 from specton.codegen.model import Normalized, NormalizeFailed, ProblemCode
@@ -145,6 +148,48 @@ def test_recorded_pack_version_different_from_pack_files_is_not_normalized() -> 
     assert [(p.code, p.target) for p in result.problems] == [
         (ProblemCode.PACK_MISMATCH, "versions.pack_version")
     ]
+
+
+def _self_reference(design: DesignState) -> DesignState:
+    """설비의 상위 설비 관계(자기참조, 선택)를 더한 설계 상태."""
+    rel = Relationship.model_validate(
+        {
+            "id": "REL-02",
+            "parent": "ENT-eq",
+            "child": "ENT-eq",
+            "cardinality": "1:N",
+            "optional": True,
+            "rationale": '"한 접수는 한 설비에 대한 것이다." 상위 설비가 없는 설비도 있다.',
+            "req_ids": ["REQ-01"],
+        }
+    )
+    return design.model_copy(update={"relationships": [*design.relationships, rel]})
+
+
+def test_self_reference_prefix_is_read_from_pack_files_on_the_graph_path(tmp_path: Path) -> None:
+    """그래프 경로도 접두어를 naming.yaml column.self_reference_prefix에서 읽는다 (#11).
+
+    값이 빈칸(미정)이면 막히고, 값이 있으면 up_eqpm_cd가 생긴다. 실제 팩 값과 상관없이
+    복사본에 값을 넣어 본다.
+    """
+    design = _self_reference(_design())
+    for pack in ("common", PACK):
+        shutil.copytree(DEFAULT_PACK_ROOT / pack, tmp_path / pack)
+    path = tmp_path / "common/naming.yaml"
+    naming = read_yaml(path)
+
+    naming["column"]["self_reference_prefix"] = None
+    path.write_text(yaml.safe_dump(naming, allow_unicode=True), encoding="utf-8")
+    blocked = normalize_from_state({"design": design}, root=tmp_path)
+    assert isinstance(blocked, NormalizeFailed)
+    assert [p.code for p in blocked.problems] == [ProblemCode.NAMING_RULE_MISSING]
+
+    naming["column"]["self_reference_prefix"] = "상위"
+    path.write_text(yaml.safe_dump(naming, allow_unicode=True), encoding="utf-8")
+    result = normalize_from_state({"design": design}, root=tmp_path)
+    assert isinstance(result, Normalized), result
+    equipment = next(t for t in result.model.tables if t.entity_id == "ENT-eq")
+    assert [c.physical_name for c in equipment.columns] == ["eqpm_cd", "up_eqpm_cd"]
 
 
 def test_state_without_design_state_is_rejected() -> None:
