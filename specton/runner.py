@@ -17,6 +17,7 @@ import logging
 import os
 import socket
 import threading
+from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from uuid import UUID, uuid4
@@ -36,7 +37,13 @@ from specton.contracts import (
     RunStatus,
 )
 from specton.contracts import SseEventType as E
-from specton.graph import DocumentRef, ExtractionFailedError, GraphState, initial_state
+from specton.graph import (
+    DocumentRef,
+    ExtractionFailedError,
+    GraphState,
+    RunNote,
+    initial_state,
+)
 from specton.llm.errors import LLMError
 from specton.persistence import lease, runs, snapshots
 from specton.persistence.db import Pool
@@ -219,11 +226,11 @@ class _Job:
             if self.status is S.CANCEL_REQUESTED:
                 raise _Cancelled
             start = self._start_input()
-            for _ in graph.stream(start, self.config, stream_mode="updates", durability="sync"):
+            for chunk in graph.stream(start, self.config, stream_mode="updates", durability="sync"):
                 self._at_boundary()
                 snapshot = graph.get_state(self.config)
                 if not snapshot.interrupts:
-                    self._save(snapshot)
+                    self._save(snapshot, _notes(chunk))
                 if self.runner.stopping:
                     raise _Stop  # 서버 종료: 끝난 노드까지 저장하고 멈춘다
             self._settle(graph.get_state(self.config))
@@ -285,11 +292,16 @@ class _Job:
         else:
             self._save(snapshot)
 
-    def _save(self, snapshot: StateSnapshot) -> None:
+    def _save(self, snapshot: StateSnapshot, notes: Sequence[RunNote] = ()) -> None:
+        """노드 하나가 끝난 뒤의 저장. 그 노드가 남긴 안내(`notes`)는 status 이벤트로 기록한다."""
         design: DesignState = snapshot.values["design"]
         if design.status in WAITING_STATES:
             return  # 대기 상태는 멈출 때 interrupt와 함께 저장한다
         events = self._status_events(design.status)
+        events += [
+            NewEvent(E.STATUS, n["message"], stage=design.status.value, payload=n["payload"])
+            for n in notes
+        ]
         if design.status is S.COMPLETED:
             events.append(NewEvent(E.COMPLETED, "설계를 완료했습니다", stage=design.status.value))
         self._record(_checkpoint_id(snapshot), design, events=events)
@@ -359,13 +371,18 @@ class _Job:
     def _fail(self, exc: Exception) -> None:
         logger.error("run %s 실패", self.run_id, exc_info=exc)
         code = _error_code(exc)
+        # 문서를 읽지 못했으면 파서가 만든 안내 두 문장을 쓴다: message는 짧은 안내, detail은
+        # 「자세히 보기」(#19). 다른 실패는 내부 내용을 숨기고 코드별 고정 문구를 쓴다.
+        extraction = exc if isinstance(exc, ExtractionFailedError) else None
         error = Error(
             code=code.value,
-            message=_ERROR_MESSAGES[code],
+            message=extraction.notice if extraction else _ERROR_MESSAGES[code],
             run_id=str(self.run_id),
             retryable=code in _RETRYABLE,
         )
-        payload = {"code": code.value, "retryable": error.retryable}
+        payload: dict[str, Any] = {"code": code.value, "retryable": error.retryable}
+        if extraction and extraction.detail:
+            payload["detail"] = extraction.detail
         event = NewEvent(E.ERROR, error.message, stage="failed", payload=payload)
         self._end(S.FAILED, event, error)
 
@@ -392,6 +409,15 @@ class _Job:
     def _saved_checkpoint(self) -> str | None:
         with self.runner.pool.connection() as conn, conn.transaction():
             return lease.check_holder(conn, self.run_id, self.runner.holder)
+
+
+def _notes(chunk: Mapping[str, Any]) -> tuple[RunNote, ...]:
+    """stream 한 번(`updates`)에 끝난 노드들이 남긴 안내.
+
+    상태에 남은 이전 안내는 다시 쓰지 않는다.
+    """
+    updates = [u for u in chunk.values() if isinstance(u, Mapping)]
+    return tuple(n for u in updates for n in u.get("notes", ()))
 
 
 def _error_code(exc: Exception) -> ErrorCode:
