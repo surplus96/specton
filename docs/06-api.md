@@ -88,6 +88,7 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 - `event`: `status` / `interrupt` / `artifact` / `error` / `completed` / `cancelled`
 - `data`: `run_id`, `revision`, `stage`, `message`, 필요한 `payload`
 - `interrupt` 이벤트 `payload`: `interrupt_id`, `kind`. 최종 검토(`review`)는 `failed_branches`(실패하거나 빠진 리뷰 관점, 비어 있지 않으면 불완전 검토, TC-F14)와 자동 루프를 멈춘 사유 `hitl_reason`(있을 때)을 더한다.
+- 정리 문제에 사람의 조치가 필요하면 `hitl_reason=manual_review`로 알린다. 이때 생성과 LLM 검토를 건너뛰며, 실행하지 않은 리뷰 관점은 `failed_branches`에 넣지 않는다 (#17·#15).
 - `error` 이벤트 `payload`: `code`, `retryable`. `EXTRACTION_FAILED`면 `detail`(「자세히 보기」에 펼칠 문장)도 넣는다.
 - 엑셀에서 요구사항 표가 없거나 빈 표인 시트는 `stage: parsing`인 `status` 이벤트로 안내한다. `message`는 「요구사항을 읽지 않은 시트가 있습니다」, `payload`는 `info: "skipped_sheets"`, `document_id`, `sheets`(시트 이름 목록)다. 문서마다 한 번 기록하며 이 안내만으로 추출 확인을 멈추지 않는다 (docs/09 UI-02).
 - 추출 확인 답(`confirmed=true`)을 수락하면 「답변을 받아 다시 진행합니다」 `status` 이벤트 `payload`에 `kind: "extraction"`, `interrupt_id`, `confirmed_block_ids`를 넣는다. `confirmed_block_ids`는 제외하지 않은 `review` 블록 ID를 정렬한 목록이다(원문 문장이 없는 블록 포함, 없으면 `[]`). `pass`·`fail`·제외한 블록은 넣지 않는다. 이 이벤트는 `approval`·상태 전이와 같은 트랜잭션에서 API가 저장하고, 중단·422·409 응답에는 남기지 않는다 (#95 결론, #130).
