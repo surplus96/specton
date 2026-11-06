@@ -88,6 +88,15 @@ flowchart TD
 - 검토 관점 4개는 같은 버전 문맥으로 병렬 또는 묶음 실행한다 (ADR-0008, [04 에이전트](04-agents.md)).
 - 파서·API·생성기 장애는 실행 오류로 분리한다. 설계 재작업 루프에 넣지 않는다.
 
+### 모델 정리 실패 경로 (#17·#15)
+
+- `normalize` 노드가 `normalization_failed=true`, `rule_findings`를 반환하면 DDL·ERD·RTM 생성과 LLM 검토를 건너뛴다. #15에서 변환한 현재 규칙 지적을 설계 상태에 담아 기존 재작업 판단으로 보낸다. 실행하지 않은 리뷰 관점은 실패한 리뷰로 표시하지 않는다.
+- `requires_manual_review=true`이면 자동 재작업 가능 지적이 함께 있어도 A09를 호출하지 않고 바로 HITL 2로 간다. 사유는 `manual_review`다. 자동 수정 가능한 실패는 기존 `target_stage`·반복 지적·3회 상한 규칙을 따른다.
+- 정리 실패에는 최소 한 건의 `critical` 규칙 지적이 필요하다. 지적이 없는 실패 반환은 실행 오류로 처리하며, 정리 함수에서 발생한 예외도 실행 오류로 전파한다. 저장된 차단 지적은 resume API의 승인을 막고, 그래프 직접 재개에서도 정리 실패의 내보내기를 막는다.
+- 재작업을 시작하면 이전 정리 실패 표시·사람 조치 표시·규칙 지적을 비워 새 반복에서 다시 판단한다. 사람의 명시적인 수정 요청은 자동 재작업 횟수로 세지 않는다.
+
+이 경로는 주입한 노드로 연결·저장·재개를 검증한다. 실제 정리 호출과 성공 결과 저장은 #143의 `DesignState.normalized`, #15의 문제 → 규칙 지적 변환을 반영한 노드에서 연결한다. 현재 API의 생성·정리·규칙 노드는 아직 stub이다.
+
 ### 재작업 복귀 단계
 
 | `target_stage` | 복귀 대상 | 다시 실행하는 범위 |
@@ -116,7 +125,7 @@ stateDiagram-v2
     awaiting_requirements --> designing
     designing --> generating
     designing --> analysing: 수정 요청이 요구사항 단계로
-    designing --> awaiting_review: 수정 요청 단계 판단 불가
+    designing --> awaiting_review: 수정 요청 단계 판단 불가·정리 문제 사람 확인
     generating --> reviewing
     reviewing --> designing: 재작업
     reviewing --> analysing: 요구사항 단계 재작업
@@ -163,6 +172,7 @@ stateDiagram-v2
 | `specton/llm/` | 공통 LLM client·재요청·프롬프트 버전 |
 | `specton/nodes/` | 에이전트 노드 A01~A09 (얇은 어댑터) |
 | `specton/codegen/` | ID·명명·N:M·FK, Mermaid·DDL·RTM 생성 (LLM import 금지) |
+| `specton/ids.py` | 내부 ID 계산 `stable_id` (A03 엔티티·속성 ID와 모델 정리 파생 ID가 함께 사용, 다른 specton 모듈 import 없음) |
 | `specton/review/` | 규칙 검사·설정형 리뷰어·근거 병합 |
 | `specton/validate/` | DDL 파싱·격리 DB 실행 (LLM import 금지) |
 | `specton/persistence/` | 플랫폼 저장·checkpointer |

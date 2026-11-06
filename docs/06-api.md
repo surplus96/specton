@@ -21,7 +21,7 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 | `GET /runs/{id}` | — | 200 상태·revision·진행·interrupt·요약 오류 | 404 없음/접근 불가 |
 | `GET /runs/{id}/events` | `Last-Event-ID` 선택 | 200 SSE 스트림 | 404, 409 이벤트 재조회 필요 |
 | `GET /runs/{id}/view` | `section`, `revision` 선택 | 200 화면용 JSON (추출 블록·요구사항·설계 모델·지적·산출물 목록) | 404, 409 현재보다 큰 revision |
-| `POST /runs/{id}/resume` | `interrupt_id`, `expected_revision`, `response` | 202 재개 상태 | 409 오래된/이미 응답한 interrupt, 422 잘못된 답변 |
+| `POST /runs/{id}/resume` | `interrupt_id`, `expected_revision`, `response` | 202 재개 상태 | 409 오래된/이미 응답한 interrupt, 422 잘못된 답변, 500 분석 확인 모델 누락 |
 | `POST /runs/{id}/cancel` | `expected_revision` | 202 취소 요청 상태 (`queued`·사람 확인 대기 중이면 바로 `cancelled`, ADR-0012) | 409 이미 완료/충돌 |
 | `GET /runs/{id}/artifacts/{kind}` | `file_format`, `revision` | 200 파일 | 404, 409 미생성(PDF는 승인본만), 422 형식 불가 |
 | `GET /health` | — | 200 기동 상태 (구현됨) | — |
@@ -59,6 +59,13 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
   - 없는 `block_id`, 또는 `pass` 블록을 제외한다
   - `review` 블록을 제외하면서 사유가 비었다 (공백만 있는 사유도 빈 것으로 본다)
   - 같은 `block_id`를 두 번 제외한다
+- `requirements` 응답이 아래에 해당하면 422 `INVALID_RESPONSE`다. 메시지 앞에 해당 `req_id`를 넣는다. 대조 기준은 실행기가 분석 확인에서 멈추며 저장한 그 revision 모델(`model_snapshot`)이다 (#130).
+  - 없는 `req_id`
+  - 같은 `req_id`에 두 번 답한다
+  - 문장 수가 맞지 않는다: `keep` 0개, `edit` 1개, `split` 2개 이상
+  - 빈 문장이 있다 (공백만 있는 문장도 빈 것으로 본다)
+- 422로 거절한 답은 기록하지 않는다. 실행은 같은 확인 요청으로 계속 기다리고, 사용자는 고쳐서 다시 보낼 수 있다.
+- 분석 확인에서 현재 revision의 `model_snapshot` 행이나 그 안의 `requirements` 필드가 없거나 null이면 500 `INTERNAL`이다. 빈 답변도 같으며, approval·실행 상태·이벤트는 바꾸지 않고 같은 확인 요청으로 계속 기다린다. 모델을 복구하면 같은 답변을 다시 보낼 수 있다. `requirements: []`가 저장된 경우는 모델 누락과 구분하여 빈 답변을 수락한다 (#144·#146).
 - 동시에 보낸 같은 응답은 하나만 적용한다. 중복·오래된 응답은 409를 돌려주며 두 번째 실행을 만들지 않는다. 클라이언트는 상태를 다시 조회한다.
 - approve가 아니면 산출물을 완료본으로 승격하지 않는다.
 
@@ -82,8 +89,10 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 - `event`: `status` / `interrupt` / `artifact` / `error` / `completed` / `cancelled`
 - `data`: `run_id`, `revision`, `stage`, `message`, 필요한 `payload`
 - `interrupt` 이벤트 `payload`: `interrupt_id`, `kind`. 최종 검토(`review`)는 `failed_branches`(실패하거나 빠진 리뷰 관점, 비어 있지 않으면 불완전 검토, TC-F14)와 자동 루프를 멈춘 사유 `hitl_reason`(있을 때)을 더한다.
+- 정리 문제에 사람의 조치가 필요하면 `hitl_reason=manual_review`로 알린다. 이때 생성과 LLM 검토를 건너뛰며, 실행하지 않은 리뷰 관점은 `failed_branches`에 넣지 않는다 (#17·#15).
 - `error` 이벤트 `payload`: `code`, `retryable`. `EXTRACTION_FAILED`면 `detail`(「자세히 보기」에 펼칠 문장)도 넣는다.
 - 엑셀에서 요구사항 표가 없거나 빈 표인 시트는 `stage: parsing`인 `status` 이벤트로 안내한다. `message`는 「요구사항을 읽지 않은 시트가 있습니다」, `payload`는 `info: "skipped_sheets"`, `document_id`, `sheets`(시트 이름 목록)다. 문서마다 한 번 기록하며 이 안내만으로 추출 확인을 멈추지 않는다 (docs/09 UI-02).
+- 추출 확인 답(`confirmed=true`)을 수락하면 「답변을 받아 다시 진행합니다」 `status` 이벤트 `payload`에 `kind: "extraction"`, `interrupt_id`, `confirmed_block_ids`를 넣는다. `confirmed_block_ids`는 제외하지 않은 `review` 블록 ID를 정렬한 목록이다(원문 문장이 없는 블록 포함, 없으면 `[]`). `pass`·`fail`·제외한 블록은 넣지 않는다. 이 이벤트는 `approval`·상태 전이와 같은 트랜잭션에서 API가 저장하고, 중단·422·409 응답에는 남기지 않는다 (#95 결론, #130).
 - 추출 확인 답을 반영할 때, 제외한 원문의 `source_id`가 남은 원문의 「관련 요구사항」에 나오면 `status` 이벤트로 경고를 남긴다. `payload`는 `warning: "excluded_related"`, `block_id`, `source_id`, `related_block_ids`다. 제외는 막지 않는다 (ADR-0015 결정 5).
 - 분석 확인(HITL 1)에서 멈추지 않으면 `analysing` 다음 `status` 이벤트가 `stage: designing`이고 `message`는 「확인할 항목이 없어 분석 확인을 생략했습니다」다. UI-04는 이 전환으로 「분석 확인 생략」을 표시한다 (ADR-0015).
 - 원문 전체와 비밀값은 넣지 않는다. 연결 종료는 실행 취소가 아니다.

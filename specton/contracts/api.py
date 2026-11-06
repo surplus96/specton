@@ -4,6 +4,7 @@
 (tests/unit/test_contracts_api.py).
 """
 
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Any, Literal
@@ -135,15 +136,41 @@ class RequirementAnswer(Contract):
     texts: tuple[str, ...]
 
 
+# 행동별 문장 수 (최소, 최대). 최대가 None이면 제한이 없다
+_TEXT_COUNT: Mapping[str, tuple[int, int | None]] = {
+    "keep": (0, 0),
+    "edit": (1, 1),
+    "split": (2, None),
+}
+
+
 class RequirementsResponse(Contract):
     """분석 확인(HITL 1) 응답. 답이 없는 요구사항은 keep으로 본다.
 
-    없는 ID·같은 ID 두 번·문장 수가 맞지 않는 답은 그래프가 반영하지 않고 실행을 `INTERNAL`로
-    끝낸다 (#123). resume API의 422 검사는 아직 없다.
+    없는 ID·같은 ID 두 번·문장 수가 맞지 않거나 빈 문장이 있는 답은 resume API가 422로
+    거절한다 (#130). 그래프도 같은 검사(`answers_for`)로 한 번 더 막는다 (#123).
     """
 
     kind: Literal["requirements"]
     answers: tuple[RequirementAnswer, ...]
+
+    def answers_for(self, req_ids: Iterable[str]) -> dict[str, RequirementAnswer]:
+        """요구사항 ID별 답. 맞지 않는 답은 메시지 앞에 `req_id`를 넣어 ValueError."""
+        known = set(req_ids)
+        answers: dict[str, RequirementAnswer] = {}
+        for answer in self.answers:
+            req_id = answer.req_id
+            if req_id not in known:
+                raise ValueError(f"{req_id}: 없는 요구사항에 대한 답입니다")
+            if req_id in answers:
+                raise ValueError(f"{req_id}: 같은 요구사항에 답이 두 번 있습니다")
+            low, high = _TEXT_COUNT[answer.action]
+            if len(answer.texts) < low or (high is not None and len(answer.texts) > high):
+                raise ValueError(f"{req_id}: {answer.action} 답의 문장 수가 맞지 않습니다")
+            if not all(answer.texts):  # 공백은 계약이 지우므로 공백만 있는 문장도 빈 문장이다
+                raise ValueError(f"{req_id}: 빈 문장이 있습니다")
+            answers[req_id] = answer
+        return answers
 
 
 class ReviewResponse(Contract):

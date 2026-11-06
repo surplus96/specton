@@ -21,8 +21,6 @@
 이 모듈은 LLM client를 import하지 않는다.
 """
 
-import hashlib
-import unicodedata
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
@@ -43,8 +41,8 @@ from specton.codegen.model import (
 from specton.codegen.naming import Lexicon, NamingRules, check_name, physical_name, unresolved
 from specton.contracts import DesignState, Entity, Relationship, find_trace_issues
 from specton.contracts.base import Cardinality, SqlType
+from specton.ids import stable_id
 
-_ID_HEX_LENGTH = 16  # A03 ID와 같은 길이 (specton/nodes/a03_entities.py)
 _TIME_TYPES = frozenset({SqlType.TIME, SqlType.TIMESTAMP, SqlType.TIMESTAMPTZ})
 _FK_COPIED = ("data_type", "length", "precision", "scale", "time_precision", "domain")
 _Bad = Callable[[str, str], None]  # check_output의 문제 기록 함수
@@ -656,16 +654,6 @@ def _id_order(object_id: str) -> tuple[str, int, str]:
     """`REL-9` < `REL-10`처럼 끝 번호를 숫자로 비교하는 정렬 키."""
     head, _, tail = object_id.rpartition("-")
     return (head, int(tail), "") if tail.isdigit() else (object_id, -1, object_id)
-
-
-def stable_id(prefix: str, *parts: str) -> str:
-    """실행이 달라도 같은 값이 나오는 ID (A03 `_stable_id`와 같은 계산, D1 제안).
-
-    `codegen/`은 노드 모듈(LLM client를 import함)을 가져올 수 없어 같은 계산을 따로 둔다.
-    """
-    key = "\x1f".join(unicodedata.normalize("NFC", p) for p in parts)
-    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:_ID_HEX_LENGTH]
-    return f"{prefix}-{digest}"
 
 
 def _req_problems(target: str, ids: Sequence[str], known: frozenset[str]) -> Iterator[Problem]:

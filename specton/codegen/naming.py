@@ -128,7 +128,7 @@ class PackLexicon:
 
 
 def _nfc(name: str) -> str:
-    """한글 조합 방식 차이(NFC·NFD)를 맞춘다. A03 `_stable_id`와 같은 기준이다."""
+    """한글 조합 방식 차이(NFC·NFD)를 맞춘다. ID 계산(`specton.ids.stable_id`)과 같은 기준이다."""
     return unicodedata.normalize("NFC", name)
 
 

@@ -33,8 +33,8 @@ from specton.contracts import (
     RequirementsResponse,
     RunState,
 )
-from specton.contracts.api import RequirementAnswer
 from specton.contracts.base import ExtractionStatus, TargetStage, UserDecision
+from specton.contracts.findings import FindingSource, Severity
 from specton.contracts.requirements import SourceRequirement
 from specton.review.merge import merge_review
 from specton.review.rework import (
@@ -125,6 +125,8 @@ class GraphState(TypedDict, total=False):
     ]  # 방금 끝난 노드가 남긴 안내. 실행기는 노드 결과(update)에서만 읽는다
     branches: Annotated[dict[str, BranchResult], _merge_branches]
     rule_findings: tuple[Finding, ...]  # 규칙 검사(#15) 결과
+    normalization_failed: bool  # 정리 실패이면 생성·LLM 검토를 건너뛴다
+    requires_manual_review: bool  # 사전·명명 규칙 등 자동 수정으로 해결할 수 없는 문제
     rework_count: int  # 자동 재작업 횟수 (사람의 수정 요청은 세지 않는다)
     fingerprints: tuple[str, ...]  # 지난 반복의 지적 지문
     action: ReworkAction | None  # 재작업 판단 결과
@@ -149,6 +151,8 @@ def initial_state(design: DesignState, documents: tuple[DocumentRef, ...] = ()) 
         documents=documents,
         branches={},
         rule_findings=(),
+        normalization_failed=False,
+        requires_manual_review=False,
         rework_count=0,
         fingerprints=(),
     )
@@ -179,6 +183,7 @@ def build_graph(
     _add(g, "hitl_requirements", _ask_requirements)
     _add(g, "generate", _with_status(_noop, RunState.GENERATING))
     _add(g, "merge", _merge)
+    _add(g, "normalization_failure", _normalization_failure)
     _add(g, "route", _route(limit))
     _add(g, "route_router", _route_router)
     _add(g, "wait_review", _waiting(RunState.AWAITING_REVIEW))
@@ -189,7 +194,9 @@ def build_graph(
     _chain(g, "wait_extraction", "hitl_extraction", "a01")
     g.add_conditional_edges("a01", _next_after_analysis)
     g.add_edge("wait_requirements", "hitl_requirements")
-    _chain(g, "hitl_requirements", "a02", "a03", "a04", "normalize", "generate")
+    _chain(g, "hitl_requirements", "a02", "a03", "a04", "normalize")
+    g.add_conditional_edges("normalize", _next_after_normalization)
+    g.add_edge("normalization_failure", "route")
     for name in GENERATORS:
         g.add_edge("generate", name)
     g.add_edge(list(GENERATORS), "rules")
@@ -220,6 +227,27 @@ def _chain(g: StateGraph[GraphState], first: str | list[str], *rest: str) -> Non
 
 def _noop(state: GraphState) -> Mapping[str, Any]:
     return {}
+
+
+def _next_after_normalization(state: GraphState) -> str:
+    return "normalization_failure" if state.get("normalization_failed") else "generate"
+
+
+def _normalization_failure(state: GraphState) -> dict[str, Any]:
+    """#15가 변환한 규칙 지적만 사용한다. 실행하지 않은 리뷰 가지를 실패로 만들지 않는다.
+
+    문제 → Finding 변환과 실행 오류 구분은 #15의 책임이다. 차단 지적이 없는 실패는 잘못된
+    노드 반환값이므로 실행 오류로 멈춘다. API 승인도 저장된 critical 지적으로 차단된다.
+    """
+    findings = state.get("rule_findings", ())
+    if not any(
+        f.source is FindingSource.RULE and f.severity is Severity.CRITICAL for f in findings
+    ):
+        raise ValueError("정리 실패에는 차단 규칙 지적이 필요합니다")
+    return {
+        "design": state["design"].evolve(findings=findings, branch_results={}),
+        "failed_branches": (),
+    }
 
 
 def _stub_nodes() -> dict[str, Node]:
@@ -370,7 +398,7 @@ def _answered(
       부모 값을 쓰고, `parent_id`는 A01 분할처럼 비운다(원문으로 잇는다).
       경고 기록은 원래 ID에 남긴다.
     """
-    answers = _answers_by_id(requirements, response)
+    answers = response.answers_for(r.id for r in requirements)
     next_number = max((_number(r.id) for r in requirements), default=0) + 1
     result: list[Requirement] = []
     for req in requirements:
@@ -389,31 +417,6 @@ def _answered(
     return tuple(result)
 
 
-_TEXT_COUNT: Mapping[str, tuple[int, int | None]] = {
-    "keep": (0, 0),
-    "edit": (1, 1),
-    "split": (2, None),
-}
-
-
-def _answers_by_id(
-    requirements: tuple[Requirement, ...], response: RequirementsResponse
-) -> dict[str, RequirementAnswer]:
-    """요구사항 ID별 답. 없는 ID·같은 ID 두 번·문장 수가 맞지 않는 답은 ValueError."""
-    known = {r.id for r in requirements}
-    answers: dict[str, RequirementAnswer] = {}
-    for answer in response.answers:
-        if answer.req_id not in known:
-            raise ValueError(f"{answer.req_id}: 없는 요구사항에 대한 답입니다")
-        if answer.req_id in answers:
-            raise ValueError(f"{answer.req_id}: 같은 요구사항에 답이 두 번 있습니다")
-        low, high = _TEXT_COUNT[answer.action]
-        if len(answer.texts) < low or (high is not None and len(answer.texts) > high):
-            raise ValueError(f"{answer.req_id}: {answer.action} 답의 문장 수가 맞지 않습니다")
-        answers[answer.req_id] = answer
-    return answers
-
-
 def _number(req_id: str) -> int:
     return int(req_id.split("-", 1)[1])
 
@@ -429,6 +432,8 @@ def _ask_review(state: GraphState) -> dict[str, Any]:
     )
     decision = response.get("decision")
     update: dict[str, Any] = {"review_response": response, "revising": decision == "revise"}
+    if decision == "approve" and state.get("normalization_failed"):
+        return update  # API 밖에서 직접 재개해도 정리 실패를 승인·내보내기 할 수 없다
     if decision in REVIEW_STATUS:
         update["design"] = state["design"].evolve(status=REVIEW_STATUS[decision])
     return update
@@ -466,12 +471,15 @@ def _route(max_rework: int) -> Callable[[GraphState], dict[str, Any]]:
     def route(state: GraphState) -> dict[str, Any]:
         findings = state["design"].findings
         previous = state.get("fingerprints", ())
-        decision = decide_rework(
-            findings,
-            rework_count=state.get("rework_count", 0),
-            max_rework=max_rework,
-            previous_fingerprints=frozenset(previous),
-        )
+        if state.get("requires_manual_review"):
+            decision = ReworkDecision(ReworkAction.HITL, hitl_reason=HitlReason.MANUAL)
+        else:
+            decision = decide_rework(
+                findings,
+                rework_count=state.get("rework_count", 0),
+                max_rework=max_rework,
+                previous_fingerprints=frozenset(previous),
+            )
         seen = tuple(dict.fromkeys([*previous, *(f.fingerprint for f in findings)]))
         return {**_apply(state, decision, counted=True), "fingerprints": seen, "revising": False}
 
@@ -507,6 +515,7 @@ def _apply(state: GraphState, decision: ReworkDecision, *, counted: bool = True)
             revision=design.revision + 1, iteration=design.iteration + 1
         )
         update["rework_count"] = state.get("rework_count", 0) + (1 if counted else 0)
+        update.update(normalization_failed=False, requires_manual_review=False, rule_findings=())
     return update
 
 
@@ -522,7 +531,7 @@ def _next_after_route(state: GraphState) -> str:
 
 def _next_after_review(state: GraphState) -> str:
     decision = state.get("review_response", {}).get("decision")
-    if decision == "approve":
+    if decision == "approve" and not state.get("normalization_failed"):
         return "export"
     if decision == "revise":
         return "a09"
