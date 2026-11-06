@@ -1,9 +1,10 @@
 # 표준단어 사전 (inventory). 공통표준에 없는 재고 전용 단어와, 정리(normalize)가 이름을 풀 때
 # 필요한데 어떤 용어의 구성 단어로도 쓰이지 않아 `common/words.yaml`(생성 파일)에 오르지 않는
 # 공통표준 단어를 둔다. 후자는 공통표준 CSV 값(약어·영문명·설명)을 그대로 옮긴 것이다.
-# 장부(BK)만 공통표준에 없다. 약어 BK는 공통표준 장부가액(BKVL = Book Value)의 앞부분을 따랐다
-# (LDGR은 공통표준 「대장」이 이미 쓴다). "수불"은 공통표준 단어가 없어 재고+거래(INVT_DLNG)로 표준화하고 terms의
-# synonyms로만 남긴다.
+# 장부는 공통표준 단어가 아니다. 공통표준은 장부를 「대장」(LDGR)의 이음동의어로 두었다.
+# 요구사항 문장과 A03 출력이 장부라고 써서 팩에서 별도 낱말(BK, 장부가액 BKVL의 앞부분)로 둔다.
+# 표준과 다른 선택이다. 표준의 방향(대장.synonyms = [장부])과 반대로 읽히지 않게 장부의 synonyms는 비워 둔다.
+# "수불"은 공통표준 단어가 없어 재고+거래(INVT_DLNG)로 표준화하고 terms의 synonyms로만 남긴다.
 words:
 - word: 기록
   abbreviation: RCD
@@ -72,7 +73,7 @@ words:
 - word: 장부
   abbreviation: BK
   english: Book
-  definition: 帳簿. 금전이나 물품의 출납을 적는 책
+  definition: 帳簿. 금전이나 물품의 출납을 적는 책 (팩에서 정한 설명, 공통표준에 없음)
   is_classifier: false
   domain_group: null
   synonyms: []
