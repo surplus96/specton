@@ -43,7 +43,8 @@ class SourceRequirement(Contract):
     source_related_requirements: str | None = None  # 「관련 요구사항」 칸 원문
     source_extra: dict[str, str] = Field(default_factory=dict)  # 그 밖의 원문 칸 (칸 이름 → 값)
     extraction_status: ExtractionStatus  # 기본값을 두지 않는다. 판정 없이 `pass`가 되지 않게
-    notice: str | None = None  # 판정 이유: 화면·RTM에 보여 주는 문구. 자세한 오류는 로그에만
+    # 판정 이유: 화면·RTM에 보여 주는 문구. `review`·`fail`은 필수. 자세한 오류는 로그에만
+    notice: str | None = None
     user_decision: UserDecision | None = None  # 결정 전이거나 확인할 필요가 없으면 None
     excluded_reason: NonEmptyText | None = None  # 제외 사유. `review`는 필수, `fail`은 선택
 
@@ -53,6 +54,8 @@ class SourceRequirement(Contract):
         status, decision = self.extraction_status, self.user_decision
         if self.source_text is None and status is not ExtractionStatus.REVIEW:
             raise ValueError("원문 문장이 없는 블록은 review여야 합니다")
+        if status is not ExtractionStatus.PASS and not self.notice:  # 화면에 확인 이유를 보여 준다
+            raise ValueError(f"{status} 블록에는 판정 이유(notice)가 필요합니다")
         if status is ExtractionStatus.PASS and decision is not None:
             raise ValueError("pass 블록에는 사용자 결정을 두지 않습니다")
         if status is ExtractionStatus.FAIL and decision is UserDecision.CONFIRMED:
