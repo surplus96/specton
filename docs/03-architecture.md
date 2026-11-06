@@ -163,6 +163,7 @@ stateDiagram-v2
 | `specton/llm/` | 공통 LLM client·재요청·프롬프트 버전 |
 | `specton/nodes/` | 에이전트 노드 A01~A09 (얇은 어댑터) |
 | `specton/codegen/` | ID·명명·N:M·FK, Mermaid·DDL·RTM 생성 (LLM import 금지) |
+| `specton/ids.py` | 내부 ID 계산 `stable_id` (A03 엔티티·속성 ID와 모델 정리 파생 ID가 함께 사용, 다른 specton 모듈 import 없음) |
 | `specton/review/` | 규칙 검사·설정형 리뷰어·근거 병합 |
 | `specton/validate/` | DDL 파싱·격리 DB 실행 (LLM import 금지) |
 | `specton/persistence/` | 플랫폼 저장·checkpointer |
