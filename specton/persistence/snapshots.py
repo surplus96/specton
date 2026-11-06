@@ -4,7 +4,8 @@
 API는 이 표만 읽는다. 체크포인트는 읽지 않는다 (ADR-0012 "화면 상태는 run 기준", #110 리뷰 답 2).
 
 `model_snapshot.normalized_model`은 `DesignState`의 `requirements`·`functions`·`entities`·
-`relationships`를 같은 이름의 칸으로 담는다. 같은 revision은 승인 전까지 덮어쓸 수 있고,
+`relationships`를 같은 이름의 칸으로 담고, 모델 정리 결과가 있으면 `normalized` 칸에 담는다
+(#142). 모두 해시에 들어간다. 같은 revision은 승인 전까지 덮어쓸 수 있고,
 승인 뒤에는 같은 모델을 다시 저장하는 것만 허용한다 (승인 뒤 export·complete 노드도 저장한다).
 """
 
@@ -49,9 +50,11 @@ def save_model(conn: Connection[DictRow], run_id: UUID, holder: str, state: Desi
     같은 상태를 다시 저장해도 결과가 같다(멱등). 승인된 revision은 모델이 같으면 아무것도
     다시 쓰지 않고, 다르면 InvalidTransitionError다. 돌려주는 값은 그 revision의 `snapshot_id`다.
     """
-    model = {
+    model: dict[str, Any] = {
         name: [m.model_dump(mode="json") for m in getattr(state, name)] for name in MODEL_FIELDS
     }
+    if state.normalized is not None:  # 없으면 키를 넣지 않아 정리 전 모델의 해시가 그대로다
+        model["normalized"] = state.normalized.model_dump(mode="json")
     model_hash = hashlib.sha256(
         json.dumps(model, sort_keys=True, ensure_ascii=False).encode()
     ).hexdigest()
