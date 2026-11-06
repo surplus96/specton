@@ -6,7 +6,7 @@ from enum import StrEnum
 import pytest
 from langgraph.checkpoint.serde.event_hooks import SerdeEvent, register_serde_event_listener
 
-from specton.contracts import DesignState
+from specton.contracts import Column, DesignState, NormalizedModel, Table
 from specton.contracts.base import TargetStage
 from specton.contracts.findings import Finding
 from specton.persistence.db import CHECKPOINT_TYPES, GRAPH_STATE_TYPES, checkpoint_serde
@@ -42,6 +42,20 @@ def test_graph_state_values_come_back_without_warnings(events: list[SerdeEvent])
     assert events == []
 
 
+def test_design_with_a_normalized_model_comes_back_without_warnings(
+    events: list[SerdeEvent],
+) -> None:
+    """모델 정리 결과를 담은 상태도 허용 목록으로 다시 읽힌다 (#142)."""
+    serde = checkpoint_serde()
+    design = DesignState(run_id="run-1", normalized=_normalized())
+
+    restored = serde.loads_typed(serde.dumps_typed(design))
+
+    assert restored == design
+    assert type(restored.normalized) is NormalizedModel
+    assert events == []
+
+
 def test_unlisted_type_is_blocked(events: list[SerdeEvent]) -> None:
     serde = checkpoint_serde()
 
@@ -56,3 +70,21 @@ def test_every_contract_and_graph_state_type_is_listed() -> None:
     assert (Finding.__module__, Finding.__name__) in CHECKPOINT_TYPES
     assert GRAPH_STATE_TYPES <= CHECKPOINT_TYPES
     assert all(module.startswith("specton.") for module, _ in CHECKPOINT_TYPES)
+    assert ("specton.contracts.normalized", "NormalizedModel") in CHECKPOINT_TYPES
+
+
+def _normalized(physical_name: str = "ord") -> NormalizedModel:
+    """테이블 1개·컬럼 1개(PK)인 정리 결과."""
+    column = Column(
+        id="COL-1", name="주문번호", physical_name="ord_no", data_type="varchar", length=20,
+        precision=None, scale=None, time_precision=None, domain=None, nullable=False,
+        req_ids=("REQ-01",), attribute_id="ATTR-01",
+    )  # fmt: skip
+    table = Table(
+        id="TBL-1", name="주문", physical_name=physical_name, columns=(column,),
+        primary_key=("COL-1",), unique_keys=(), req_ids=("REQ-01",), entity_id="ENT-01",
+    )  # fmt: skip
+    return NormalizedModel(
+        pack="inventory", pack_version="0.1.0", rules_version="normalize-v0",
+        lexicon_digest="d", tables=(table,), foreign_keys=(),
+    )  # fmt: skip
