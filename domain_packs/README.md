@@ -21,7 +21,7 @@ inventory/ · maintenance/
   manifest.yaml                ✍
   term_specs.yaml              ✍ 용어명·구성 단어·도메인·동의어
   terms.yaml                   ⚙ 물리명·출처(official/project) 확정
-  words.yaml                   ✍ 공통표준에 없는 팩 전용 단어
+  words.yaml                   ✍ 공통표준에 없는 팩 전용 단어 + common/words.yaml에 오르지 않는 공통표준 단어
   patterns.yaml                ✍
   examples/A01.yaml … A09.yaml ✍ 에이전트별 few-shot 예시 (각 에이전트 담당 소유)
   pack.lock                    ⚙ version별 팩 내용 sha256 기록
