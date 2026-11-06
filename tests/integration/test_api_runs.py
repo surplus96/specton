@@ -239,6 +239,7 @@ ANSWERS = {"kind": "requirements", "answers": []}
 def test_resume_moves_on_and_rejects_a_second_answer(client: TestClient, pool: Pool) -> None:
     run_id = _create(client).json()["run_id"]
     interrupt_id = _wait(pool, run_id, "requirements", S.AWAITING_REQUIREMENTS)
+    _analysed(pool, run_id)
 
     first = _resume(client, run_id, interrupt_id, ANSWERS)
     second = _resume(client, run_id, interrupt_id, ANSWERS)
@@ -462,6 +463,19 @@ def test_requirements_answer_must_match_the_saved_requirements(
     assert _error(response) == (422, "INVALID_RESPONSE")
     assert response.json()["message"].startswith(f"{req_id}:")
     assert again.status_code == 202  # 거절된 답은 기록되지 않아 다시 답할 수 있다
+
+
+def test_requirements_answer_without_a_saved_model_is_an_internal_error(
+    client: TestClient, pool: Pool
+) -> None:
+    """대조할 모델이 없으면 사용자 잘못이 아니므로 422가 아니라 500이다. 실행은 기다린다 (#146)."""
+    run_id = _create(client).json()["run_id"]
+    interrupt_id = _wait(pool, run_id, "requirements", S.AWAITING_REQUIREMENTS)
+
+    response = _resume(client, run_id, interrupt_id, _answers(("REQ-01", "keep", [])))
+
+    assert _error(response) == (500, "INTERNAL")
+    assert client.get(f"/runs/{run_id}").json()["status"] == "awaiting_requirements"
 
 
 def test_requirements_answer_that_fits_moves_on(client: TestClient, pool: Pool) -> None:
