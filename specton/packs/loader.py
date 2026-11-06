@@ -112,13 +112,13 @@ class _AbbreviationRule(_Strict):
 class _TermRule(_Strict):
     classifier_last: bool
     # 기본값을 두지 않는다: 미정값은 키를 생략하지 못하고 null을 적어야 한다
-    max_words: int | Literal["unlimited"] | None
+    max_words: Literal["unlimited"] | None
     official_term_immutable: bool
 
 
 class _TableRule(_Strict):
-    prefix: str | None  # 기본값 없음(위와 같은 이유). "none" = 접두어 없음, null = 미정
-    form: Literal["singular", "plural", "as_dictionary"] | None
+    prefix: Literal["none"] | None  # 기본값 없음(위와 같은 이유). "none" = 접두어 없음, null = 미정
+    form: Literal["as_dictionary"] | None
     junction_name: Literal["parent_child"] | None  # 기본값 없음(위와 같은 이유)
 
 

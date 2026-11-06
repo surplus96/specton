@@ -342,6 +342,14 @@ def test_approved_common_rejects_blank_naming_and_rules(tmp_path: Path) -> None:
             "column: { primary_key: null, foreign_key: null, self_reference_prefix: null }",
             "column: { primary_key: id, foreign_key: null, self_reference_prefix: null }",
         ),
+        (  # 아직 정하지 않은 값도 naming.py가 모르면 거절한다 (허용 값 목록은 한 곳과 똑같이 둔다)
+            "table: { prefix: null, form: null, junction_name: null }",
+            "table: { prefix: TB_, form: singular, junction_name: null }",
+        ),
+        (
+            "term: { classifier_last: true, max_words: null, official_term_immutable: true }",
+            "term: { classifier_last: true, max_words: 5, official_term_immutable: true }",
+        ),
     ],
 )
 def test_naming_rejects_unknown_value_names(tmp_path: Path, path: str, bad_value: str) -> None:
@@ -417,8 +425,8 @@ crud_exemption_reasons:
 FILLED_NAMING = """\
 physical_name: { dictionary_case: upper_snake, ddl_case: lower, word_separator: "_", max_bytes: 63 }
 abbreviation: { case: upper, min_length: 2, max_length: 6 }
-term: { classifier_last: true, max_words: 5, official_term_immutable: true }
-table: { prefix: TB_, form: singular, junction_name: parent_child }
+term: { classifier_last: true, max_words: unlimited, official_term_immutable: true }
+table: { prefix: none, form: as_dictionary, junction_name: parent_child }
 column: { primary_key: term_physical_name, foreign_key: parent_key_physical_name,
   self_reference_prefix: 상위 }
 type_profile: strict
@@ -442,7 +450,7 @@ def test_approved_common_with_all_values_filled_passes(tmp_path: Path) -> None:
 
     common = load_common(root=tmp_path)
 
-    assert common.naming.term.max_words == 5
+    assert common.naming.term.max_words == "unlimited"
     assert common.rules.standard_compliance.checks[0].severity == "minor"
 
 
