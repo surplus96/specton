@@ -5,7 +5,14 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from specton.contracts import ArtifactRef, DesignState, SourceRequirement
+from specton.contracts import (
+    ArtifactRef,
+    Column,
+    DesignState,
+    NormalizedModel,
+    SourceRequirement,
+    Table,
+)
 from specton.persistence import lease
 from specton.persistence.db import Pool
 from specton.persistence.errors import InvalidTransitionError, LeaseLostError
@@ -81,6 +88,54 @@ def test_saving_the_approved_model_again_keeps_it(pool: Pool, sample_state: Fact
 
     assert again == snapshot_id
     assert [f["id"] for f in view.items] == ["A05-1-1"]  # 승인본의 지적은 다시 쓰지 않는다
+
+
+def _normalized(physical_name: str = "ord") -> NormalizedModel:
+    """테이블 1개·컬럼 1개(PK)인 정리 결과."""
+    column = Column(
+        id="COL-1", name="주문번호", physical_name="ord_no", data_type="varchar", length=20,
+        precision=None, scale=None, time_precision=None, domain=None, nullable=False,
+        req_ids=("REQ-01",), attribute_id="ATTR-01",
+    )  # fmt: skip
+    table = Table(
+        id="TBL-1", name="주문", physical_name=physical_name, columns=(column,),
+        primary_key=("COL-1",), unique_keys=(), req_ids=("REQ-01",), entity_id="ENT-01",
+    )  # fmt: skip
+    return NormalizedModel(
+        pack="inventory", pack_version="0.1.0", rules_version="normalize-v0",
+        lexicon_digest="d", tables=(table,), foreign_keys=(),
+    )  # fmt: skip
+
+
+def _stored(pool: Pool, run_id: UUID) -> tuple[dict[str, object], str]:
+    with pool.connection() as conn:
+        row = conn.execute(
+            "SELECT normalized_model, model_hash FROM model_snapshot WHERE run_id = %s", (run_id,)
+        ).fetchone()
+    assert row is not None
+    return row["normalized_model"], row["model_hash"]
+
+
+def test_normalized_model_is_saved_and_hashed_with_the_design(
+    pool: Pool, sample_state: Factory
+) -> None:
+    """정리 결과도 승인본에 묶여 다시 만들 수 있다. 없으면 정리 전과 해시가 같다 (#142)."""
+    run_id, document_id = _running(pool)
+    state = sample_state(str(run_id), document_id)
+    with pool.connection() as conn:
+        save_model(conn, run_id, "w1", state)
+    before, hash_before = _stored(pool, run_id)
+
+    with pool.connection() as conn:
+        snapshot_id = save_model(conn, run_id, "w1", state.evolve(normalized=_normalized()))
+    after, hash_after = _stored(pool, run_id)
+
+    assert "normalized" not in before
+    assert after["normalized"] == _normalized().model_dump(mode="json")
+    assert hash_after != hash_before
+    _approve(pool, run_id, snapshot_id)
+    with pool.connection() as conn, pytest.raises(InvalidTransitionError):
+        save_model(conn, run_id, "w1", state.evolve(normalized=_normalized("order_hdr")))
 
 
 def test_only_the_lease_holder_can_write(pool: Pool, sample_state: Factory) -> None:

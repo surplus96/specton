@@ -33,6 +33,10 @@ class ResponseMismatchError(PersistenceError):
     """확인 요청 종류와 다른 응답 (예: 추출 확인에 검토 응답)."""
 
 
+class MissingSnapshotError(PersistenceError):
+    """대조할 저장 모델이 없음. 사용자 답이 아니라 저장이 빠진 경우라 API는 500으로 돌려준다."""
+
+
 class InvalidResponseError(PersistenceError):
     """확인 요청의 내용과 맞지 않는 답 (예: `pass` 블록 제외). 메시지에 블록 ID를 넣는다."""
 

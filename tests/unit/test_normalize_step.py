@@ -110,15 +110,23 @@ def test_failure_returns_problems_only() -> None:
 
 @pytest.mark.parametrize("receipt_name", ["고장접수", "수불문서"], ids=["success", "failure"])
 def test_result_survives_checkpoint_save_and_restore(receipt_name: str) -> None:
-    """그래프 체크포인트 직렬화로 저장했다 꺼내도 같은 값·같은 타입이다 (tuple 유지).
-
-    결과를 상태에 담을지는 정하지 않았다 (D9). 담게 되더라도 모양이 바뀌지 않는지만 확인한다.
-    """
+    """그래프 체크포인트 직렬화로 저장했다 꺼내도 같은 값·같은 타입이다 (tuple 유지)."""
     result = normalize_from_state({"design": _design(receipt_name=receipt_name)})
     serde = JsonPlusSerializer()
     restored = serde.loads_typed(serde.dumps_typed(result))
     assert type(restored) is type(result)
     assert restored == result
+
+
+def test_success_result_fits_the_design_state() -> None:
+    """실제 정리 결과가 계약 검증을 그대로 통과해 `DesignState.normalized`에 담긴다 (#142)."""
+    design = _design()
+    result = normalize_from_state({"design": design})
+    assert isinstance(result, Normalized)
+
+    stored = design.evolve(normalized=result.model)
+
+    assert stored.normalized == result.model
 
 
 def test_input_state_is_not_changed() -> None:

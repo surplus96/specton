@@ -16,6 +16,7 @@ from specton.config import Settings
 from specton.contracts import (
     BranchResult,
     DesignState,
+    Entity,
     Finding,
     Requirement,
     ResumeRequest,
@@ -23,9 +24,12 @@ from specton.contracts import (
     RunStatus,
     SseEventType,
 )
+from specton.contracts.base import TargetStage
 from specton.contracts.requirements import QualityIssue
 from specton.graph import GraphState, Node, build_graph, initial_state
 from specton.llm.errors import LLMRefusalError
+from specton.normalization_node import normalization_node
+from specton.packs.build import DEFAULT_ROOT, read_yaml
 from specton.parse_node import parse_node
 from specton.persistence import lease
 from specton.persistence.db import Pool, create_checkpointer
@@ -507,6 +511,53 @@ def test_findings_saved_before_final_review_block_approval(world: Callable[..., 
         w.answer(run_id, APPROVE)
 
 
+def test_normalization_manual_review_is_saved_and_blocks_approval_after_restart(
+    world: Callable[..., _World],
+) -> None:
+    """생성·리뷰 없이 저장한 정리 지적도 승인 검사와 체크포인트 재개에 사용한다 (#17)."""
+
+    def normalize(state: GraphState) -> Mapping[str, Any]:
+        return {
+            **_critical_rule(state),
+            "normalization_failed": True,
+            "requires_manual_review": True,
+        }
+
+    def forbidden(state: GraphState) -> Mapping[str, Any]:
+        pytest.fail("정리 실패 뒤 생성·LLM 검토·A09·내보내기가 실행됐습니다")
+
+    skipped = ("ddl", "erd", "rtm", "rules", "A05", "A06", "A07", "A08", "a09", "export")
+    nodes = {name: forbidden for name in skipped} | {"normalize": normalize}
+    w = world(nodes)
+    run_id = w.create()
+    w.runner.run_pending()
+    w.answer(run_id, REQUIREMENTS_OK)
+    w.runner.run_pending()
+
+    before = w.status(run_id)
+    assert before.status is RunState.AWAITING_REVIEW
+    assert before.revision == 0
+    assert not w.lease_is_live(run_id)
+    assert not set(skipped).intersection(w.visited)
+    assert "generating" not in w.status_stages(run_id)
+    with w.pool.connection() as conn:
+        view = get_view(conn, run_id, OWNER, "review")
+        events = events_after(conn, run_id, OWNER, 0)
+    assert [item["fingerprint"] for item in view.items] == ["fp-critical"]
+    assert events[-1].data.payload["hitl_reason"] == "manual_review"
+    assert events[-1].data.payload["failed_branches"] == []
+
+    w.runner.stop()
+    restarted = world(nodes)
+    with pytest.raises(BlockingFindingsError):
+        restarted.answer(run_id, APPROVE)
+    assert restarted.status(run_id) == before
+    restarted.answer(run_id, {"kind": "review", "decision": "hold", "feedback": "보류"})
+    restarted.runner.run_pending()
+    assert restarted.status(run_id).status is RunState.AWAITING_REVIEW
+    assert restarted.visited == []
+
+
 def test_approval_is_linked_to_the_saved_model_and_completes(
     world: Callable[..., _World],
 ) -> None:
@@ -527,6 +578,61 @@ def test_approval_is_linked_to_the_saved_model_and_completes(
         ).fetchone()
     assert row is not None and row["snapshot_id"] is not None
     assert w.status(run_id).status is RunState.COMPLETED
+
+
+def test_actual_normalization_is_saved_and_rebuilt_after_rework(
+    world: Callable[..., _World],
+) -> None:
+    """정리 노드가 반환한 모델은 실행기가 저장하며, 새 설계 전 비운다 (#17·#143)."""
+    seen: list[bool] = []
+
+    def a03(state: GraphState) -> Mapping[str, Any]:
+        design = state["design"]
+        seen.append(design.normalized is None)
+        entity = Entity.model_validate({
+            "id": "ENT-eq", "pack": "maintenance", "name": "설비", "description": "설비",
+            "req_ids": ["REQ-01"], "attributes": [{
+                "id": "ATTR-eq", "name": "설비코드", "data_type": "varchar", "length": 10,
+                "is_key": True, "nullable": False, "req_ids": ["REQ-01"],
+            }],
+        })  # fmt: skip
+        return {"design": design.evolve(entities=(entity,))}
+
+    def rules(state: GraphState) -> Mapping[str, Any]:
+        return _critical_rule(state) if state["design"].revision == 0 else {"rule_findings": ()}
+
+    def forbidden(*args: Any) -> Any:
+        pytest.fail("정상 정리 결과가 실패 변환기로 전달됐습니다")
+
+    nodes = {
+        "a03": a03, "rules": rules,
+        "normalize": normalization_node(forbidden, root=DEFAULT_ROOT),
+        "a09": lambda state: {"router_stage": TargetStage.DATA_MODEL},
+    }  # fmt: skip
+    w = world(nodes)
+    version = str(read_yaml(DEFAULT_ROOT / "maintenance/manifest.yaml")["version"])
+    with w.pool.connection() as conn:
+        run_id = create_run(conn, OWNER, "maintenance", pack_version=version).run_id
+    w.runner.run_pending()
+    w.answer(run_id, REQUIREMENTS_OK)
+    w.runner.run_pending()
+    assert w.status(run_id).status is RunState.AWAITING_REVIEW
+    assert w.status(run_id).revision == 1
+    assert seen == [True, True]
+    with w.pool.connection() as conn:
+        rows = conn.execute(
+            "SELECT revision, normalized_model -> 'normalized' AS model "
+            "FROM model_snapshot WHERE run_id = %s ORDER BY revision",
+            (run_id,),
+        ).fetchall()
+    assert [r["revision"] for r in rows] == [0, 1]
+    assert all(r["model"]["tables"][0]["physical_name"] == "eqpm" for r in rows)
+    w.runner.stop()
+    restarted = world(nodes)
+    restarted.answer(run_id, APPROVE)
+    restarted.runner.run_pending()
+    assert restarted.status(run_id).status is RunState.COMPLETED
+    assert seen == [True, True]  # 재시작 뒤 저장된 정리 결과를 사용하고 A03을 다시 부르지 않는다
 
 
 def test_failed_review_branch_is_shown_in_the_final_review_event(
