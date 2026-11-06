@@ -25,10 +25,11 @@
 | #119 | 추출 확인은 확인·제외만 (ADR-0015): `ExtractionResponse.edits` → `excluded_blocks`, `SourceRequirement`에 `notice`·`user_decision`·`excluded_reason`, `source_text` null 허용(`review`만), `extraction_status` 기본값 없음 |
 | #120 | `SourceRequirement.excluded_reason` 빈 문자열 금지, `analysable`이 결정 전 `fail` 블록도 뺀다 |
 | #136 | `RequirementsResponse.answers_for`로 저장된 요구사항 ID·중복 답·문장 수·빈 문장을 검사하고, 잘못된 답은 resume API에서 422로 거절한다 |
+| #140 | `SourceRequirement`: `review`·`fail` 블록은 `notice` 필수 |
 
-남은 작업: requirements·추적 검사 설명 (#107), `review`·`fail` 블록의 `notice` 필수 계약 검사 (R3 후속, #120·#128), FK 파생·참조 키 (#12), 값 범위 제약 (#15)
+남은 작업: requirements·추적 검사 설명 (#107), FK 파생·참조 키 (#12), 값 범위 제약 (#15)
 
-- #128로 표 파서의 `review` 블록은 `notice`를 채운다. 계약 모델의 필수 검사는 아직 없다.
+- #128로 표 파서의 `review` 블록은 `notice`를 채운다. #139부터 계약도 `review`·`fail` 블록의 `notice`를 필수로 검사한다.
 
 ### 모델별 `kind` 뜻
 
@@ -46,7 +47,7 @@
 
 | 모델 | 핵심 필드 | 추가·정리 후보 |
 |---|---|---|
-| SourceRequirement | `document_id`, `block_id`, `source_id`, `source_ref`, `source_text`, `source_acceptance_level`, `source_related_requirements`, `source_extra`, `extraction_status`, `notice`, `user_decision`, `excluded_reason` | 문장은 고치지 않는다(ADR-0015). `source_text`는 원문 문장이 없는 행이면 null이고 이때 판정은 `review`. `extraction_status`는 기본값 없음. `user_decision`(`confirmed`·`excluded`)은 추출 확인 결정이며 `pass` 블록에는 두지 않고 `fail` 블록은 확인할 수 없다. 제외 사유는 `review`면 필수이고, 있으면 빈 문자열이 아니다. 노드는 제외했거나 원문이 없거나 `fail`인 블록을 분석하지 않는다(`analysable`) |
+| SourceRequirement | `document_id`, `block_id`, `source_id`, `source_ref`, `source_text`, `source_acceptance_level`, `source_related_requirements`, `source_extra`, `extraction_status`, `notice`, `user_decision`, `excluded_reason` | 문장은 고치지 않는다(ADR-0015). `source_text`는 원문 문장이 없는 행이면 null이고 이때 판정은 `review`. `extraction_status`는 기본값 없음. `review`·`fail`이면 판정 이유 `notice`가 필수다(화면에 확인 이유를 보여 준다). `user_decision`(`confirmed`·`excluded`)은 추출 확인 결정이며 `pass` 블록에는 두지 않고 `fail` 블록은 확인할 수 없다. 제외 사유는 `review`면 필수이고, 있으면 빈 문자열이 아니다. 노드는 제외했거나 원문이 없거나 `fail`인 블록을 분석하지 않는다(`analysable`) |
 | Requirement | `id`, `source_id`, `source_ref`, `parent_id`, `text`, `draft_text`, `source_text`, `source_acceptance_level`, `type`, `nfr_category`, `quality_issues`, `analysis_version` | — |
 | Function | `id`, `name`, `description`, `priority`, `req_ids`, `entity_ops` | `priority` nullable + 근거·확인 상태 (ADR-0006). A03 전까지 `entity_ops` 비움 |
 | Entity / Attribute | `pack`, `name`, `description`, `attributes`, `req_ids`, `crud_exemptions` / 타입·길이·정밀도·키·NULL·제약 | 허용 타입 고정, 안정적 내부 참조 키. FK는 관계에서 파생 |
