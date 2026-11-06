@@ -1,7 +1,7 @@
 """실제 모델 정리 → 그래프 상태 (#17). 문제 분류 정책은 #15 어댑터를 주입한다.
 
 노드는 DB에 쓰지 않는다. 실행기가 DesignState.normalized를 기존 모델과 함께 저장·해시한다.
-이 노드는 #15 변환기가 준비되면 API 그래프에 등록한다. 실패를 빈 성공으로 대체하지 않는다.
+API의 create_graph가 #15의 실제 변환기를 연결한다. 실패를 빈 성공으로 대체하지 않는다.
 """
 
 from collections.abc import Callable, Mapping

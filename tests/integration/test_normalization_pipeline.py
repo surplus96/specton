@@ -1,7 +1,7 @@
 """#17: 실제 정리 실패를 실행기·Postgres·HTTP 재개까지 연결한다.
 
-설계와 #15 분류 정책만 고정 응답을 주입한다. 문서 업로드·파싱, 정리 함수와 어댑터,
-체크포인트·모델 저장, 조회·승인 API는 실제 구현을 사용한다. LLM은 호출하지 않는다.
+설계·검토 응답과 생성기는 고정 응답이다. 서버의 create_graph로 실제 파싱·정리·#15 변환기를
+연결하고 체크포인트·모델 저장·조회·승인 API를 검증한다. LLM은 호출하지 않는다.
 """
 
 import shutil
@@ -17,24 +17,19 @@ from fastapi.testclient import TestClient
 from httpx import Response
 from langgraph.checkpoint.serde.event_hooks import SerdeEvent, register_serde_event_listener
 
+from specton.api import main as api_main
 from specton.api.main import create_app
 from specton.api.session import SESSION_COOKIE
 from specton.config import Settings
 from specton.contracts import (
     BranchResult,
-    DesignState,
     Entity,
-    Finding,
     Requirement,
     RunStatus,
     SseEvent,
 )
-from specton.contracts.base import TargetStage
-from specton.contracts.normalized import Problem, ProblemCode
-from specton.graph import REVIEWERS, GraphState, Node, build_graph
-from specton.normalization_node import FailureMapper, FailureReview, normalization_node
+from specton.graph import REVIEWERS, GraphState, Node
 from specton.packs.build import DEFAULT_ROOT, read_yaml
-from specton.parse_node import parse_node
 from specton.persistence.db import Pool, create_checkpointer
 from specton.persistence.runs import events_after
 from specton.runner import Runner
@@ -66,19 +61,8 @@ def _entity(*, keyed: bool = True, name: str = "설비") -> Entity:
     })  # fmt: skip
 
 
-def _finding(problem: Problem, iteration: int, *, manual: bool) -> Finding:
-    """이 합성 사례 한 건에만 쓰는 #15 고정 응답. 운영 분류 정책을 구현하지 않는다."""
-    return Finding(
-        id=f"fixture-{iteration}", source="rule", rule_code="RULE-05" if manual else "RULE-03",
-        kind=problem.code.value, severity="critical", targets=({"kind": "entity", "id": "ENT-eq"},),
-        evidence=({"quote": problem.detail},), suggestion="시험 설계를 보완한다",
-        target_stage=None if manual else TargetStage.DATA_MODEL,
-        fingerprint=f"fixture-{problem.code.value}", iteration=iteration,
-    )  # fmt: skip
-
-
 def _unexpected(*args: Any) -> Any:
-    pytest.fail("실행 오류 변환기 또는 불필요한 A09가 호출됐습니다")
+    pytest.fail("불필요한 A09가 호출됐습니다")
 
 
 class _Pipeline:
@@ -88,20 +72,21 @@ class _Pipeline:
         settings: Settings,
         client: TestClient,
         design: Node,
-        mapper: FailureMapper,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         self.pool, self.settings, self.client = pool, settings, client
         self.visited: list[tuple[str, int]] = []
         nodes = {name: self._downstream(name) for name in DOWNSTREAM}
-        nodes.update(
-            parse=parse_node(settings.storage_dir), a01=_requirement, a03=design,
-            normalize=normalization_node(mapper, root=settings.pack_root), a09=_unexpected,
-        )  # fmt: skip
-        self.graph = build_graph(nodes, checkpointer=create_checkpointer(pool))
+        nodes.update(a01=_requirement, a03=design, a09=_unexpected)
+        # 에이전트·생성기 응답만 대체한다. parse·normalize와 변환기 등록은 서버와 같은 경로다.
+        with monkeypatch.context() as patch:
+            patch.setattr(api_main, "openai_agent_nodes", lambda settings: nodes)
+            self.graph = api_main.create_graph(settings, create_checkpointer(pool))
         self.runner = Runner(pool, self.graph, settings)
 
     def _downstream(self, name: str) -> Node:
         def node(state: GraphState) -> Mapping[str, Any]:
+            assert state["design"].normalized is not None
             revision = state["design"].revision
             self.visited.append((name, revision))
             if name in REVIEWERS:
@@ -158,14 +143,12 @@ def pipeline(
     unregister = register_serde_event_listener(events.append)
     with ExitStack() as stack:
 
-        def make(
-            design: Node, mapper: FailureMapper, *, previous: _Pipeline | None = None
-        ) -> _Pipeline:
+        def make(design: Node, *, previous: _Pipeline | None = None) -> _Pipeline:
             client = stack.enter_context(TestClient(create_app(settings, pool)))
             if previous is not None:
                 previous.runner.stop()
                 client.cookies.update(previous.client.cookies)
-            result = _Pipeline(pool, settings, client, design, mapper)
+            result = _Pipeline(pool, settings, client, design, monkeypatch)
             worlds.append(result)
             return result
 
@@ -188,15 +171,7 @@ def test_actual_missing_key_is_reworked_and_both_revisions_survive_restart(
         seen.append((current.revision, current.normalized is None))
         return {"design": current.evolve(entities=(_entity(keyed=current.revision > 0),))}
 
-    def classify(design: DesignState, problems: tuple[Problem, ...]) -> FailureReview:
-        (problem,) = problems
-        assert problem.code is ProblemCode.NO_PRIMARY_KEY
-        return FailureReview(
-            findings=(_finding(problem, design.iteration, manual=False),),
-            requires_manual_review=False,
-        )
-
-    first = pipeline(design, classify)
+    first = pipeline(design)
     run_id = first.create()
     first.runner.run_pending()
 
@@ -209,10 +184,16 @@ def test_actual_missing_key_is_reworked_and_both_revisions_survive_restart(
     assert repaired["normalized_model"]["normalized"]["tables"][0]["physical_name"] == "eqpm"
     review = first.client.get(f"/runs/{run_id}/view", params={"section": "review", "revision": 0})
     assert [item["kind"] for item in review.json()["items"]] == ["no_primary_key"]
+    finding = review.json()["items"][0]
+    assert (finding["source"], finding["rule_code"], finding["severity"]) == (
+        "rule", "RULE-03", "critical",
+    )  # fmt: skip
+    assert finding["target_stage"] == "data_model"
+    assert finding["targets"] == [{"kind": "entity", "id": "ENT-eq"}]
     current_review = first.client.get(f"/runs/{run_id}/view", params={"section": "review"})
     assert current_review.json()["items"] == []
 
-    restarted = pipeline(design, classify, previous=first)
+    restarted = pipeline(design, previous=first)
     assert restarted.answer(run_id, "approve").status_code == 202
     restarted.runner.run_pending()
 
@@ -239,19 +220,7 @@ def test_actual_unknown_name_blocks_approval_after_restart(
         attempts.append(state["design"].revision)
         return {"design": state["design"].evolve(entities=(_entity(name="사전미등록XYZ"),))}
 
-    def classify(design: DesignState, problems: tuple[Problem, ...]) -> FailureReview:
-        (problem,) = problems
-        assert (problem.code, problem.decision, problem.pending) == (
-            ProblemCode.UNRESOLVED_NAME,
-            "D5",
-            True,
-        )
-        return FailureReview(
-            findings=(_finding(problem, design.iteration, manual=True),),
-            requires_manual_review=True,
-        )
-
-    first = pipeline(design, classify)
+    first = pipeline(design)
     run_id = first.create()
     first.runner.run_pending()
     before = first.status(run_id)
@@ -262,7 +231,7 @@ def test_actual_unknown_name_blocks_approval_after_restart(
     [interrupt] = [event for event in first.events(run_id) if event.event == "interrupt"]
     assert interrupt.data.payload["hitl_reason"] == "manual_review"
 
-    restarted = pipeline(design, classify, previous=first)
+    restarted = pipeline(design, previous=first)
     checkpoint = restarted.graph.get_state({"configurable": {"thread_id": run_id}})
     assert checkpoint.values["design"].normalized is None
     assert checkpoint.values["normalization_failed"] is True
@@ -270,6 +239,10 @@ def test_actual_unknown_name_blocks_approval_after_restart(
     events = restarted.events(run_id)
     review = restarted.client.get(f"/runs/{run_id}/view", params={"section": "review"})
     assert [item["kind"] for item in review.json()["items"]] == ["unresolved_name"]
+    finding = review.json()["items"][0]
+    assert (finding["rule_code"], finding["severity"], finding["target_stage"]) == (
+        "RULE-05", "critical", None,
+    )  # fmt: skip
     response = restarted.answer(run_id, "approve")
     assert (response.status_code, response.json()["code"]) == (422, "INVALID_RESPONSE")
     assert restarted.status(run_id) == before
@@ -287,6 +260,62 @@ def test_actual_unknown_name_blocks_approval_after_restart(
     assert attempts == [0]
 
 
+def test_manual_problem_takes_precedence_over_automatic_rework(
+    pipeline: Callable[..., _Pipeline],
+) -> None:
+    attempts: list[int] = []
+
+    def design(state: GraphState) -> Mapping[str, Any]:
+        current = state["design"]
+        attempts.append(current.revision)
+        unknown = _entity(name="사전미등록XYZ").evolve(
+            id="ENT-unknown", attributes=(_entity().attributes[0].evolve(id="ATTR-unknown"),)
+        )
+        return {"design": current.evolve(entities=(_entity(keyed=False), unknown))}
+
+    world = pipeline(design)
+    run_id = world.create()
+    world.runner.run_pending()
+
+    assert (world.status(run_id).status, world.status(run_id).revision) == ("awaiting_review", 0)
+    assert attempts == [0] and world.visited == []
+    [interrupt] = [event for event in world.events(run_id) if event.event == "interrupt"]
+    assert interrupt.data.payload["hitl_reason"] == "manual_review"
+    assert interrupt.data.payload["failed_branches"] == []
+    items = world.client.get(f"/runs/{run_id}/view", params={"section": "review"}).json()["items"]
+    assert {item["rule_code"] for item in items} == {"RULE-03", "RULE-05"}
+    assert len(items) == 2
+    assert world.answer(run_id, "approve").status_code == 422
+
+
+def test_repeated_failure_stops_rework_and_preserves_both_finding_revisions(
+    pipeline: Callable[..., _Pipeline],
+) -> None:
+    attempts: list[int] = []
+
+    def design(state: GraphState) -> Mapping[str, Any]:
+        attempts.append(state["design"].revision)
+        return {"design": state["design"].evolve(entities=(_entity(keyed=False),))}
+
+    world = pipeline(design)
+    run_id = world.create()
+    world.runner.run_pending()
+
+    assert (world.status(run_id).status, world.status(run_id).revision) == ("awaiting_review", 1)
+    assert attempts == [0, 1] and world.visited == []
+    [interrupt] = [event for event in world.events(run_id) if event.event == "interrupt"]
+    assert interrupt.data.payload["hitl_reason"] == "repeated_findings"
+    findings = [world.client.get(
+        f"/runs/{run_id}/view", params={"section": "review", "revision": revision}
+    ).json()["items"][0] for revision in (0, 1)]  # fmt: skip
+    before, after = findings
+    assert before["id"] != after["id"]
+    assert before["fingerprint"] == after["fingerprint"]
+    assert [item["iteration"] for item in findings] == [0, 1]
+    assert [row["revision"] for row in world.models(run_id)] == [0, 1]
+    assert world.answer(run_id, "approve").status_code == 422
+
+
 @pytest.mark.parametrize("failure", ["version_changed", "missing_naming_file"])
 def test_pack_execution_failure_does_not_become_a_rule_or_an_approval(
     pipeline: Callable[..., _Pipeline], failure: str, caplog: pytest.LogCaptureFixture
@@ -294,7 +323,7 @@ def test_pack_execution_failure_does_not_become_a_rule_or_an_approval(
     def design(state: GraphState) -> Mapping[str, Any]:
         return {"design": state["design"].evolve(entities=(_entity(),))}
 
-    world = pipeline(design, _unexpected)
+    world = pipeline(design)
     run_id = world.create()
     if failure == "version_changed":
         path = world.settings.pack_root / "maintenance/manifest.yaml"
