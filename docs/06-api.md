@@ -88,6 +88,7 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 - 이벤트 ID는 run 안에서 단조 증가한다.
 - `event`: `status` / `interrupt` / `artifact` / `error` / `completed` / `cancelled`
 - `data`: `run_id`, `revision`, `stage`, `message`, 필요한 `payload`
+- `artifact` 이벤트 `payload`는 저장한 `ArtifactRef`(`kind`, `file_format`, `revision`, 파일 `hash`, `approved`)다. 실행·모델·산출물 메타데이터와 함께 커밋하고, 같은 결과를 다시 저장할 때는 이벤트를 추가하지 않는다. 내부 경로와 모델 해시는 응답에 넣지 않는다.
 - `interrupt` 이벤트 `payload`: `interrupt_id`, `kind`. 최종 검토(`review`)는 `failed_branches`(실패하거나 빠진 리뷰 관점, 비어 있지 않으면 불완전 검토, TC-F14)와 자동 루프를 멈춘 사유 `hitl_reason`(있을 때)을 더한다.
 - 정리 문제에 사람의 조치가 필요하면 `hitl_reason=manual_review`로 알린다. 이때 생성과 LLM 검토를 건너뛰며, 실행하지 않은 리뷰 관점은 `failed_branches`에 넣지 않는다 (#17·#15).
 - `error` 이벤트 `payload`: `code`, `retryable`. `EXTRACTION_FAILED`면 `detail`(「자세히 보기」에 펼칠 문장)도 넣는다.
