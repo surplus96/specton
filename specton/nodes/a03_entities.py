@@ -8,7 +8,7 @@
   다른 이름은 다른 ID다.
   한계: 같은 이름은 같은 객체로 보고, 이름이 바뀌면 새 객체로 본다 (최종 형식은 #12).
 - 다시 실행하면 `entity_ops`는 누적하지 않고 새 결과로 바꾼다.
-- 팩 타입은 strict 프로필로 읽는다 (프로필 확정 전).
+- 팩 타입은 `naming.yaml`의 `type_profile`로 고른다 (ADR-0009 미확정, 임시(#11)).
 """
 
 import unicodedata
@@ -34,8 +34,9 @@ from specton.contracts.base import Contract, NonEmptyText
 from specton.ids import stable_id
 from specton.llm.client import LLMClient
 from specton.nodes.common import NodeRun, build_request
-from specton.packs.build import DEFAULT_ROOT, read_yaml
+from specton.packs.build import DEFAULT_ROOT
 from specton.packs.examples import load_examples
+from specton.packs.loader import PgType, load_pack
 
 PROMPT_VERSION = "a03-v1"
 SYSTEM_PROMPT = """\
@@ -281,32 +282,41 @@ class PackContext(Contract):
 
 
 def load_pack_context(pack: str, *, root: Path = DEFAULT_ROOT) -> PackContext:
-    """팩의 용어·도메인(strict)과 공통 면제 사유를 읽는다."""
-    domains = {d["name"]: d for d in read_yaml(root / "common" / "domains.yaml")["domains"]}
+    """팩의 용어·도메인과 공통 면제 사유를 `packs.loader`로 읽어 검증한다 (#11 후속).
+
+    도메인마다 두 PostgreSQL 매핑(strict·pg_native) 중 어느 쪽을 쓸지는 공통 팩
+    `naming.yaml`의 `type_profile` 값으로 고른다. 그 값이 "strict"인 동안 출력은
+    옛 구현(YAML 직접 읽기·strict 고정)과 같다. 로더가 팩 전체(words·patterns 포함)를
+    검증하므로, 팩 파일이 깨지면 예전과 달리 여기서 PackError가 난다. 팩 위치(`root`)를
+    실행 설정에서 넘겨받는 연결은 아직 없다(호출부는 기본 위치를 쓴다, #11 남은 것).
+    """
+    loaded = load_pack(pack, root=root)
+    # 임시(#11): 프로필은 naming.yaml의 type_profile에서 온다 (ADR-0009 미확정).
+    profile = loaded.common.naming.type_profile
+    domains = {d.name: d for d in loaded.common.domains}
     terms = tuple(
         PackTerm.model_validate(
             {
-                "term": t["term"],
-                "synonyms": t.get("synonyms") or (),
-                **_contract_fields(domains[t["domain"]]["postgres"]["strict"]),
+                "term": t.term,
+                "synonyms": t.synonyms,
+                **_contract_fields(getattr(domains[t.domain].postgres, profile)),
             }
         )
-        for t in read_yaml(root / pack / "terms.yaml")["terms"]
+        for t in loaded.terms
     )
-    reasons = read_yaml(root / "common" / "rules.yaml")["crud_exemption_reasons"]
-    return PackContext(terms=terms, exemption_reasons=reasons)
+    return PackContext(terms=terms, exemption_reasons=loaded.common.rules.crud_exemption_reasons)
 
 
-def _contract_fields(strict: Mapping[str, Any]) -> dict[str, Any]:
-    """도메인의 strict 타입을 `AttributeDraft` 필드로 옮긴다.
+def _contract_fields(mapping: PgType) -> dict[str, Any]:
+    """도메인의 PostgreSQL 매핑(strict 또는 pg_native)을 `AttributeDraft` 필드로 옮긴다.
 
     numeric의 길이는 precision으로 옮기고, 시각 타입의 precision은 비운다 (#12에서 보존 방식 결정).
     """
-    kind = strict["type"]
+    kind = mapping.type
     if kind in ("char", "varchar"):
-        fields: dict[str, Any] = {"length": strict["length"]}
+        fields: dict[str, Any] = {"length": mapping.length}
     elif kind == "numeric":
-        fields = {"precision": strict["length"], "scale": strict.get("scale")}
+        fields = {"precision": mapping.length, "scale": mapping.scale}
     else:
         fields = {}
     return {"data_type": kind, **{k: v for k, v in fields.items() if v is not None}}
