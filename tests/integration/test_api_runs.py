@@ -465,17 +465,61 @@ def test_requirements_answer_must_match_the_saved_requirements(
     assert again.status_code == 202  # 거절된 답은 기록되지 않아 다시 답할 수 있다
 
 
-def test_requirements_answer_without_a_saved_model_is_an_internal_error(
-    client: TestClient, pool: Pool
+@pytest.mark.parametrize(
+    "model",
+    [
+        pytest.param(None, id="missing-snapshot"),
+        pytest.param({}, id="missing-requirements"),
+        pytest.param({"requirements": None}, id="null-requirements"),
+    ],
+)
+@pytest.mark.parametrize(
+    "answer",
+    [
+        pytest.param(_answers(), id="empty-answer"),
+        pytest.param(_answers(("REQ-01", "keep", [])), id="keep-answer"),
+    ],
+)
+def test_missing_requirements_model_is_internal_and_keeps_waiting(
+    client: TestClient, pool: Pool, model: dict[str, Any] | None, answer: dict[str, Any]
 ) -> None:
-    """대조할 모델이 없으면 사용자 잘못이 아니므로 422가 아니라 500이다. 실행은 기다린다 (#146)."""
+    """모델 누락은 빈 답도 500이며, 기록을 남기지 않고 복구 후 재응답할 수 있다 (#144·#146)."""
     run_id = _create(client).json()["run_id"]
     interrupt_id = _wait(pool, run_id, "requirements", S.AWAITING_REQUIREMENTS)
+    with pool.connection() as conn:
+        if model is not None:
+            conn.execute(
+                "INSERT INTO model_snapshot (snapshot_id, run_id, revision, normalized_model, "
+                "model_hash) VALUES (%s, %s, 0, %s, 'h')",
+                (uuid4(), run_id, Jsonb(model)),
+            )
+        before = runs.get_run(conn, UUID(run_id), _owner(client))
+        before_events = events_after(conn, UUID(run_id), _owner(client), 0)
 
-    response = _resume(client, run_id, interrupt_id, _answers(("REQ-01", "keep", [])))
+    response = _resume(client, run_id, interrupt_id, answer)
 
     assert _error(response) == (500, "INTERNAL")
-    assert client.get(f"/runs/{run_id}").json()["status"] == "awaiting_requirements"
+    assert response.json() == {
+        "code": "INTERNAL",
+        "message": "서버 오류입니다.",
+        "run_id": run_id,
+        "retryable": True,
+    }
+    with pool.connection() as conn:
+        assert runs.get_run(conn, UUID(run_id), _owner(client)) == before
+        assert events_after(conn, UUID(run_id), _owner(client), 0) == before_events
+        assert (
+            conn.execute("SELECT 1 FROM approval WHERE run_id = %s", (run_id,)).fetchone() is None
+        )
+        if model is not None:
+            conn.execute(
+                "UPDATE model_snapshot SET normalized_model = %s "
+                "WHERE run_id = %s AND revision = 0",
+                (Jsonb({"requirements": [{"id": "REQ-01"}]}), run_id),
+            )
+    if model is None:
+        _analysed(pool, run_id, "REQ-01")
+    assert _resume(client, run_id, interrupt_id, answer).status_code == 202
 
 
 def test_requirements_answer_that_fits_moves_on(client: TestClient, pool: Pool) -> None:
