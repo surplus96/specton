@@ -132,6 +132,7 @@ def test_split_pieces_keep_the_source_link_of_the_original() -> None:
         {"req_id": "REQ-01", "action": "edit", "texts": ["가", "나"]},
         {"req_id": "REQ-01", "action": "split", "texts": ["하나만"]},
         {"req_id": "REQ-01", "action": "keep", "texts": ["바꿀 문장"]},
+        {"req_id": "REQ-01", "action": "split", "texts": ["입고를 등록한다", " "]},
     ],
 )
 def test_answer_that_does_not_fit_the_requirements_is_rejected(answer: dict[str, Any]) -> None:

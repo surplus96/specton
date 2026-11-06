@@ -24,6 +24,7 @@
 | #110 | `ErrorCode.INVALID_REQUEST` (resume 밖 요청의 형식 오류) |
 | #119 | 추출 확인은 확인·제외만 (ADR-0015): `ExtractionResponse.edits` → `excluded_blocks`, `SourceRequirement`에 `notice`·`user_decision`·`excluded_reason`, `source_text` null 허용(`review`만), `extraction_status` 기본값 없음 |
 | #120 | `SourceRequirement.excluded_reason` 빈 문자열 금지, `analysable`이 결정 전 `fail` 블록도 뺀다 |
+| #136 | `RequirementsResponse.answers_for`로 저장된 요구사항 ID·중복 답·문장 수·빈 문장을 검사하고, 잘못된 답은 resume API에서 422로 거절한다 |
 | #140 | `SourceRequirement`: `review`·`fail` 블록은 `notice` 필수 |
 
 남은 작업: requirements·추적 검사 설명 (#107), FK 파생·참조 키 (#12), 값 범위 제약 (#15)
