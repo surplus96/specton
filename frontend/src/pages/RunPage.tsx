@@ -5,6 +5,7 @@ import StageSteps, { SCREENS } from '../layout/StageSteps.tsx'
 import PageCard from '../layout/PageCard.tsx'
 import ExtractionPanel from './extraction/ExtractionPanel.tsx'
 import RequirementsPanel from './requirements/RequirementsPanel.tsx'
+import ReviewPanel from './review/ReviewPanel.tsx'
 import ProgressPanel from './run/ProgressPanel.tsx'
 import { screenFor } from './run/screens.ts'
 import { useRunStatus } from './run/useRunStatus.ts'
@@ -49,6 +50,8 @@ function RunPage({ runId }: { runId: string }) {
         <ExtractionPanel run={run} events={events} onChanged={refresh} />
       ) : screen === 'UI-03' ? (
         <RequirementsPanel run={run} onChanged={refresh} />
+      ) : screen === 'UI-06' ? (
+        <ReviewPanel run={run} events={events} onChanged={refresh} />
       ) : (
         <PageCard
           title={SCREENS.find((s) => s.id === screen)?.title ?? screen}

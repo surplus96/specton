@@ -19,14 +19,16 @@ export function useResume(run: RunStatus, onChanged: () => Promise<void>) {
   const interruptId = run.interrupt?.interrupt_id ?? null
 
   const send = useCallback(
-    async (response: ResumeRequest['response']) => {
-      if (!interruptId) return
+    /** 보냈으면 true. 실패하면 false (오류·안내는 error·notice에 담긴다) */
+    async (response: ResumeRequest['response']): Promise<boolean> => {
+      if (!interruptId) return false
       setSending(true)
       setError(null)
       setNotice(null)
       try {
         await resumeRun(run.run_id, { interrupt_id: interruptId, expected_revision: run.revision, response })
         await onChanged()
+        return true
       } catch (err) {
         if (err instanceof ApiError && err.status === 409) {
           setNotice(CONFLICT_NOTICE)
@@ -35,6 +37,7 @@ export function useResume(run: RunStatus, onChanged: () => Promise<void>) {
         } else {
           setError(errorMessage(err))
         }
+        return false
       } finally {
         setSending(false)
       }

@@ -265,6 +265,22 @@ export const designItems = [
   },
 ]
 
+/** 차단 오류: 규칙 검사만 critical을 낼 수 있다 (ADR-0010). mock 시나리오 critical에서만 쓴다 */
+export const CRITICAL_FINDING = {
+  id: 'FND-00',
+  kind: 'missing_primary_key',
+  severity: 'critical',
+  targets: [{ kind: 'entity', id: 'ENT-03' }],
+  evidence: [{ req_id: 'REQ-02', quote: '입고 시 거래처와 입고 수량을 기록한다' }],
+  suggestion: '입고 엔티티의 식별자가 정해지지 않았습니다. 입고번호를 주 식별자로 두세요.',
+  target_stage: 'data_model',
+  source: 'rule',
+  reviewer_id: null,
+  rule_code: 'RULE-03',
+  fingerprint: 'fp-00',
+  iteration: 0,
+}
+
 /** section=review: 검토 지적 (차단 오류 없음) */
 export const findingItems = [
   {

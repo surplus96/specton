@@ -61,3 +61,78 @@ export type ExtractionBlock = {
   user_decision: 'confirmed' | 'excluded' | null
   excluded_reason: string | null
 }
+
+// ── section=design: type으로 구분 (specton/contracts/design.py) ─────────
+
+export type Crud = 'C' | 'R' | 'U' | 'D'
+
+export type DesignFunction = {
+  type: 'function'
+  id: string
+  name: string
+  description: string
+  priority: 'Must' | 'Should' | 'Could' | "Won't" | null
+  priority_source: 'explicit' | 'inferred' | 'unspecified'
+  priority_rationale: string | null
+  req_ids: string[]
+  entity_ops: { entity_id: string; operations: Crud[] }[]
+}
+
+export type DesignAttribute = {
+  id: string
+  name: string
+  description: string | null
+  data_type: string
+  length: number | null
+  precision: number | null
+  scale: number | null
+  is_key: boolean
+  is_unique: boolean
+  nullable: boolean
+  req_ids: string[]
+}
+
+export type DesignEntity = {
+  type: 'entity'
+  id: string
+  pack: string
+  name: string
+  description: string
+  attributes: DesignAttribute[]
+  req_ids: string[]
+  crud_exemptions: { operation: Crud; reason: string }[]
+}
+
+export type DesignRelationship = {
+  type: 'relationship'
+  id: string
+  parent: string
+  child: string
+  cardinality: '1:1' | '1:N' | 'N:M'
+  optional: boolean
+  identifying: boolean
+  rationale: string
+  req_ids: string[]
+}
+
+export type DesignItem = DesignFunction | DesignEntity | DesignRelationship
+
+// ── section=review (specton/contracts/findings.py Finding) ─────────────
+
+export type Severity = 'critical' | 'major' | 'minor'
+
+export type Finding = {
+  id: string
+  kind: string
+  severity: Severity
+  targets: { kind: 'requirement' | 'function' | 'entity' | 'attribute' | 'relationship'; id: string }[]
+  evidence: { req_id: string | null; quote: string; source_ref?: SourceRef | null }[]
+  suggestion: string
+  target_stage: 'requirements' | 'functions' | 'data_model' | null
+  /** rule: 규칙 검사(RULE·SC), llm: 리뷰어(A05~A08). critical은 rule만 (ADR-0010) */
+  source: 'rule' | 'llm'
+  reviewer_id: string | null
+  rule_code: string | null
+  fingerprint: string
+  iteration: number
+}

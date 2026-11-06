@@ -14,6 +14,8 @@
 //   unreadable   문서를 읽지 못함 (EXTRACTION_FAILED + 자세히 보기 문장)
 //   conflict     첫 확인 답이 409 INTERRUPT_STALE (다른 탭에서 먼저 답한 상황)
 //   no-questions 추출 확인은 멈추고, 분석 확인은 확인할 것이 없어 건너뜀 (ADR-0015)
+//   critical     최종 검토에 차단 오류(critical)가 있어 승인 불가. 수정 요청 한 번 뒤에 사라진다
+//   partial-review 최종 검토에서 일부 검토 관점이 빠짐(failed_branches)·자동 재작업을 멈춘 이유(hitl_reason)
 import { delay, http, HttpResponse } from 'msw'
 import type {
   ApiErrorBody,
@@ -36,6 +38,7 @@ import {
   designItems,
   ERD_SAMPLE,
   extractionItems,
+  CRITICAL_FINDING,
   findingItems,
   requirementItems,
 } from './data.ts'
@@ -69,7 +72,7 @@ type MockRun = {
   pack: string
   fileName: string
   created_at: string
-  scenario: 'normal' | 'quick' | 'slow-queue' | 'fail' | 'unreadable' | 'conflict' | 'no-questions'
+  scenario: 'normal' | 'quick' | 'slow-queue' | 'fail' | 'unreadable' | 'conflict' | 'no-questions' | 'critical' | 'partial-review'
   conflictPending: boolean // conflict: 다음 답을 409로 돌려준다
   status: RunState
   revision: number
@@ -84,6 +87,7 @@ type MockRun = {
   approvedRevisions: Set<number> // 승인한 revision (PDF는 여기서만)
   extraction: Item[]
   requirements: Item[]
+  findings: Item[] // 지금 revision의 검토 지적
 }
 
 // 백엔드 runner.py와 같은 문구
@@ -165,7 +169,11 @@ export function createMockBackend(options: MockOptions = {}) {
         message: INTERRUPT_MESSAGES[step.interrupt],
       }
       const payload: Item = { interrupt_id: interruptId, kind: step.interrupt }
-      if (step.interrupt === 'review') payload.failed_branches = []
+      if (step.interrupt === 'review') {
+        // 불완전 검토 안내 (docs/06 SSE interrupt payload)
+        payload.failed_branches = run.scenario === 'partial-review' ? ['A07'] : []
+        if (run.scenario === 'partial-review') payload.hitl_reason = 'rework_limit'
+      }
       pushEvent(run, 'interrupt', run.interrupt.message, payload)
     } else if (step.error) {
       run.error = { code: step.error.code, message: step.error.message, run_id: run.run_id, retryable: step.error.code === 'LLM_UNAVAILABLE' }
@@ -302,7 +310,11 @@ export function createMockBackend(options: MockOptions = {}) {
               ? 'conflict'
               : name.includes('no-questions')
                 ? 'no-questions'
-                : 'normal'
+                : name.includes('critical')
+                  ? 'critical'
+                  : name.includes('partial-review')
+                    ? 'partial-review'
+                    : 'normal'
 
     const run: MockRun = {
       run_id: crypto.randomUUID(),
@@ -324,6 +336,7 @@ export function createMockBackend(options: MockOptions = {}) {
       approvedRevisions: new Set(),
       extraction: structuredClone(extractionItems),
       requirements: structuredClone(requirementItems),
+      findings: structuredClone(scenario === 'critical' ? [CRITICAL_FINDING, ...findingItems] : findingItems),
     }
     runs.set(run.run_id, run)
     pushEvent(run, 'status', '실행을 접수했습니다')
@@ -358,7 +371,7 @@ export function createMockBackend(options: MockOptions = {}) {
       extraction: run.extraction,
       requirements: run.requirements,
       design: designItems,
-      review: findingItems,
+      review: run.findings,
     }
     const items = run.sections.has(section) ? source[section] : []
     const artifacts = run.artifactRevisions.has(revision)
@@ -453,8 +466,14 @@ export function createMockBackend(options: MockOptions = {}) {
       return statusOf(run)
     }
     if (answer.decision === 'revise') {
+      // 수정 요청을 반영했다고 보고 차단 오류를 지운다 (다시 검토하면 남은 지적만 나온다)
+      run.findings = run.findings.filter((f) => f.severity !== 'critical').map((f) => ({ ...f, iteration: (f.iteration as number) + 1 }))
       moveTo(run, { status: 'designing', stage: 'designing', nextRevision: true }, [...toReview])
       return statusOf(run)
+    }
+    if (run.findings.some((f) => f.severity === 'critical')) {
+      // 백엔드 api/errors.py BlockingFindingsError와 같은 응답 (ADR-0010)
+      throw new Reject(422, 'INVALID_RESPONSE', '차단 오류가 남아 있어 승인할 수 없습니다.', run.run_id)
     }
     moveTo(run, { status: 'exporting', stage: 'exporting' }, [{ status: 'completed', stage: 'exporting' }])
     return statusOf(run)
