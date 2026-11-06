@@ -460,7 +460,9 @@ def _derive_fk(
             name = f"{prefix[0]}{key.name}"
             if physical:
                 physical = run.rules.separator.join((prefix[1], physical))
-                run.problems.extend(check_name(physical, col_id, run.rules))
+                # 대상은 이 FK 칸을 만든 관계다. 정리에 실패하면 칸이 만들어지지 않으므로,
+                # 실패 변환기(#15)가 칸 ID를 되짚지 않고 원래 관계로 바로 잇게 한다.
+                run.problems.extend(check_name(physical, rel.id, run.rules))
         # 빈 물리명은 이미 D5 문제로 보고된 자리표시라 서로 겹친다고 보지 않는다
         clash = (taken.get(physical) if physical else None) or taken_logical.get(name)
         if clash is not None:
