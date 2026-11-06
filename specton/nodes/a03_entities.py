@@ -11,7 +11,6 @@
 - 팩 타입은 strict 프로필로 읽는다 (프로필 확정 전).
 """
 
-import hashlib
 import unicodedata
 from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
@@ -32,6 +31,7 @@ from specton.contracts import (
     SqlType,
 )
 from specton.contracts.base import Contract, NonEmptyText
+from specton.ids import stable_id
 from specton.llm.client import LLMClient
 from specton.nodes.common import NodeRun, build_request
 from specton.packs.build import DEFAULT_ROOT, read_yaml
@@ -120,6 +120,8 @@ class PackTerm(Contract):
     length: int | None = Field(default=None, ge=1)
     precision: int | None = Field(default=None, ge=1)
     scale: int | None = Field(default=None, ge=0)
+    # 이 용어 대신 쓰면 안 되는 다른 이름 (#91 후속). 검사에만 쓰고 LLM 입력에는 넣지 않는다
+    synonyms: tuple[NonEmptyText, ...] = ()
 
     @model_validator(mode="after")
     def _check_type_params(self) -> Self:
@@ -156,7 +158,9 @@ def input_data(
             for f in state.functions
         ],
         "pack": {
-            "terms": [t.model_dump(mode="json", exclude_none=True) for t in terms],
+            "terms": [
+                t.model_dump(mode="json", exclude_none=True, exclude={"synonyms"}) for t in terms
+            ],
             "crud_exemption_reasons": {
                 reason: [op.value for op in ops] for reason, ops in exemption_reasons.items()
             },
@@ -173,9 +177,11 @@ def _checked_against(
     """이번 입력으로 검사하는 출력 모델. 어기면 형식 오류처럼 재요청 대상이 된다.
 
     팩 용어와 이름이 같은 속성만 타입을 대조하고, 팩에 없는 속성은 허용한다.
+    속성 이름이 팩 용어의 동의어이거나 띄어쓰기만 다르면 정식 용어명으로 다시 요청한다.
     면제 사유는 팩이 인정하는 것만, 면제 조작은 그 사유에 나열된 것만 허용한다.
     """
-    by_term = {t.term: t for t in terms}
+    by_term = {_nfc(t.term): t for t in terms}
+    official = _official_names(terms)
 
     class CheckedA03Output(A03Output):
         @model_validator(mode="after")
@@ -208,17 +214,47 @@ def _checked_against(
             ]
             if wrong_ops:
                 raise ValueError(f"사유가 면제할 수 없는 조작입니다: {', '.join(wrong_ops)}")
+            renamed = [
+                f"{e.name}.{a.name} → {'/'.join(official[_compact(a.name)])}"
+                for e in self.entities
+                for a in e.attributes
+                if _nfc(a.name) not in by_term and _compact(a.name) in official
+            ]
+            if renamed:
+                raise ValueError(
+                    "팩 용어의 동의어·띄어쓰기 변형입니다. 정식 용어명으로 쓰세요: "
+                    + ", ".join(renamed)
+                )
             mismatched = [
                 f"{e.name}.{a.name}"
                 for e in self.entities
                 for a in e.attributes
-                if a.name in by_term and not _same_type(a, by_term[a.name])
+                if _nfc(a.name) in by_term and not _same_type(a, by_term[_nfc(a.name)])
             ]
             if mismatched:
                 raise ValueError(f"팩 용어와 타입·길이가 다릅니다: {', '.join(mismatched)}")
             return self
 
     return CheckedA03Output
+
+
+def _nfc(name: str) -> str:
+    """한글 조합 방식 차이(NFC·NFD)를 맞춘다. ID 계산(`specton.ids.stable_id`)과 같은 기준이다."""
+    return unicodedata.normalize("NFC", name)
+
+
+def _compact(name: str) -> str:
+    """조합 방식(NFC·NFD)과 띄어쓰기 차이를 무시하고 비교하기 위한 이름."""
+    return "".join(_nfc(name).split())
+
+
+def _official_names(terms: Sequence[PackTerm]) -> dict[str, tuple[str, ...]]:
+    """동의어·띄어쓰기 변형 → 정식 용어명. 한 말이 여러 용어의 동의어면 모두 남긴다."""
+    found: dict[str, set[str]] = {}
+    for t in terms:
+        for alias in (t.term, *t.synonyms):
+            found.setdefault(_compact(alias), set()).add(t.term)
+    return {k: tuple(sorted(v)) for k, v in found.items()}
 
 
 def _same_type(attribute: AttributeDraft, term: PackTerm) -> bool:
@@ -249,7 +285,11 @@ def load_pack_context(pack: str, *, root: Path = DEFAULT_ROOT) -> PackContext:
     domains = {d["name"]: d for d in read_yaml(root / "common" / "domains.yaml")["domains"]}
     terms = tuple(
         PackTerm.model_validate(
-            {"term": t["term"], **_contract_fields(domains[t["domain"]]["postgres"]["strict"])}
+            {
+                "term": t["term"],
+                "synonyms": t.get("synonyms") or (),
+                **_contract_fields(domains[t["domain"]]["postgres"]["strict"]),
+            }
         )
         for t in read_yaml(root / pack / "terms.yaml")["terms"]
     )
@@ -317,7 +357,6 @@ def run(
 
 
 # 해시 앞 16자리(64비트). 한 실행의 엔티티·속성 수에서 충돌 확률은 무시할 만하고, 나면 멈춘다.
-_ID_HEX_LENGTH = 16
 
 
 def _with_ids(drafts: Sequence[EntityDraft], pack: str) -> tuple[Entity, ...]:
@@ -330,10 +369,10 @@ def _with_ids(drafts: Sequence[EntityDraft], pack: str) -> tuple[Entity, ...]:
         Entity.model_validate(
             {
                 **d.model_dump(exclude={"attributes"}),
-                "id": _stable_id("ENT", pack, d.name),
+                "id": stable_id("ENT", pack, d.name),
                 "pack": pack,
                 "attributes": [
-                    {**a.model_dump(), "id": _stable_id("ATTR", pack, d.name, a.name)}
+                    {**a.model_dump(), "id": stable_id("ATTR", pack, d.name, a.name)}
                     for a in d.attributes
                 ],
             }
@@ -343,13 +382,6 @@ def _with_ids(drafts: Sequence[EntityDraft], pack: str) -> tuple[Entity, ...]:
     _check_unique([e.id for e in entities], "엔티티")
     _check_unique([a.id for e in entities for a in e.attributes], "속성")
     return entities
-
-
-def _stable_id(prefix: str, *parts: str) -> str:
-    """실행이 달라도 같은 값이 나오는 ID. 한글 조합 방식 차이는 NFC로 맞춘다."""
-    key = "\x1f".join(unicodedata.normalize("NFC", p) for p in parts)
-    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:_ID_HEX_LENGTH]
-    return f"{prefix}-{digest}"
 
 
 def _check_unique(ids: Sequence[str], kind: str) -> None:

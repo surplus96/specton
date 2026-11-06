@@ -10,6 +10,7 @@ from pydantic import Field
 from specton.contracts.base import Contract, NonEmptyText, ObjectId
 from specton.contracts.design import Entity, Function, Relationship
 from specton.contracts.findings import Finding
+from specton.contracts.normalized import NormalizedModel
 from specton.contracts.requirements import Requirement, SourceRequirement
 
 
@@ -79,6 +80,8 @@ class DesignState(Contract):
     functions: tuple[Function, ...] = ()
     entities: tuple[Entity, ...] = ()
     relationships: tuple[Relationship, ...] = ()
+    # 모델 정리(#12) 성공 결과. 설계가 바뀌면 비우고 정리 단계가 다시 채운다 (ADR-0016, #142)
+    normalized: NormalizedModel | None = None
     artifacts: tuple[ArtifactRef, ...] = ()
     findings: tuple[Finding, ...] = ()
     branch_results: dict[str, BranchResult] = Field(default_factory=dict)

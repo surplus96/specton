@@ -292,12 +292,18 @@ def test_rebuild_with_same_version_and_unchanged_content_passes(tmp_path: Path) 
 
 
 def test_pack_content_hash_ignores_crlf_vs_lf(tmp_path: Path) -> None:
+    """줄바꿈만 LF·CRLF로 다른 팩은 해시가 같다(Windows에서 받아도 lock이 깨지지 않게).
+
+    `write_text()`는 Windows에서 `\n`을 `\r\n`으로 바꿔 저장한다. 그러면 LF로 쓴 파일은 CRLF가 되고
+    CRLF로 쓴 파일은 `\r\r\n`이 되어 의도한 비교가 되지 않으므로, `write_bytes()`로 운영체제와
+    상관없이 정확한 바이트를 쓴다(R4가 Windows 실행에서 발견, #141 본문).
+    """
     pack_dir = tmp_path / "pack"
     pack_dir.mkdir()
-    (pack_dir / "a.yaml").write_text("x: 1\ny: 2\n", encoding="utf-8")
+    (pack_dir / "a.yaml").write_bytes(b"x: 1\ny: 2\n")
 
     lf_hash = pack_content_hash(pack_dir)
-    (pack_dir / "a.yaml").write_text("x: 1\r\ny: 2\r\n", encoding="utf-8")
+    (pack_dir / "a.yaml").write_bytes(b"x: 1\r\ny: 2\r\n")
     crlf_hash = pack_content_hash(pack_dir)
 
     assert lf_hash == crlf_hash

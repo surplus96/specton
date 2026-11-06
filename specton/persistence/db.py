@@ -4,7 +4,9 @@
 LLM 호출 중이나 SSE 스트림이 열려 있는 동안 연결을 잡고 있지 않는다.
 """
 
+import importlib
 import inspect
+import pkgutil
 from enum import Enum
 from importlib.resources import files
 from typing import Any
@@ -15,8 +17,8 @@ from psycopg import Connection
 from psycopg.rows import DictRow, dict_row
 from psycopg_pool import ConnectionPool
 
+import specton.contracts
 from specton.config import Settings
-from specton.contracts import api, base, design, findings, requirements, state
 from specton.contracts.base import Contract
 
 Pool = ConnectionPool[Connection[DictRow]]
@@ -59,8 +61,11 @@ GRAPH_STATE_TYPES: frozenset[tuple[str, str]] = frozenset(
 
 
 def _contract_types() -> frozenset[tuple[str, str]]:
-    """`specton/contracts/`에 정의된 계약 모델과 열거형 전부. 계약이 늘면 따라 늘어난다."""
-    modules = (api, base, design, findings, requirements, state)
+    """`specton/contracts/`에 정의된 계약 모델과 열거형 전부. 모듈·타입이 늘면 따라 는다."""
+    modules = [
+        importlib.import_module(f"specton.contracts.{m.name}")
+        for m in pkgutil.iter_modules(specton.contracts.__path__)
+    ]
     return frozenset(
         (module.__name__, name)
         for module in modules

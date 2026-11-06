@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from specton.config import Settings
 from specton.contracts import Crud, DesignState, Function, Requirement
 from specton.contracts.state import find_trace_issues
+from specton.ids import stable_id
 from specton.llm.errors import LLMContractError, LLMRefusalError
 from specton.llm.stub import refusal, reply, stub_client
 from specton.nodes import a03_entities
@@ -371,7 +372,7 @@ def test_pack_context_turns_domains_into_contract_types() -> None:
 
 
 def _entity_id(name: str, pack: str = "inventory") -> str:
-    return a03_entities._stable_id("ENT", pack, name)
+    return stable_id("ENT", pack, name)
 
 
 def _settings() -> Settings:
@@ -587,12 +588,10 @@ def _without(data: dict[str, Any], name: str) -> dict[str, Any]:
 def test_ids_are_fixed_values_of_pack_and_name() -> None:
     """알고리즘이 바뀌면 저장된 참조가 끊기므로 값을 고정해 둔다."""
     assert _entity_id("창고") == "ENT-98727dcf83e8b2b7"
-    assert a03_entities._stable_id("ATTR", "inventory", "창고", "창고코드") == (
-        "ATTR-6be8c07817773f78"
-    )
+    assert stable_id("ATTR", "inventory", "창고", "창고코드") == ("ATTR-6be8c07817773f78")
     assert _entity_id("창고") != _entity_id("창고", pack="maintenance")
-    assert a03_entities._stable_id("ATTR", "inventory", "창고", "사용여부") != (
-        a03_entities._stable_id("ATTR", "inventory", "품목", "사용여부")
+    assert stable_id("ATTR", "inventory", "창고", "사용여부") != (
+        stable_id("ATTR", "inventory", "품목", "사용여부")
     )
     # 한글 조합 방식(NFC·NFD)이 달라도 같은 ID
     assert _entity_id(unicodedata.normalize("NFD", "창고")) == _entity_id("창고")
@@ -654,8 +653,112 @@ def test_renamed_entity_is_treated_as_a_new_object() -> None:
 
 
 def test_id_collision_stops_instead_of_overwriting(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(a03_entities, "_stable_id", lambda prefix, *parts: f"{prefix}-same")
+    monkeypatch.setattr(a03_entities, "stable_id", lambda prefix, *parts: f"{prefix}-same")
     client, _ = stub_client(reply(_example_output()))
 
     with pytest.raises(ValueError, match="엔티티 ID가 충돌합니다: ENT-same"):
         run(client, _a02_state(), _settings(), pack="inventory")
+
+
+# 동의어 재요청 (#137, #91 후속)
+
+
+def _checked_with_synonyms() -> type[A03Output]:
+    """예시 입력의 팩 용어 중 창고코드에 실제 팩의 동의어를 붙인 검사 모델."""
+    [example] = load_examples("inventory", "A03", A03Output)
+    terms = [
+        PackTerm.model_validate(
+            {**t, "synonyms": ["창고 번호", "보관소 코드"]} if t["term"] == "창고코드" else t
+        )
+        for t in example.input["pack"]["terms"]
+    ]
+    return _checked_against(
+        {f["id"] for f in example.input["functions"]},
+        {r["id"] for r in example.input["requirements"]},
+        terms,
+        _reasons(example.input["pack"]),
+    )
+
+
+@pytest.mark.parametrize("name", ["보관소 코드", "보관소코드", "창고번호", "창고 코드"])
+def test_synonym_or_spacing_variant_of_a_pack_term_is_requested_again(name: str) -> None:
+    data = _output()
+    attribute = data["entities"][0]["attributes"][0]
+    assert attribute["name"] == "창고코드"
+    attribute["name"] = name
+
+    with pytest.raises(
+        ValidationError, match=re.escape(f"정식 용어명으로 쓰세요: 창고.{name} → 창고코드")
+    ):
+        _checked_with_synonyms().model_validate(data)
+
+
+@pytest.mark.parametrize("name", ["보관소 코드", "창고 코드"])
+def test_nfd_synonym_or_spacing_variant_is_requested_again(name: str) -> None:
+    """NFD로 저장된 동의어·띄어쓰기 변형도 NFC와 똑같이 재요청된다 (#141 리뷰)."""
+    nfd = unicodedata.normalize("NFD", name)
+    assert nfd != name
+    data = _output()
+    data["entities"][0]["attributes"][0]["name"] = nfd
+
+    with pytest.raises(
+        ValidationError, match=re.escape(f"정식 용어명으로 쓰세요: 창고.{nfd} → 창고코드")
+    ):
+        _checked_with_synonyms().model_validate(data)
+
+
+def test_official_term_name_passes_the_synonym_check() -> None:
+    _checked_with_synonyms().model_validate(_output())
+
+
+def test_nfd_official_term_name_passes_and_is_type_checked() -> None:
+    """NFD 정식 용어명은 동의어로 보지 않고, 타입 대조는 그대로 한다."""
+    data = _output()
+    attribute = data["entities"][0]["attributes"][0]
+    attribute["name"] = unicodedata.normalize("NFD", "창고코드")
+    _checked_with_synonyms().model_validate(data)
+
+    attribute["length"] = (attribute.get("length") or 0) + 1
+    with pytest.raises(ValidationError, match="팩 용어와 타입·길이가 다릅니다"):
+        _checked_with_synonyms().model_validate(data)
+
+
+def test_pack_context_reads_synonyms_but_input_data_does_not_show_them() -> None:
+    by_term = {t.term: t for t in load_pack_context("inventory").terms}
+    assert by_term["창고코드"].synonyms == ("창고 번호", "보관소 코드")
+
+    data = input_data(_a02_state(), terms=[by_term["창고코드"]], exemption_reasons={})
+    assert "synonyms" not in data["pack"]["terms"][0]
+
+
+def test_run_requests_again_when_a_synonym_is_used_and_accepts_the_official_term() -> None:
+    """실제 팩(inventory)의 동의어를 쓴 응답은 재요청되고, 정식 용어명 응답으로 끝난다."""
+    data = _output()
+    data["entities"][0]["attributes"][0]["name"] = "보관소 코드"  # 창고코드의 팩 동의어
+    client, transport = stub_client(reply(_raw(data)), reply(_example_output()))
+
+    result = run(client, _a02_state(), _settings(), pack="inventory")
+
+    assert len(transport.sent) == 2
+    retry = transport.sent[1].messages[-1].content
+    assert "정식 용어명으로 쓰세요" in retry
+    assert "보관소 코드 → 창고코드" in retry
+    names = [a.name for e in result.output.entities for a in e.attributes]
+    assert "창고코드" in names
+    assert "보관소 코드" not in names
+
+
+def test_run_requests_again_when_an_nfd_synonym_is_used() -> None:
+    """NFD 동의어 응답도 재요청된다. 그대로 확정되면 모델 정리가 unresolved_name으로 실패한다."""
+    nfd = unicodedata.normalize("NFD", "보관소 코드")
+    data = _output()
+    data["entities"][0]["attributes"][0]["name"] = nfd
+    client, transport = stub_client(reply(_raw(data)), reply(_example_output()))
+
+    result = run(client, _a02_state(), _settings(), pack="inventory")
+
+    assert len(transport.sent) == 2
+    assert "정식 용어명으로 쓰세요" in transport.sent[1].messages[-1].content
+    names = [a.name for e in result.output.entities for a in e.attributes]
+    assert "창고코드" in names
+    assert nfd not in names

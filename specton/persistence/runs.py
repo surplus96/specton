@@ -20,6 +20,7 @@ from specton.contracts import (
     ExtractionStatus,
     Interrupt,
     InterruptKind,
+    RequirementsResponse,
     ResumeRequest,
     RunState,
     RunStatus,
@@ -35,6 +36,7 @@ from specton.persistence.errors import (
     InterruptStaleError,
     InvalidResponseError,
     InvalidTransitionError,
+    MissingSnapshotError,
     ResponseMismatchError,
     RevisionConflictError,
     RunNotFoundError,
@@ -314,13 +316,21 @@ def answer_interrupt(
             raise InterruptStaleError(request.interrupt_id)
         if interrupt["kind"] != response.kind:
             raise ResponseMismatchError(f"{interrupt['kind']} 확인에 {response.kind} 응답")
+        payload: dict[str, Any] = {}
         if response.kind == "extraction":
-            _check_extraction(conn, run_id, response)
+            confirmed = _check_extraction(conn, run_id, response)
+            if response.confirmed:  # 확인한 review 블록을 남긴다 (#95 결론, #130)
+                payload = {
+                    "kind": "extraction",
+                    "interrupt_id": request.interrupt_id,
+                    "confirmed_block_ids": confirmed,
+                }
             new: RunState | None = _AFTER_ANSWER[InterruptKind.EXTRACTION]
             if not response.confirmed:
                 new = S.CANCELLED  # 확인하지 않으면 중단한다 (ADR-0015)
             decision = "confirm" if response.confirmed else "stop"
         elif response.kind == "requirements":
+            _check_requirements(conn, run_id, current["revision"], response)
             new, decision = _AFTER_ANSWER[InterruptKind.REQUIREMENTS], "answer"
         else:
             new, decision = _AFTER_REVIEW[response.decision], response.decision
@@ -350,7 +360,9 @@ def answer_interrupt(
         if new is S.CANCELLED:
             event = NewEvent(SseEventType.CANCELLED, "추출 확인을 중단했습니다")
         else:
-            event = NewEvent(SseEventType.STATUS, "답변을 받아 다시 진행합니다", stage=new.value)
+            event = NewEvent(
+                SseEventType.STATUS, "답변을 받아 다시 진행합니다", stage=new.value, payload=payload
+            )
         events = _append_events(conn, run_id, current["revision"], [event])
     return new, events
 
@@ -400,16 +412,19 @@ def _lock_run(
     return {**row, "status": RunState(row["status"])}
 
 
-def _check_extraction(conn: Connection[DictRow], run_id: UUID, answer: ExtractionResponse) -> None:
-    """추출 확인 답이 블록 판정과 맞는지 본다 (06 문서, ADR-0015 결정 5).
+def _check_extraction(
+    conn: Connection[DictRow], run_id: UUID, answer: ExtractionResponse
+) -> list[str]:
+    """추출 확인 답이 블록 판정과 맞는지 보고, 사용자가 확인한 `review` 블록 ID를 돌려준다.
 
-    맞지 않으면 해당 블록 ID를 담아 InvalidResponseError. 제외 결정을 블록에 남기는 일은
-    실행기(#17)가 한다.
+    맞지 않으면 해당 블록 ID를 담아 InvalidResponseError (06 문서, ADR-0015 결정 5). 확인한
+    블록은 제외하지 않은 `review` 블록이다(원문 문장이 없어도). 중단하는 답이면 빈 목록이다.
+    제외 결정을 블록에 남기는 일은 실행기(#17)가 한다.
     """
     if not answer.confirmed:
         if answer.excluded_blocks:
             raise InvalidResponseError("중단하는 답에는 제외할 블록을 넣지 않습니다")
-        return
+        return []
     rows = conn.execute(
         """
         SELECT b.block_id, b.extraction_status
@@ -433,6 +448,32 @@ def _check_extraction(conn: Connection[DictRow], run_id: UUID, answer: Extractio
     failed = sorted({b for b, s in judged.items() if s is ExtractionStatus.FAIL} - excluded)
     if failed:
         raise InvalidResponseError(f"{', '.join(failed)}: 추출에 실패한 블록은 제외해야 합니다")
+    return sorted({b for b, s in judged.items() if s is ExtractionStatus.REVIEW} - excluded)
+
+
+def _check_requirements(
+    conn: Connection[DictRow], run_id: UUID, revision: int, answer: RequirementsResponse
+) -> None:
+    """분석 확인 답이 멈출 때 저장한 요구사항과 맞는지 본다 (06 문서, #130).
+
+    대조 기준은 실행기가 HITL 1에서 멈추며 저장한 그 revision 모델이다. 맞지 않으면 해당
+    `req_id`를 담아 InvalidResponseError. 그 모델이 없으면 사용자 잘못이 아니므로
+    MissingSnapshotError(내부 오류, #146). 답을 요구사항에 반영하는 일은 그래프가 한다 (#123).
+    """
+    row = conn.execute(
+        """
+        SELECT normalized_model -> 'requirements' AS requirements
+        FROM model_snapshot WHERE run_id = %s AND revision = %s
+        """,
+        (run_id, revision),
+    ).fetchone()
+    if row is None or row["requirements"] is None:
+        raise MissingSnapshotError(f"{run_id} revision {revision}: 분석 확인 대조 모델이 없습니다")
+    req_ids = [r["id"] for r in row["requirements"]]
+    try:
+        answer.answers_for(req_ids)
+    except ValueError as exc:
+        raise InvalidResponseError(str(exc)) from exc
 
 
 def _has_blocking_findings(conn: Connection[DictRow], run_id: UUID, revision: int) -> bool:
