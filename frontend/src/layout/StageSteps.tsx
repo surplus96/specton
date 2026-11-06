@@ -23,7 +23,7 @@ function StageSteps({ current }: Props) {
     <Steps
       size="small"
       current={index}
-      items={SCREENS.map((s) => ({ title: s.title, description: s.id }))}
+      items={SCREENS.map((s) => ({ title: s.title, content: s.id }))}
     />
   )
 }

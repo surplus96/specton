@@ -45,6 +45,8 @@ export type MockOptions = {
   cancelMs?: number
   /** 현재 시각. 테스트에서 시간을 조절할 때 바꾼다. */
   now?: () => number
+  /** SSE 스트림이 새 이벤트를 확인하는 간격(ms). 백엔드 SPECTON_SSE_POLL_SECONDS에 해당 */
+  pollMs?: number
 }
 
 type Item = Record<string, unknown>
@@ -125,6 +127,7 @@ export function createMockBackend(options: MockOptions = {}) {
   const stepMs = options.stepMs ?? 1500
   const cancelMs = options.cancelMs ?? 4000
   const now = options.now ?? Date.now
+  const pollMs = options.pollMs ?? 250
   const runs = new Map<string, MockRun>()
 
   // ── 상태 흐름 ─────────────────────────────────────────
@@ -467,6 +470,49 @@ export function createMockBackend(options: MockOptions = {}) {
     })
   }
 
+  // ── SSE (백엔드 api/runs.py stream_events와 같은 규칙) ────────
+
+  /** Last-Event-ID 검사. 숫자가 아니거나 아직 없는 ID면 409 (docs/06 「SSE」) */
+  function replayFrom(run: MockRun, header: string | null): number {
+    if (header === null || header === '') return 0
+    if (!/^\d+$/.test(header) || Number(header) > run.events.length) {
+      throw new Reject(
+        409,
+        'EVENT_REPLAY_EXPIRED',
+        '이어 받을 수 없는 이벤트 위치입니다. 상태를 조회한 뒤 다시 연결하세요.',
+        run.run_id,
+      )
+    }
+    return Number(header)
+  }
+
+  /** 지난 이벤트를 다시 보내고 새 이벤트를 이어 보낸다. 끝난 실행은 다 보낸 뒤 닫는다. */
+  function eventStream(run: MockRun, after: number, signal: AbortSignal): ReadableStream<Uint8Array> {
+    const encoder = new TextEncoder()
+    let timer: ReturnType<typeof setInterval> | undefined
+    let last = after
+    const stop = () => clearInterval(timer)
+    return new ReadableStream({
+      start(controller) {
+        const tick = () => {
+          advance(run)
+          for (const e of run.events.slice(last)) {
+            controller.enqueue(encoder.encode(`id: ${e.id}\nevent: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`))
+            last = e.id
+          }
+          if (FINISHED.includes(run.status) && last === run.events.length) {
+            stop()
+            controller.close()
+          }
+        }
+        signal.addEventListener('abort', stop)
+        timer = setInterval(tick, pollMs)
+        tick()
+      },
+      cancel: stop,
+    })
+  }
+
   // ── MSW 연결 ──────────────────────────────────────────
   // 주소 앞의 *는 어느 서버 주소든 맞춘다는 뜻 (브라우저·테스트 모두에서 쓰기 위해)
 
@@ -497,6 +543,16 @@ export function createMockBackend(options: MockOptions = {}) {
 
     http.get('*/runs/:id', ({ params }) => respond(() => statusOf(findRun(String(params.id))))),
 
+    http.get('*/runs/:id/events', ({ params, request }) =>
+      respond(() => {
+        const run = findRun(String(params.id))
+        const after = replayFrom(run, request.headers.get('Last-Event-ID'))
+        return new HttpResponse(eventStream(run, after, request.signal), {
+          headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+        })
+      }),
+    ),
+
     http.get('*/runs/:id/view', ({ params, request }) =>
       respond(() => view(findRun(String(params.id)), new URL(request.url))),
     ),
@@ -525,7 +581,7 @@ export function createMockBackend(options: MockOptions = {}) {
     handlers,
     /** 저장한 실행을 모두 지운다 (테스트용) */
     reset: () => runs.clear(),
-    /** SSE 이벤트 기록 (4단계에서 /events 스트림에 쓴다) */
+    /** SSE 이벤트 기록 (테스트에서 /events 스트림과 비교한다) */
     eventsOf: (runId: string) => {
       const run = runs.get(runId)
       if (run) advance(run)
