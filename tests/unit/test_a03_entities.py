@@ -6,6 +6,7 @@
 import copy
 import json
 import re
+import shutil
 import unicodedata
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ from pydantic import ValidationError
 from specton.config import Settings
 from specton.contracts import Crud, DesignState, Function, Requirement
 from specton.contracts.state import find_trace_issues
+from specton.ids import stable_id
 from specton.llm.errors import LLMContractError, LLMRefusalError
 from specton.llm.stub import refusal, reply, stub_client
 from specton.nodes import a03_entities
@@ -367,11 +369,96 @@ def test_pack_context_turns_domains_into_contract_types() -> None:
     assert (by_term["거래일시"].data_type, by_term["거래일시"].precision) == ("timestamp", None)
 
 
+def _expected_terms_from_yaml(pack: str) -> dict[str, dict[str, Any]]:
+    """`loader.load_pack`을 거치지 않고 YAML을 직접 읽어 만든 기대값(옛 구현과 같은 경로).
+
+    옛 `load_pack_context`가 하던 일(용어 이름·동의어를 그대로 읽고, 공통 도메인의
+    strict 매핑을 `_contract_fields`와 같은 규칙으로 계약 필드로 바꾸는 일)을 테스트에서
+    다시 한다. `load_pack_context`가 `packs.loader`를 거쳐도 같은 값을 내는지 이 결과와
+    대조한다.
+    """
+    domains = {d["name"]: d for d in _yaml("common/domains.yaml")["domains"]}
+    expected: dict[str, dict[str, Any]] = {}
+    for t in _yaml(f"{pack}/terms.yaml")["terms"]:
+        strict = domains[t["domain"]]["postgres"]["strict"]
+        kind = strict["type"]
+        if kind in ("char", "varchar"):
+            fields: dict[str, Any] = {"length": strict["length"]}
+        elif kind == "numeric":
+            fields = {"precision": strict["length"], "scale": strict.get("scale")}
+        else:
+            fields = {}
+        expected[t["term"]] = {
+            "synonyms": tuple(t.get("synonyms") or ()),
+            "data_type": kind,
+            **{k: v for k, v in fields.items() if v is not None},
+        }
+    return expected
+
+
+@pytest.mark.parametrize("pack", ["inventory", "maintenance"])
+def test_pack_context_matches_reading_the_yaml_directly(pack: str) -> None:
+    """`load_pack_context`가 로더를 거친 뒤에도 YAML을 직접 읽은 옛 결과와 같은 값을 낸다.
+
+    #11 후속으로 `load_pack_context`를 `packs.loader.load_pack` 위에 다시 짜면서,
+    용어 이름·동의어·계약 필드(data_type·length·precision·scale)가 전부 그대로인지
+    팩 전체 용어로 확인한다. naming.yaml의 type_profile이 지금은 "strict"이므로
+    기대값도 strict 매핑으로 계산한다.
+    """
+    context = load_pack_context(pack)
+    expected = _expected_terms_from_yaml(pack)
+
+    assert {t.term for t in context.terms} == set(expected)
+    for term in context.terms:
+        want = expected[term.term]
+        got = {
+            "synonyms": term.synonyms,
+            "data_type": term.data_type,
+            **{
+                k: v
+                for k, v in {
+                    "length": term.length,
+                    "precision": term.precision,
+                    "scale": term.scale,
+                }.items()
+                if v is not None
+            },
+        }
+        assert got == want, term.term
+
+
+def test_pack_context_picks_pg_native_mapping_when_naming_says_so(tmp_path: Path) -> None:
+    """naming.yaml의 type_profile이 pg_native면 strict 대신 pg_native 매핑을 쓴다.
+
+    `load_pack`은 `pack.lock`·버전 검사를 하지 않는다(그 검사는
+    `specton.packs.build --check`에만 있다. `specton/packs/build.py` 참고). 그래서
+    팩 폴더를 임시 디렉터리로 복사해 `naming.yaml` 한 줄만 바꿔도 `load_pack_context`를
+    그대로 쓸 수 있다. 연월일 도메인은 strict가 char(8)이고 pg_native가 date라
+    data_type이 바뀌는지로 구분한다.
+    """
+    root = tmp_path / "domain_packs"
+    shutil.copytree(PACKS, root)
+    naming_path = root / "common" / "naming.yaml"
+    naming_path.write_text(
+        naming_path.read_text(encoding="utf-8").replace(
+            "type_profile: strict", "type_profile: pg_native"
+        ),
+        encoding="utf-8",
+    )
+
+    context = load_pack_context("maintenance", root=root)
+
+    by_term = {t.term: t for t in context.terms}
+    introduced_on = by_term["도입일자"]
+    assert introduced_on.data_type == "date"
+    assert introduced_on.length is None
+
+
 # run: 정상 응답과 ID 부여
 
 
 def _entity_id(name: str, pack: str = "inventory") -> str:
-    return a03_entities._stable_id("ENT", pack, name)
+    return stable_id("ENT", pack, name)
 
 
 def _settings() -> Settings:
@@ -587,12 +674,10 @@ def _without(data: dict[str, Any], name: str) -> dict[str, Any]:
 def test_ids_are_fixed_values_of_pack_and_name() -> None:
     """알고리즘이 바뀌면 저장된 참조가 끊기므로 값을 고정해 둔다."""
     assert _entity_id("창고") == "ENT-98727dcf83e8b2b7"
-    assert a03_entities._stable_id("ATTR", "inventory", "창고", "창고코드") == (
-        "ATTR-6be8c07817773f78"
-    )
+    assert stable_id("ATTR", "inventory", "창고", "창고코드") == ("ATTR-6be8c07817773f78")
     assert _entity_id("창고") != _entity_id("창고", pack="maintenance")
-    assert a03_entities._stable_id("ATTR", "inventory", "창고", "사용여부") != (
-        a03_entities._stable_id("ATTR", "inventory", "품목", "사용여부")
+    assert stable_id("ATTR", "inventory", "창고", "사용여부") != (
+        stable_id("ATTR", "inventory", "품목", "사용여부")
     )
     # 한글 조합 방식(NFC·NFD)이 달라도 같은 ID
     assert _entity_id(unicodedata.normalize("NFD", "창고")) == _entity_id("창고")
@@ -654,8 +739,112 @@ def test_renamed_entity_is_treated_as_a_new_object() -> None:
 
 
 def test_id_collision_stops_instead_of_overwriting(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(a03_entities, "_stable_id", lambda prefix, *parts: f"{prefix}-same")
+    monkeypatch.setattr(a03_entities, "stable_id", lambda prefix, *parts: f"{prefix}-same")
     client, _ = stub_client(reply(_example_output()))
 
     with pytest.raises(ValueError, match="엔티티 ID가 충돌합니다: ENT-same"):
         run(client, _a02_state(), _settings(), pack="inventory")
+
+
+# 동의어 재요청 (#137, #91 후속)
+
+
+def _checked_with_synonyms() -> type[A03Output]:
+    """예시 입력의 팩 용어 중 창고코드에 실제 팩의 동의어를 붙인 검사 모델."""
+    [example] = load_examples("inventory", "A03", A03Output)
+    terms = [
+        PackTerm.model_validate(
+            {**t, "synonyms": ["창고 번호", "보관소 코드"]} if t["term"] == "창고코드" else t
+        )
+        for t in example.input["pack"]["terms"]
+    ]
+    return _checked_against(
+        {f["id"] for f in example.input["functions"]},
+        {r["id"] for r in example.input["requirements"]},
+        terms,
+        _reasons(example.input["pack"]),
+    )
+
+
+@pytest.mark.parametrize("name", ["보관소 코드", "보관소코드", "창고번호", "창고 코드"])
+def test_synonym_or_spacing_variant_of_a_pack_term_is_requested_again(name: str) -> None:
+    data = _output()
+    attribute = data["entities"][0]["attributes"][0]
+    assert attribute["name"] == "창고코드"
+    attribute["name"] = name
+
+    with pytest.raises(
+        ValidationError, match=re.escape(f"정식 용어명으로 쓰세요: 창고.{name} → 창고코드")
+    ):
+        _checked_with_synonyms().model_validate(data)
+
+
+@pytest.mark.parametrize("name", ["보관소 코드", "창고 코드"])
+def test_nfd_synonym_or_spacing_variant_is_requested_again(name: str) -> None:
+    """NFD로 저장된 동의어·띄어쓰기 변형도 NFC와 똑같이 재요청된다 (#141 리뷰)."""
+    nfd = unicodedata.normalize("NFD", name)
+    assert nfd != name
+    data = _output()
+    data["entities"][0]["attributes"][0]["name"] = nfd
+
+    with pytest.raises(
+        ValidationError, match=re.escape(f"정식 용어명으로 쓰세요: 창고.{nfd} → 창고코드")
+    ):
+        _checked_with_synonyms().model_validate(data)
+
+
+def test_official_term_name_passes_the_synonym_check() -> None:
+    _checked_with_synonyms().model_validate(_output())
+
+
+def test_nfd_official_term_name_passes_and_is_type_checked() -> None:
+    """NFD 정식 용어명은 동의어로 보지 않고, 타입 대조는 그대로 한다."""
+    data = _output()
+    attribute = data["entities"][0]["attributes"][0]
+    attribute["name"] = unicodedata.normalize("NFD", "창고코드")
+    _checked_with_synonyms().model_validate(data)
+
+    attribute["length"] = (attribute.get("length") or 0) + 1
+    with pytest.raises(ValidationError, match="팩 용어와 타입·길이가 다릅니다"):
+        _checked_with_synonyms().model_validate(data)
+
+
+def test_pack_context_reads_synonyms_but_input_data_does_not_show_them() -> None:
+    by_term = {t.term: t for t in load_pack_context("inventory").terms}
+    assert by_term["창고코드"].synonyms == ("창고 번호", "보관소 코드")
+
+    data = input_data(_a02_state(), terms=[by_term["창고코드"]], exemption_reasons={})
+    assert "synonyms" not in data["pack"]["terms"][0]
+
+
+def test_run_requests_again_when_a_synonym_is_used_and_accepts_the_official_term() -> None:
+    """실제 팩(inventory)의 동의어를 쓴 응답은 재요청되고, 정식 용어명 응답으로 끝난다."""
+    data = _output()
+    data["entities"][0]["attributes"][0]["name"] = "보관소 코드"  # 창고코드의 팩 동의어
+    client, transport = stub_client(reply(_raw(data)), reply(_example_output()))
+
+    result = run(client, _a02_state(), _settings(), pack="inventory")
+
+    assert len(transport.sent) == 2
+    retry = transport.sent[1].messages[-1].content
+    assert "정식 용어명으로 쓰세요" in retry
+    assert "보관소 코드 → 창고코드" in retry
+    names = [a.name for e in result.output.entities for a in e.attributes]
+    assert "창고코드" in names
+    assert "보관소 코드" not in names
+
+
+def test_run_requests_again_when_an_nfd_synonym_is_used() -> None:
+    """NFD 동의어 응답도 재요청된다. 그대로 확정되면 모델 정리가 unresolved_name으로 실패한다."""
+    nfd = unicodedata.normalize("NFD", "보관소 코드")
+    data = _output()
+    data["entities"][0]["attributes"][0]["name"] = nfd
+    client, transport = stub_client(reply(_raw(data)), reply(_example_output()))
+
+    result = run(client, _a02_state(), _settings(), pack="inventory")
+
+    assert len(transport.sent) == 2
+    assert "정식 용어명으로 쓰세요" in transport.sent[1].messages[-1].content
+    names = [a.name for e in result.output.entities for a in e.attributes]
+    assert "창고코드" in names
+    assert nfd not in names

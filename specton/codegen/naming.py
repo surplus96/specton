@@ -26,6 +26,23 @@ _TIME_TYPES = frozenset({SqlType.TIME, SqlType.TIMESTAMP, SqlType.TIMESTAMPTZ})
 # naming.yaml `reserved_words_source`가 가리키는 목록. 목록 파일은 아직 없어(D10, #11) PostgreSQL
 # 파서와 같은 키워드 표를 쓰는 pglast에서 읽는다. 표에서 이름으로 못 쓰는 두 분류만 거부한다.
 _RESERVED_SOURCES = {"postgresql_18_sql_key_words": 18}
+# naming.yaml 명명 규칙 칸마다 알아듣는 값 이름. null(빈칸)은 「미정」이고, 값 이름은 「정했음」이다
+# (#11 R4 초안·R2 답). 미정이면 D4 제안 동작을 쓴다: 접두어 없음, 사전 약어 그대로(단수·복수 변환
+# 없음), PK는 용어 물리명, FK는 부모 키 물리명, 연결 테이블은 부모+자식, 단어 수 제한 없음.
+# 지금 아는 값은 모두 이 D4 제안 동작과 같은 뜻이라, 값이 들어와도 결과 이름은 바뀌지 않는다.
+# 임시(#11): 값 이름은 공통 팩이 draft이고 팩 형식(ADR-0009)이 제안 상태라 바뀔 수 있음.
+#   같은 허용 값 목록이 팩 로더 모델(specton/packs/loader.py `_TermRule`·`_TableRule`·
+#   `_ColumnRule`, 파일 모양 검사)에도 있다. 값 이름을 바꾸면 두 곳을 함께 고친다.
+_KNOWN_NAMING_VALUES: dict[tuple[str, str], frozenset[str]] = {
+    ("table", "prefix"): frozenset({"none"}),  # 테이블 접두어 없음
+    ("table", "form"): frozenset({"as_dictionary"}),  # 사전 약어 그대로, 단수·복수 변환 없음
+    ("table", "junction_name"): frozenset({"parent_child"}),  # 부모 물리명 + 자식 물리명
+    ("column", "primary_key"): frozenset({"term_physical_name"}),  # 용어 물리명 그대로
+    ("column", "foreign_key"): frozenset({"parent_key_physical_name"}),  # 부모 키 물리명 그대로
+    ("term", "max_words"): frozenset({"unlimited"}),  # 용어당 단어 수 제한 없음
+}
+# #11에서 새로 더한 키. 팩 파일에 아직 없을 수 있어 키가 없어도 미정으로 본다 (_naming_value).
+_NEW_NAMING_KEYS = frozenset({("table", "junction_name"), ("column", "self_reference_prefix")})
 
 
 @dataclass(frozen=True)
@@ -59,15 +76,18 @@ class Lexicon(Protocol):
 class NamingRules:
     """이름 규칙. 값은 `domain_packs/common/naming.yaml`에서 읽어 넘긴다 (코드에 적지 않음).
 
-    `self_reference_prefix`는 자기참조 FK 칸 앞에 붙일 사전 단어다. naming.yaml
-    `column.foreign_key`가 비어 있어 아직 값이 없다 (D4 제안: `상위`, 팀 확인 후 R2가 팩에 반영).
-    값이 없으면 자기참조 관계는 `naming_rule_missing` 문제로 막는다.
+    `self_reference_prefix`는 자기참조 FK 칸 앞에 붙일 사전 단어다 (naming.yaml
+    `column.self_reference_prefix`, 예: `상위` → 약어 `UP`). 값이 없으면(미정) 자기참조 관계는
+    `naming_rule_missing` 문제로 막는다.
+    `junction_name`은 N:M 연결 테이블 이름 규칙이다 (naming.yaml `table.junction_name`).
+    `parent_child`와 미정(None)은 같은 동작이다: 부모 테이블 물리명 + 자식 테이블 물리명 (D4).
     """
 
     max_bytes: int
     reserved_words: frozenset[str]  # 소문자
     separator: str = "_"
     self_reference_prefix: str | None = None
+    junction_name: str | None = None
 
 
 def physical_name(logical_name: str, lexicon: Lexicon) -> str | None:
@@ -128,7 +148,7 @@ class PackLexicon:
 
 
 def _nfc(name: str) -> str:
-    """한글 조합 방식 차이(NFC·NFD)를 맞춘다. A03 `_stable_id`와 같은 기준이다."""
+    """한글 조합 방식 차이(NFC·NFD)를 맞춘다. ID 계산(`specton.ids.stable_id`)과 같은 기준이다."""
     return unicodedata.normalize("NFC", name)
 
 
@@ -178,37 +198,62 @@ def _segment(text: str, tokens: Mapping[str, str]) -> tuple[str, ...] | None:
     return tuple(result)
 
 
-def load_naming_rules(
-    root: Path = DEFAULT_PACK_ROOT, *, self_reference_prefix: str | None = None
-) -> NamingRules:
+def load_naming_rules(root: Path = DEFAULT_PACK_ROOT) -> NamingRules:
     """`common/naming.yaml`에서 이름 규칙을 읽는다.
 
-    아직 해석하지 않는 규칙(테이블 접두어·복수형, PK·FK 칸 이름, 용어당 최대 단어 수)에
-    값이 들어오면 조용히 무시하지 않고 멈춘다. 빈칸일 때의 동작은 D4 제안이다:
-    접두어 없음, PK는 용어 물리명 그대로, FK는 부모 키 물리명.
+    명명 규칙 칸(테이블 접두어·단복수·연결 테이블 이름, PK·FK 칸 이름, 용어당 최대 단어 수)은
+    빈칸(미정)이거나 알아듣는 값 이름(`_KNOWN_NAMING_VALUES`)이어야 한다. 모르는 값은 조용히
+    무시하지 않고 멈춘다. 기존 키가 없어도 멈추고, 새 키 두 개만 없어도 된다(`_naming_value`).
+    값 이름 목록의 기준은 팩 로더 모델(specton/packs/loader.py
+    `_TermRule`·`_TableRule`·`_ColumnRule`)이다.
+    `column.self_reference_prefix`는 사전 단어(예: `상위`)를 그대로 읽는다. 사전에 없는 단어면
+    모델 정리가 이름 없음(D5) 문제로 돌려준다.
     """
     naming = read_yaml(root / "common" / "naming.yaml")
     physical = naming["physical_name"]
     if physical["ddl_case"] != "lower":
         raise ValueError(f"지원하지 않는 ddl_case: {physical['ddl_case']}")
-    filled = {
-        f"{section}.{key}": naming[section][key]
-        for section, keys in (
-            ("table", ("prefix", "form")),
-            ("column", ("primary_key", "foreign_key")),
-            ("term", ("max_words",)),  # ADR-0009 명명 규칙 빈칸: 용어당 최대 단어 수
-        )
-        for key in keys
-        if naming[section].get(key) not in (None, "")
+    unknown = {
+        f"{section}.{key}": value
+        for (section, key), known in _KNOWN_NAMING_VALUES.items()
+        if (value := _naming_value(naming, section, key)) is not None
+        and not (isinstance(value, str) and value in known)
     }
-    if filled:
-        raise ValueError(f"naming.yaml 규칙을 아직 해석하지 않음 (#12 D4): {filled}")
+    if unknown:
+        allowed = {f"{s}.{k}": sorted(v) for (s, k), v in _KNOWN_NAMING_VALUES.items()}
+        raise ValueError(
+            f"naming.yaml 명명 규칙에 모르는 값이 있음: {unknown} (빈칸 또는 다음 값만: {allowed})"
+        )
+    prefix = _naming_value(naming, "column", "self_reference_prefix")
+    if prefix is not None and not isinstance(prefix, str):
+        raise ValueError(f"naming.yaml column.self_reference_prefix는 사전 단어여야 함: {prefix!r}")
     return NamingRules(
         max_bytes=physical["max_bytes"],
         reserved_words=reserved_words(naming["reserved_words_source"]),
         separator=physical["word_separator"],
-        self_reference_prefix=self_reference_prefix,
+        self_reference_prefix=prefix,
+        junction_name=_naming_value(naming, "table", "junction_name"),  # 위에서 값 이름 확인됨
     )
+
+
+def _naming_value(naming: Mapping[str, Any], section: str, key: str) -> Any:
+    """명명 규칙 칸의 값. 빈칸이면 미정(None)이다.
+
+    - `null`: 미정 (#11 합의, #132 로더와 같은 뜻).
+    - 빈 문자열: 미정. #11에서 새로 정한 것이 아니라, 이전 `load_naming_rules`가 빈 문자열을
+      빈칸으로 보던 동작을 그대로 둔 것이다.
+    - 키가 없음: 새 키(`_NEW_NAMING_KEYS`)만 미정으로 본다. 새 키가 팩 파일에 들어오기 전
+      (common 0.1.1)에도 읽을 수 있게 하기 위해서다. 기존 키나 묶음이 없으면 잘못 지운 것일 수
+      있어 기본 동작으로 넘기지 않고 멈춘다. 이 경로(normalize_step 등)는 팩 로더를 거치지
+      않아서 여기서 직접 확인한다.
+    """
+    block = naming.get(section)
+    if not isinstance(block, Mapping) or key not in block:
+        if (section, key) in _NEW_NAMING_KEYS:
+            return None
+        raise ValueError(f"naming.yaml에 {section}.{key} 키가 없음 (미정이면 null로 적는다)")
+    value = block[key]
+    return None if value in (None, "") else value
 
 
 def reserved_words(source: str) -> frozenset[str]:
