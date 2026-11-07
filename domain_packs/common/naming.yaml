@@ -8,6 +8,8 @@ abbreviation:
   case: upper                    # observed
   min_length: 2                  # observed: 공식 단어 3,284개 약어 길이 2~6
   max_length: 6                  # observed
+# 임시(#11): 아래 max_words·table·column 명명 값은 공통 팩이 draft이고 팩 형식(ADR-0009)이 제안 상태라 바뀔 수 있다.
+#   값 이름을 바꾸면 specton/codegen/naming.py _KNOWN_NAMING_VALUES와 specton/packs/loader.py를 함께 고친다.
 term:
   classifier_last: true          # observed: 분류어(is_classifier)가 용어의 마지막 단어
   max_words: unlimited           # project (R4 초안 #11, 2026-11-05): 제한 없음
