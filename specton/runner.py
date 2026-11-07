@@ -26,6 +26,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command, StateSnapshot
 
+from specton.artifacts import GeneratedArtifact
 from specton.config import Settings
 from specton.contracts import (
     DesignState,
@@ -46,6 +47,7 @@ from specton.graph import (
 )
 from specton.llm.errors import LLMError
 from specton.persistence import lease, runs, snapshots
+from specton.persistence.artifacts import publish_artifacts
 from specton.persistence.db import Pool
 from specton.persistence.errors import InvalidTransitionError, LeaseLostError
 from specton.persistence.lease import WAITING_STATES
@@ -304,7 +306,12 @@ class _Job:
         ]
         if design.status is S.COMPLETED:
             events.append(NewEvent(E.COMPLETED, "설계를 완료했습니다", stage=design.status.value))
-        self._record(_checkpoint_id(snapshot), design, events=events)
+        self._record(
+            _checkpoint_id(snapshot),
+            design,
+            events=events,
+            generated=snapshot.values.get("generated_artifacts", {}),
+        )
 
     def _pause(self, snapshot: StateSnapshot) -> None:
         """사람 확인 대기: 대기 상태와 interrupt를 저장한다. lease는 실행이 끝나면 반납한다."""
@@ -322,7 +329,13 @@ class _Job:
         events.append(
             NewEvent(E.INTERRUPT, interrupt.message, stage=design.status.value, payload=payload)
         )
-        self._record(_checkpoint_id(snapshot), design, interrupt=interrupt, events=events)
+        self._record(
+            _checkpoint_id(snapshot),
+            design,
+            interrupt=interrupt,
+            events=events,
+            generated=snapshot.values.get("generated_artifacts", {}),
+        )
 
     def _status_events(self, status: RunState) -> list[NewEvent]:
         if status is self.status:
@@ -340,6 +353,7 @@ class _Job:
         *,
         interrupt: Interrupt | None = None,
         events: list[NewEvent],
+        generated: Mapping[str, GeneratedArtifact],
     ) -> None:
         """진행과 모델을 한 트랜잭션으로 저장한다.
 
@@ -362,6 +376,13 @@ class _Job:
                 )
                 if saved is not None:  # 같은 체크포인트를 다시 저장하면 모델도 이미 있다
                     snapshots.save_model(conn, self.run_id, self.runner.holder, design)
+                    publish_artifacts(
+                        conn,
+                        self.runner.holder,
+                        design,
+                        generated,
+                        self.runner.settings.storage_dir,
+                    )
         except InvalidTransitionError:
             if self._load().status is S.CANCEL_REQUESTED:
                 raise _Cancelled from None  # 저장 직전에 취소 요청이 들어왔다
