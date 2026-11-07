@@ -99,7 +99,7 @@ flowchart TD
 
 실패의 `Problem.code`·`decision`·`pending`은 변환 콜백으로 그대로 넘긴다. `FK_COLUMN_CONFLICT`는 D4와 D13의 처리 경로가 다르므로 메시지로 구분하지 않는다. 콜백 결과는 규칙 지적(`findings`)과 사람 조치 여부(`requires_manual_review`)이며, R4의 실제 #15 반환형을 감싸는 R1 내부 연결 형식이다. 팩 불일치·출력 추적 오류와 잘못된 명명 설정은 실행 오류로 남긴다.
 
-주입한 정리 노드로 성공 모델의 저장·재작업·승인·재시작을 검증한다. #15의 실제 변환 함수가 제공되면 API 그래프에 등록하며, 현재 API의 생성·정리·규칙 노드는 아직 stub이다. 생성기 파일·`storage_ref`·`add_artifact` 연결은 별도 후속 범위다.
+API의 `create_graph`는 실제 정리 노드와 #15 실패 변환기를 등록한다. 둘 다 `settings.pack_root`를 사용하며 규칙 심각도는 그래프를 만들 때 공통 팩에서 읽는다. #168의 `unsupported_relationship` 구분에 따라 설계 규칙 위반(D8)은 자동 재작업하고, 자기참조 N:M의 지원 부족(D4)은 바로 사람 확인으로 보낸다. 실제 API 경로에서 성공 모델 저장·재작업·재시작·승인 차단을 검증한다. 생성·후속 규칙 검사·내보내기는 아직 stub이며, 생성기 파일·`storage_ref`·`add_artifact` 연결은 별도 후속 범위다.
 
 ### 재작업 복귀 단계
 
