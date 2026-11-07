@@ -549,7 +549,11 @@ def test_picture_inside_nested_table_sets_flag() -> None:
 
 
 def test_read_blocks_is_the_only_engine_door() -> None:
-    """저장소에서 rhwp를 직접 가져오는 곳은 hangul_engine.py 하나뿐이다(시험 파일 제외)."""
+    """저장소에서 rhwp를 직접 가져오는 곳은 hangul_engine.py 하나뿐이다.
+
+    시험 파일은 검사 대상이 아니다(`specton/`만 훑는다). 시험이 엔진을 직접 가져오는 곳은 원본을
+    hwpx로 내보내는 회귀 시험과 아래 엔진 이름 확인 시험, 두 군데다.
+    """
     root = Path(__file__).resolve().parents[2]
     users = [
         p.relative_to(root).as_posix()
@@ -559,3 +563,47 @@ def test_read_blocks_is_the_only_engine_door() -> None:
     ]
     assert users == ["specton/ingest/hangul_engine.py"]
     assert read_blocks  # 공개 함수 존재 확인
+
+
+_UPGRADE_HINT = (
+    "rhwp-python 버전을 올릴 때는 비공개 원문 회귀를 로컬에서 먼저 돌릴 것"
+    "(SPECTON_HANGUL_SAMPLES 지정). "
+    "hangul_engine.py가 문자열로 비교하는 엔진 이름이 바뀌면 조용히 깨진다"
+)
+
+
+def test_engine_block_names_still_exist_in_rhwp() -> None:
+    """hangul_engine이 클래스 이름 문자열로 비교하는 엔진 블록이 실제 엔진에 아직 있는가.
+
+    이유: 코드는 `type(block).__name__ == "TableBlock"`처럼 이름 글자로 구분한다(엔진 클래스를
+    직접 import하면 엔진 의존이 여러 곳으로 퍼진다). 엔진이 이름을 바꾸면 에러 없이 표가 사라지므로,
+    버전을 올릴 때 CI가 잡도록 원문 없이 돌아가는 이 시험을 둔다. 이 시험 안에서만 rhwp를 직접 쓴다.
+    """
+    import re
+
+    from rhwp.ir import nodes  # 시험에서 엔진 직접 사용 허용(위 이유)
+
+    source = (
+        Path(__file__).resolve().parents[2] / "specton" / "ingest" / "hangul_engine.py"
+    ).read_text(encoding="utf-8")
+    names = set(re.findall(r'"(\w+Block)"', source))  # 코드에서 직접 뽑는다
+    assert {"TableBlock", "PictureBlock", "FieldBlock"} <= names
+    # 문단은 이름 비교 없이 「그 밖의 블록」으로 읽지만 text·prov 필드를 쓰므로 함께 확인한다
+    names.add("ParagraphBlock")
+
+    for name in sorted(names):
+        assert hasattr(nodes, name), f"엔진에 {name} 클래스가 없음. {_UPGRADE_HINT}"
+
+    def fields(cls_name: str) -> set[str]:
+        return set(getattr(nodes, cls_name).model_fields)
+
+    need = {
+        "TableBlock": {"cells", "rows", "cols", "prov", "text"},
+        "ParagraphBlock": {"text", "prov"},
+        "TableCell": {"row", "col", "row_span", "col_span", "blocks"},
+    }
+    for cls_name, wanted in need.items():
+        missing = wanted - fields(cls_name)
+        assert not missing, f"{cls_name}에 필드 {sorted(missing)}가 없음. {_UPGRADE_HINT}"
+    prov_missing = {"section_idx", "para_idx"} - fields("Provenance")
+    assert not prov_missing, f"Provenance에 필드 {sorted(prov_missing)}가 없음. {_UPGRADE_HINT}"
