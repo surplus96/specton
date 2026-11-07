@@ -421,6 +421,68 @@ class TestRules:
         with pytest.raises(FileNotFoundError):
             read_hangul(tmp_path / "없음.hwp", "doc-1")
 
+    def test_related_requirements_cell_is_kept_as_written(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """상세표의 「관련 요구사항」 칸 값은 엑셀 읽기처럼 원문 글 그대로 담는다."""
+        base = _kitech_detail(359, "SFR-003")
+        table = _table(
+            359,
+            [
+                *((c.row, c.col, c.row_span, c.col_span, c.text) for c in base.cells),
+                (5, 0, 1, 2, "관련 요구사항"),
+                (5, 2, 1, 1, "SFR-002, SFR-001, DAR-001"),
+            ],
+        )
+
+        [req] = _read(monkeypatch, table).requirements
+
+        assert req.source_related_requirements == "SFR-002, SFR-001, DAR-001"
+        assert req.extraction_status is ExtractionStatus.PASS  # 새 라벨이 판정을 바꾸지 않음
+        assert (
+            "관련 요구사항" not in req.source_extra
+        )  # 별도 칸이라 source_extra에 중복해 넣지 않음
+
+    def test_empty_or_missing_related_requirements_is_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """값 칸이 비어 있거나 라벨이 없으면 None이다(엑셀 읽기의 빈 칸과 같음)."""
+        base = _kitech_detail(359, "SFR-001")
+        empty = _table(
+            359,
+            [
+                *((c.row, c.col, c.row_span, c.col_span, c.text) for c in base.cells),
+                (5, 0, 1, 2, "관련 요구사항"),
+                (5, 2, 1, 1, ""),
+            ],
+        )
+
+        [with_empty] = _read(monkeypatch, empty).requirements
+        [without_label] = _read(monkeypatch, base).requirements
+
+        assert with_empty.source_related_requirements is None
+        assert without_label.source_related_requirements is None
+
+    def test_related_label_next_to_output_label_is_not_taken_as_its_value(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """「산출정보」 오른쪽이 「관련 요구사항」 라벨이면 그 글자를 값으로 잡지 않는다."""
+        base = _kitech_detail(359, "SFR-004")
+        table = _table(
+            359,
+            [
+                *((c.row, c.col, c.row_span, c.col_span, c.text) for c in base.cells),
+                (5, 0, 1, 1, "산출정보"),
+                (5, 1, 1, 1, "관련 요구사항"),
+                (5, 2, 1, 1, "SFR-003, SFR-001"),
+            ],
+        )
+
+        [req] = _read(monkeypatch, table).requirements
+
+        assert "산출정보" not in req.source_extra  # 라벨 글자가 값으로 들어가지 않음
+        assert req.source_related_requirements == "SFR-003, SFR-001"
+
 
 class TestFallbackDump:
     def _fake_rhwp(self, directory: Path, *, exit_code: int = 0) -> Path:

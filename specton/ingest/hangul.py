@@ -64,6 +64,9 @@ _LABELS = {
     "정의": "definition",
     "세부내용": "detail",
     "산출정보": "output",
+    # 엑셀 읽기(`tabular.py`의 related_ids 칸, `column_map.yaml`)와 같은 정보를 내려고 한글 상세표의
+    # 「관련 요구사항」 칸도 읽는다. 값은 원문 글 그대로 두고(엑셀도 그대로) 해석하지 않는다.
+    "관련요구사항": "related",
 }
 # source_extra에 담을 때 쓰는 칸 이름(원문 라벨 표기)
 _EXTRA_NAMES = {"category": "요구사항 분류", "name": "요구사항 명칭", "output": "산출정보"}
@@ -221,6 +224,8 @@ def _build_detail(
         source_ref=_source_ref(table, detail.index, ref_cell),
         source_text=text,
         source_acceptance_level=_text(values.get("level")) or None,
+        # 「관련 요구사항」 칸 원문. 비어 있으면 None(엑셀 읽기와 같음)
+        source_related_requirements=_text(values.get("related")) or None,
         source_extra=extra,
         extraction_status=ExtractionStatus.REVIEW if reasons else ExtractionStatus.PASS,
         notice="\n".join(reasons) or None,
