@@ -35,11 +35,11 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urlsplit
 
 import psycopg
 from pglast import parse_sql
 from psycopg import sql as pgsql
+from psycopg.conninfo import conninfo_to_dict
 
 from specton.config import Settings
 from specton.validate.allowed_sql import (
@@ -103,10 +103,16 @@ def validate_sql(
     first = check_allowed_sql(sql)
     if first.state != "unverified":
         return first
+    app_database = _database_name(str(settings.app_database_url))
+    if app_database is None:
+        # 사용자명·환경 변수 기본값으로 DB를 추측하지 않는다.
+        # DSN·파서 오류도 결과에 노출하지 않는다.
+        problem = _problem("environment", "앱 DB 이름을 확정하지 못함")
+        return build_result(sql, [*first.stages[:2], _stage("sandbox_execute", "error", problem)])
     statements = _statement_texts(sql.decode("utf-8"))
     run = _SandboxRun(
         url=str(settings.sandbox_database_url),
-        app_database=_database_name(str(settings.app_database_url)),
+        app_database=app_database,
         limits=limits,
         connect=connect,
     )
@@ -123,8 +129,13 @@ def _statement_texts(text: str) -> list[str]:
     return pieces
 
 
-def _database_name(url: str) -> str:
-    return urlsplit(url).path.lstrip("/")
+def _database_name(url: str) -> str | None:
+    """실제 연결과 같은 libpq 해석으로 명시된 DB 이름만 구한다."""
+    try:
+        name = conninfo_to_dict(url).get("dbname")
+    except psycopg.Error:
+        return None
+    return name if isinstance(name, str) and name else None
 
 
 @dataclass

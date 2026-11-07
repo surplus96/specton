@@ -444,3 +444,60 @@ def test_deadline_is_checked_after_the_last_statement_even_if_the_timer_is_late(
     assert execute.problems[0].statement is None  # 모든 문장을 실행한 뒤에 확인함
     assert result.state == "error"
     assert main.calls == ["rollback", "close"]
+
+
+# R1 #171: libpq의 dbname 우선순위·디코딩을 사전 검사에도 적용한다.
+@pytest.mark.parametrize("suffix", ["/review_path?dbname=specton_app", "/specton%5Fapp"])
+@pytest.mark.parametrize("same_database", [True, False])
+def test_effective_app_db_name_blocks_same_db_and_connect_permission(
+    suffix: str, same_database: bool
+) -> None:
+    settings = Settings(
+        _env_file=None, app_database_url="postgresql://review_user@localhost" + suffix
+    )
+
+    class PermissionConn(FakeConn):
+        def execute(self, query: Any, params: Any = None) -> _Cursor:
+            if isinstance(query, str) and "pg_roles" in query:
+                # 실제 SQL에서 이름이 다르면 CONNECT 조회도 false가 되는 우회 사례를 재현한다.
+                assert params == ("specton_app",)
+                current = "specton_app" if same_database else "specton_sandbox"
+                self.row = (18, current, False, False, False, params[0] == "specton_app")
+            return super().execute(query, params)
+
+    connect = FakeConnect(main=PermissionConn())
+    result = validate_sql(SQL, settings=settings, connect=connect)
+    problem = _stage(result, "sandbox_execute").problems[0]
+    assert (result.state, problem.kind) == ("error", "environment")
+    assert ("앱 DB에 접속함" if same_database else "앱 DB 접속 권한") in problem.detail
+    assert not any("CREATE SCHEMA" in q or "CREATE TABLE" in q for q in connect.main.executed)
+    assert connect.main.calls == ["rollback", "close"]
+
+
+@pytest.mark.parametrize("suffix", ["", "/", "/?dbname="])
+def test_missing_app_db_name_is_environment_error_without_connecting(suffix: str) -> None:
+    settings = Settings(
+        _env_file=None,
+        app_database_url="postgresql://review_user:private_password@localhost" + suffix,
+    )
+    connect = FakeConnect()
+    result = validate_sql(SQL, settings=settings, connect=connect)
+    assert result.state == "error"
+    assert _stage(result, "sandbox_execute").problems[0].kind == "environment"
+    assert _states(result)["rollback"] == _states(result)["residual_check"] == "not_run"
+    assert connect.opened == []
+    assert "private_password" not in result.model_dump_json()
+    assert "review_user" not in result.model_dump_json()
+
+
+def test_invalid_conninfo_is_rejected_without_exposing_parser_message(monkeypatch: Any) -> None:
+    def invalid(url: str) -> Any:
+        raise psycopg.ProgrammingError("private_password in invalid DSN")
+
+    monkeypatch.setattr(sandbox, "conninfo_to_dict", invalid)
+    connect = FakeConnect()
+    result = _run(connect)
+    assert result.state == "error"
+    assert _stage(result, "sandbox_execute").problems[0].kind == "environment"
+    assert connect.opened == []
+    assert "private_password" not in result.model_dump_json()

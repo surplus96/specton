@@ -410,3 +410,21 @@ def test_app_database_url_is_rejected_by_preflight() -> None:
     result = validate_sql(b'CREATE TABLE "t" ("a" integer);', settings=settings)
     execute = next(s for s in result.stages if s.stage == "sandbox_execute")
     assert (result.state, execute.problems[0].kind) == ("error", "environment")
+
+
+@pytest.mark.parametrize("suffix", ["/review_path?dbname=specton_sandbox", "/specton%5Fsandbox"])
+def test_effective_app_database_is_rejected_before_creating_schema(suffix: str) -> None:
+    """실제 접속한 sandbox를 앱 DB로 지정하면 URL 표기와 무관하게 실행을 막는다."""
+    settings = Settings(
+        _env_file=None,
+        sandbox_database_url=URL,
+        app_database_url="postgresql://review_user@127.0.0.1" + suffix,
+    )
+    before = _check_schemas()
+    result = validate_sql(b"CREATE TABLE guard_probe (id integer);", settings=settings)
+    execute = next(s for s in result.stages if s.stage == "sandbox_execute")
+    assert result.state == "error"
+    assert execute.problems[0].kind == "environment"
+    assert "앱 DB에 접속함" in execute.problems[0].detail
+    assert _states(result)["rollback"] == _states(result)["residual_check"] == "passed"
+    assert _check_schemas() == before
