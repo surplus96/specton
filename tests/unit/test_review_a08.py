@@ -5,11 +5,9 @@ A08은 요구사항·엔티티와 함께 A04 관계와 모델 정리 결과 요�
 """
 
 import json
-from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
-import yaml
 
 from specton.codegen.model import Normalized
 from specton.codegen.naming import NamingRules, TermInfo
@@ -95,6 +93,13 @@ class _Words:
         "적용단가": "APLCN_UNTPRC",
         "사용일시": "USE_DT",
         "기록자식별값": "RCDR_IDNTF_VL",
+        "기준시급": "STDR_HRWG",
+        "인력실적": "HMRS_RSLT",
+        "실적순번": "RSLT_SN",
+        "시작일시": "BGNG_DT",
+        "종료일시": "END_DT",
+        "작업내용": "JOB_CN",
+        "적용시급": "APLCN_HRWG",
     }
 
     def term(self, logical_name: str) -> TermInfo | None:
@@ -270,52 +275,61 @@ def test_a08_refusal_fails_the_branch_without_retrying() -> None:
     assert not run.complete
 
 
-def test_maintenance_examples_keep_only_the_multi_value_finding() -> None:
-    """MNT-004는 다중값 지적이다. MNT-015는 실행용 예시에서 뺐다 (#12 계획 4절).
+MNT014_PRESERVATION = "과거 실적의 시급은 이후 기준 변경으로 바뀌지 않는다."  # 보존 근거
+MNT015_TEXT = "작업에는 사용한 부품의"  # 보존 표현이 없어 실행용 예시에서 뺀 MNT-015 문장
 
-    기대 결과가 확정되지 않은 예시를 남기면 YAML 주석과 달리 LLM에는 "지적 없음" 답으로 전달된다.
+
+def test_maintenance_examples_are_multi_value_and_hourly_rate_snapshot() -> None:
+    """MNT-004는 다중값 지적, MNT-014는 스냅샷 지적 없음이다.
+
+    MNT-015는 원문에 시점·보존 표현이 없어 예시에서 뺐다. 스냅샷 예시는 보존 요구가 요구 문장에
+    있는 MNT-014로 바꿨다 (#12 계획 4절, 개발용 요구사항 원문 확인).
     """
-    examples = load_examples("maintenance", "A08", ReviewOutput)
+    multi_value, snapshot = load_examples("maintenance", "A08", ReviewOutput)
 
-    assert [e.source_id for e in examples] == ["MNT-004"]
-    assert [f.kind for f in examples[0].output.findings] == ["multi_valued_attribute"]
+    assert [multi_value.source_id, snapshot.source_id] == ["MNT-004", "MNT-014"]
+    assert [f.kind for f in multi_value.output.findings] == ["multi_valued_attribute"]
+    assert snapshot.output.findings == ()
 
 
-# ── 미확정 MNT-015: 실행용 예시 밖의 시험 자료 (#12) ─────────────────
+def test_hourly_rate_snapshot_example_has_its_basis_and_the_duplicated_fact() -> None:
+    """지적 없음의 근거가 입력 요구 문장에 있고, 같은 종류의 값이 FK로 이어진 두 엔티티에 있다."""
+    _, snapshot = load_examples("maintenance", "A08", ReviewOutput)
+    [requirement] = snapshot.input["requirements"]
+    assert requirement["text"].endswith(MNT014_PRESERVATION)  # 원문 그대로, 줄이지 않음
 
-PENDING_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "a08_mnt015_pending.yaml"
-PENDING_TEXT = "작업에는 사용한 부품의"  # MNT-015 요구 문장 앞부분
+    entities = {e["name"]: e for e in snapshot.input["entities"]}
+    assert "기준시급" in {a["name"] for a in entities["기술자"]["attributes"]}
+    assert "적용시급" in {a["name"] for a in entities["인력실적"]["attributes"]}
+    assert "인건비" not in {a["name"] for a in entities["인력실적"]["attributes"]}  # 계산 값은 없음
+    [to_technician] = [
+        f for f in snapshot.input["normalized"]["foreign_keys"] if f["relationship_id"] == "REL-02"
+    ]
+    tables = {t["id"]: t["entity_id"] for t in snapshot.input["normalized"]["tables"]}
+    assert (tables[to_technician["table_id"]], tables[to_technician["parent_table_id"]]) == (
+        entities["인력실적"]["id"],
+        entities["기술자"]["id"],
+    )
 
 
 def _maintenance_state() -> DesignState:
-    """MNT-015 설계 구조를 정리한 상태. 프롬프트에 그 예시가 섞이는지 보려고 쓴다."""
-    pending = yaml.safe_load(PENDING_FIXTURE.read_text(encoding="utf-8"))
-    return _normalized(_example_state(pending["input"]), "maintenance")
+    """검토할 실제 입력. 프롬프트의 예시 부분에 무엇이 들어가는지 보려고 쓴다."""
+    multi_value, _ = load_examples("maintenance", "A08", ReviewOutput)
+    return _normalized(_example_state(multi_value.input), "maintenance")
 
 
-def test_pending_mnt015_structure_matches_the_real_normalization() -> None:
-    """원문 확인 전 보관한 구조. 부모 키는 관계에서 오고, 실적이 부품명·단위명을 따로 남긴다."""
-    pending = yaml.safe_load(PENDING_FIXTURE.read_text(encoding="utf-8"))
-    assert (pending["source_id"], "output" in pending) == ("MNT-015", False)  # 기대 결과 없음
-    state = _normalized(_example_state(pending["input"]), pending["pack"])
-    assert state.normalized is not None
-    assert pending["input"]["normalized"] == normalized_view(state.normalized)
-    names = {e["name"]: [a["name"] for a in e["attributes"]] for e in pending["input"]["entities"]}
-    assert {"부품명", "단위명"} <= set(names["부품"]) & set(names["사용부품실적"])
-
-
-def test_parallel_prompt_does_not_carry_the_pending_example() -> None:
+def test_parallel_prompt_carries_the_snapshot_example_but_not_mnt015() -> None:
     client, transport = stub_client(reply(ReviewOutput(findings=())))
 
     review_perspective(client, A08, _maintenance_state(), _settings(), pack="maintenance")
 
-    *examples, data = transport.sent[0].messages
-    assert all(PENDING_TEXT not in m.content for m in examples)  # 예시 대화 쌍에 없음
-    assert "소속팀코드목록" in " ".join(m.content for m in examples)  # MNT-004 예시는 들어감
-    assert PENDING_TEXT in data.content  # 검토할 실제 입력에는 있다
+    *examples, _ = transport.sent[0].messages
+    joined = " ".join(m.content for m in examples)
+    assert "소속팀코드목록" in joined and MNT014_PRESERVATION in joined
+    assert MNT015_TEXT not in joined
 
 
-def test_combined_prompt_does_not_carry_the_pending_example_in_the_a08_block() -> None:
+def test_combined_prompt_carries_the_snapshot_example_but_not_mnt015_in_the_a08_block() -> None:
     perspectives = load_perspectives()
     output = CombinedReviewOutput.model_validate(
         {"perspectives": [{"reviewer_id": p.reviewer_id, "findings": []} for p in perspectives]}
@@ -326,8 +340,8 @@ def test_combined_prompt_does_not_carry_the_pending_example_in_the_a08_block() -
 
     system = transport.sent[0].messages[0].content
     a08_block = system[system.index("## A08") :]
-    assert "소속팀코드목록" in a08_block
-    assert PENDING_TEXT not in a08_block
+    assert "소속팀코드목록" in a08_block and MNT014_PRESERVATION in a08_block
+    assert MNT015_TEXT not in a08_block
 
 
 # ── 예시 검증 (#12) ──────────────────────────────────────────────────

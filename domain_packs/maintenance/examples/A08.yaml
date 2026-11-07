@@ -1,13 +1,16 @@
 # few-shot 예시 (maintenance · A08 normalization_review). 사람이 작성하는 입력 파일이다.
 # - 입력은 개발용 세트(비공개, 저장소에 올리지 않음)에서만 가져오고 source_id에 원문 ID를 적는다. 평가용 세트 문서는 넣지 않는다.
 # - output은 해당 노드의 LLM 출력 모델과 같은 모양이어야 한다. load_examples가 그 모델로 검증한다 (docs/04 "노드 작성 규칙").
-# - 요구사항 문장은 검토 전 합성 시나리오(MNT-004)에서 지적에 필요한 부분만 줄인 것이다. 검토 대상 엔티티·관계는 예시를 위해 만든 가상 설계이고 기대 결과 자료를 쓰지 않았다.
+# - 요구사항 문장은 개발용 세트의 것이다. MNT-004는 지적에 필요한 부분만 줄였고, MNT-014는 보존 근거가 빠지지 않게 원문 전체를 썼다.
+#   검토 대상 엔티티·관계는 요구사항 원문만으로 만든 가상 설계이고 기대 결과 자료(ERD·DDL·RTM·설계 모델·기능 명세)를 쓰지 않았다.
 # - A08 입력은 requirements·entities·relationships·normalized다 (#12). 부모 키는 A03 속성에 넣지 않고
 #   A04 관계로 나타내며, normalized는 그 설계를 모델 정리 코드로 정리한 결과의 요약이다
 #   (tests/unit/test_review_a08.py가 같은 결과인지 다시 계산해 확인한다). ID는 정리 코드가 계산한 값이다.
-# - 임시(#12): 스냅샷 지적 없음 예시(MNT-015)는 원문에 시점·보존 표현이 있는지 확인하기 전이라 실행용
-#   예시에서 뺐다. 주석은 LLM에 전달되지 않아, 남겨 두면 확정되지 않은 "지적 없음"이 답으로 쓰인다.
-#   설계 구조(관계·정리 결과)는 tests/fixtures/a08_mnt015_pending.yaml에 두고, 원문 확인 뒤 되살리거나 교체한다.
+# - 스냅샷 지적 없음 예시는 MNT-014(「과거 실적의 시급은 이후 기준 변경으로 바뀌지 않는다」)다. 원문 확인 결과
+#   MNT-015에는 부품명·단위명을 당시 값으로 보존한다는 표현이 없어 쓰지 않는다. 가정 A13은 시급·단가 고정에 관한
+#   가정이라 요구 문장 근거가 아니고, 이름·단위 보존으로 넓히지 않는다 (#12).
+# - MNT-014의 기술자 「기준시급」은 가상 설계 가정이다. 원문은 「기준」이 어디에 저장되는지 정하지 않는다.
+#   인건비는 시간과 시급으로 계산하는 값이라 저장 속성으로 두지 않았다.
 agent: A08
 role: normalization_review
 status: draft
@@ -56,3 +59,88 @@ examples:
         quote: 탈퇴한 소속도 가입·탈퇴 일자를 남긴다.
       suggestion: 한 칸에 팀 코드를 모아 담으면 소속마다 가입·탈퇴 일자를 남길 수 없고 팀 하나를 고칠 때 문자열 전체를 고쳐야 한다. 소속마다 한 행을 두는 별도 엔티티로 나눈다.
       target_stage: data_model
+- source_id: MNT-014
+  input:
+    requirements:
+    - id: REQ-01
+      type: FR
+      nfr_category: null
+      text: 기술자는 작업별 시작·종료 일시, 작업 내용, 적용 시급을 기록한다. 종료는 시작보다 빨라서는 안 되며 실적별 인건비는 해당 시간과 기록한 시급으로 계산한다. 과거 실적의 시급은 이후 기준 변경으로 바뀌지 않는다.
+    entities:
+    - id: ENT-01
+      pack: maintenance
+      name: 보전작업
+      description: 인력 실적을 기록하는 보전 작업
+      req_ids: [REQ-01]
+      crud_exemptions: []
+      attributes:
+      - {id: ATTR-01, name: 작업번호, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-01]}
+    - id: ENT-02
+      pack: maintenance
+      name: 기술자
+      description: 작업 실적을 기록하는 기술자
+      req_ids: [REQ-01]
+      crud_exemptions: []
+      attributes:
+      - {id: ATTR-02, name: 기술자코드, data_type: varchar, length: 10, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-03, name: 기준시급, description: 현재 적용하는 기준 시급. 이후 바뀔 수 있다, data_type: numeric, precision: 12, req_ids: [REQ-01]}
+    - id: ENT-03
+      pack: maintenance
+      name: 인력실적
+      description: 기술자가 작업별로 기록한 시작·종료 일시와 작업 내용
+      req_ids: [REQ-01]
+      crud_exemptions: []
+      attributes:
+      - {id: ATTR-04, name: 실적순번, data_type: integer, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-05, name: 시작일시, data_type: timestamp, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-06, name: 종료일시, data_type: timestamp, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-07, name: 작업내용, data_type: varchar, length: 1000, req_ids: [REQ-01]}
+      - {id: ATTR-08, name: 적용시급, description: 실적을 기록할 때 적용한 시급. 이후 기준 시급이 바뀌어도 그대로 둔다, data_type: numeric, precision: 12, nullable: false, req_ids: [REQ-01]}
+    relationships:
+    - {id: REL-01, parent: ENT-01, child: ENT-03, cardinality: '1:N', optional: false, identifying: true, rationale: '"기술자는 작업별 시작·종료 일시, 작업 내용, 적용 시급을 기록한다."', req_ids: [REQ-01]}
+    - {id: REL-02, parent: ENT-02, child: ENT-03, cardinality: '1:N', optional: false, identifying: false, rationale: '"기술자는 작업별 시작·종료 일시, 작업 내용, 적용 시급을 기록한다."', req_ids: [REQ-01]}
+    normalized:
+      tables:
+      - id: TBL-9820463088db018b
+        name: 인력실적
+        entity_id: ENT-03
+        columns:
+        - {id: COL-8bc3716df78a0a35, name: 실적순번, attribute_id: ATTR-04}
+        - {id: COL-76600e89c2a0ecf7, name: 시작일시, attribute_id: ATTR-05}
+        - {id: COL-af86a94442c6238c, name: 종료일시, attribute_id: ATTR-06}
+        - {id: COL-f67f2d4721cf7f85, name: 작업내용, attribute_id: ATTR-07}
+        - {id: COL-e5ef8fbec6aae4e8, name: 적용시급, attribute_id: ATTR-08}
+        - {id: COL-609df7fd6566a5b9, name: 작업번호, relationship_id: REL-01}
+        - {id: COL-47bfce2d72e52abc, name: 기술자코드, relationship_id: REL-02}
+        primary_key: [COL-609df7fd6566a5b9, COL-8bc3716df78a0a35]
+        unique_keys: []
+      - id: TBL-9951839778faac62
+        name: 보전작업
+        entity_id: ENT-01
+        columns:
+        - {id: COL-056b562b982f29c6, name: 작업번호, attribute_id: ATTR-01}
+        primary_key: [COL-056b562b982f29c6]
+        unique_keys: []
+      - id: TBL-a543201d4b1bb25a
+        name: 기술자
+        entity_id: ENT-02
+        columns:
+        - {id: COL-98570756498e6c40, name: 기술자코드, attribute_id: ATTR-02}
+        - {id: COL-07e7742cee3c3180, name: 기준시급, attribute_id: ATTR-03}
+        primary_key: [COL-98570756498e6c40]
+        unique_keys: []
+      foreign_keys:
+      - id: FK-2abcdb5319d710c5
+        relationship_id: REL-01
+        table_id: TBL-9820463088db018b
+        columns: [COL-609df7fd6566a5b9]
+        parent_table_id: TBL-9951839778faac62
+        parent_columns: [COL-056b562b982f29c6]
+      - id: FK-b2ff1c268e4a12eb
+        relationship_id: REL-02
+        table_id: TBL-9820463088db018b
+        columns: [COL-47bfce2d72e52abc]
+        parent_table_id: TBL-a543201d4b1bb25a
+        parent_columns: [COL-98570756498e6c40]
+  output:
+    findings: []
