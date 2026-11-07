@@ -6,6 +6,7 @@
 import copy
 import json
 import re
+import shutil
 import unicodedata
 from pathlib import Path
 from typing import Any
@@ -366,6 +367,91 @@ def test_pack_context_turns_domains_into_contract_types() -> None:
     assert (quantity.data_type, quantity.precision, quantity.scale) == ("numeric", 10, 3)
     assert quantity.length is None
     assert (by_term["거래일시"].data_type, by_term["거래일시"].precision) == ("timestamp", None)
+
+
+def _expected_terms_from_yaml(pack: str) -> dict[str, dict[str, Any]]:
+    """`loader.load_pack`을 거치지 않고 YAML을 직접 읽어 만든 기대값(옛 구현과 같은 경로).
+
+    옛 `load_pack_context`가 하던 일(용어 이름·동의어를 그대로 읽고, 공통 도메인의
+    strict 매핑을 `_contract_fields`와 같은 규칙으로 계약 필드로 바꾸는 일)을 테스트에서
+    다시 한다. `load_pack_context`가 `packs.loader`를 거쳐도 같은 값을 내는지 이 결과와
+    대조한다.
+    """
+    domains = {d["name"]: d for d in _yaml("common/domains.yaml")["domains"]}
+    expected: dict[str, dict[str, Any]] = {}
+    for t in _yaml(f"{pack}/terms.yaml")["terms"]:
+        strict = domains[t["domain"]]["postgres"]["strict"]
+        kind = strict["type"]
+        if kind in ("char", "varchar"):
+            fields: dict[str, Any] = {"length": strict["length"]}
+        elif kind == "numeric":
+            fields = {"precision": strict["length"], "scale": strict.get("scale")}
+        else:
+            fields = {}
+        expected[t["term"]] = {
+            "synonyms": tuple(t.get("synonyms") or ()),
+            "data_type": kind,
+            **{k: v for k, v in fields.items() if v is not None},
+        }
+    return expected
+
+
+@pytest.mark.parametrize("pack", ["inventory", "maintenance"])
+def test_pack_context_matches_reading_the_yaml_directly(pack: str) -> None:
+    """`load_pack_context`가 로더를 거친 뒤에도 YAML을 직접 읽은 옛 결과와 같은 값을 낸다.
+
+    #11 후속으로 `load_pack_context`를 `packs.loader.load_pack` 위에 다시 짜면서,
+    용어 이름·동의어·계약 필드(data_type·length·precision·scale)가 전부 그대로인지
+    팩 전체 용어로 확인한다. naming.yaml의 type_profile이 지금은 "strict"이므로
+    기대값도 strict 매핑으로 계산한다.
+    """
+    context = load_pack_context(pack)
+    expected = _expected_terms_from_yaml(pack)
+
+    assert {t.term for t in context.terms} == set(expected)
+    for term in context.terms:
+        want = expected[term.term]
+        got = {
+            "synonyms": term.synonyms,
+            "data_type": term.data_type,
+            **{
+                k: v
+                for k, v in {
+                    "length": term.length,
+                    "precision": term.precision,
+                    "scale": term.scale,
+                }.items()
+                if v is not None
+            },
+        }
+        assert got == want, term.term
+
+
+def test_pack_context_picks_pg_native_mapping_when_naming_says_so(tmp_path: Path) -> None:
+    """naming.yaml의 type_profile이 pg_native면 strict 대신 pg_native 매핑을 쓴다.
+
+    `load_pack`은 `pack.lock`·버전 검사를 하지 않는다(그 검사는
+    `specton.packs.build --check`에만 있다. `specton/packs/build.py` 참고). 그래서
+    팩 폴더를 임시 디렉터리로 복사해 `naming.yaml` 한 줄만 바꿔도 `load_pack_context`를
+    그대로 쓸 수 있다. 연월일 도메인은 strict가 char(8)이고 pg_native가 date라
+    data_type이 바뀌는지로 구분한다.
+    """
+    root = tmp_path / "domain_packs"
+    shutil.copytree(PACKS, root)
+    naming_path = root / "common" / "naming.yaml"
+    naming_path.write_text(
+        naming_path.read_text(encoding="utf-8").replace(
+            "type_profile: strict", "type_profile: pg_native"
+        ),
+        encoding="utf-8",
+    )
+
+    context = load_pack_context("maintenance", root=root)
+
+    by_term = {t.term: t for t in context.terms}
+    introduced_on = by_term["도입일자"]
+    assert introduced_on.data_type == "date"
+    assert introduced_on.length is None
 
 
 # run: 정상 응답과 ID 부여
