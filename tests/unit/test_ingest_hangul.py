@@ -157,6 +157,32 @@ class TestRules:
         )  # 「요구 사항 상세 설명」 묶음 칸은 라벨이 아님
         assert req.source_ref.cell == "C2"
 
+    def test_detail_table_with_attached_requirement_number_label(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """aT 비축 모양: 라벨 「요구사항번호」(붙여 씀)·「요구사항 명칭」·「정의」·「세부 내용」."""
+        table = _table(
+            236,
+            [
+                (0, 0, 1, 1, "분류"),
+                (0, 1, 1, 2, "기능"),
+                (1, 0, 1, 1, "요구사항번호"),
+                (1, 1, 1, 2, "SFR-001"),
+                (2, 0, 1, 1, "요구사항 명칭"),
+                (2, 1, 1, 2, "명칭"),
+                (3, 0, 2, 1, "요구사항 상세설명"),
+                (3, 1, 1, 1, "정의"),
+                (3, 2, 1, 1, "정의 글"),
+                (4, 1, 1, 1, "세부 내용"),
+                (4, 2, 1, 1, "세부 글"),
+            ],
+        )
+        [req] = _read(monkeypatch, table).requirements
+        assert req.source_id == "SFR-001"
+        assert req.source_text == "정의 글\n세부 글"
+        assert req.extraction_status is ExtractionStatus.PASS
+        assert (req.source_ref.paragraph, req.source_ref.cell) == (236, "B2")
+
     def test_pair_order_in_row_does_not_matter(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """응락수준 쌍이 고유번호 쌍보다 왼쪽에 있어도 짝이 바뀌지 않는다."""
         table = _table(
