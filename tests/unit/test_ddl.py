@@ -296,6 +296,9 @@ def test_type_text_and_parsed_type_are_kept(
         ("varchar", {"length": 10, "scale": 0}, "numeric에만"),
         ("numeric", {"precision": 0}, "precision은 양수"),
         ("numeric", {"precision": -3}, "precision은 양수"),
+        ("numeric", {"precision": 1001}, "precision은 1000 이하"),
+        ("char", {"length": 10485761}, "length는 10485760 이하"),
+        ("varchar", {"length": 10485761}, "length는 10485760 이하"),
         ("numeric", {"scale": 2}, "scale은 0 이상 precision 이하"),
         ("numeric", {"precision": 5, "scale": 6}, "scale은 0 이상 precision 이하"),
         ("numeric", {"precision": 5, "scale": -1}, "scale은 0 이상 precision 이하"),
@@ -605,3 +608,24 @@ def test_maintenance_pack_design_to_ddl_end_to_end() -> None:
     assert (
         'ALTER TABLE "bkdn_rcpt" ADD FOREIGN KEY ("eqpm_cd") REFERENCES "eqpm" ("eqpm_cd");'
     ) in sql
+
+
+@pytest.mark.parametrize(
+    ("data_type", "params", "expected"),
+    [
+        ("numeric", {"precision": 1000}, "numeric(1000)"),
+        ("numeric", {"precision": 1000, "scale": 1000}, "numeric(1000,1000)"),
+        ("char", {"length": 10485760}, "char(10485760)"),
+        ("varchar", {"length": 10485760}, "varchar(10485760)"),
+    ],
+)
+def test_type_parameter_at_postgres_upper_bound_passes(
+    data_type: str, params: dict[str, int], expected: str
+) -> None:
+    """PostgreSQL 18 상한값은 통과한다. 상한+1은 위 거절 테스트에서 멈춘다 (줄이지 않음)."""
+    defaults = {"length": None} if data_type == "numeric" else {}
+    column = _col("C2", "val", data_type, **{**defaults, **params})
+    table = _table("T1", "wrhus", [_key("C1", "wrhus_cd"), column], ("C1",))
+    sql = _sql(_model([table]))
+    assert f'  "val" {expected},\n' in sql
+    assert [type(s) for s in _statements(sql)] == [CreateStmt]

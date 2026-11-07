@@ -40,6 +40,9 @@ _LENGTH_TYPES = frozenset({SqlType.CHAR, SqlType.VARCHAR})
 _TIME_TYPES = frozenset({SqlType.TIME, SqlType.TIMESTAMP, SqlType.TIMESTAMPTZ})
 # PostgreSQL 시각 타입의 소수 초 자릿수 범위 (PostgreSQL 18 문서 8.5)
 _TIME_PRECISION_RANGE = range(0, 7)
+# PostgreSQL 18 타입 매개변수 상한. 넘으면 파싱은 되지만 실행에서 22023 오류로 거절된다.
+_MAX_CHAR_LENGTH = 10485760  # char·varchar length (PostgreSQL 18 문서 8.3)
+_MAX_NUMERIC_PRECISION = 1000  # 명시적 numeric precision (PostgreSQL 18 문서 8.1.2)
 # `--` 주석은 줄바꿈에서 끝난다. 머리말 값에 이 글자가 있으면 다음 줄이 SQL 문장이 된다.
 _HEADER_FORBIDDEN = ("\r", "\n", "\0")
 
@@ -206,11 +209,17 @@ def _sql_type(column: Column) -> str:
     if kind in _LENGTH_TYPES:
         if length is None or length < 1:
             raise ValueError(f"{where}: {kind.value}에는 양수 length가 필요함 ({length})")
+        if length > _MAX_CHAR_LENGTH:
+            raise ValueError(f"{where}: length는 {_MAX_CHAR_LENGTH} 이하여야 함 ({length})")
     elif length is not None:
         raise ValueError(f"{where}: {kind.value}에는 length를 쓰지 않음")
     if kind is SqlType.NUMERIC:
         if precision is not None and precision < 1:
             raise ValueError(f"{where}: precision은 양수여야 함 ({precision})")
+        if precision is not None and precision > _MAX_NUMERIC_PRECISION:
+            raise ValueError(
+                f"{where}: precision은 {_MAX_NUMERIC_PRECISION} 이하여야 함 ({precision})"
+            )
         if scale is not None and (precision is None or not 0 <= scale <= precision):
             raise ValueError(f"{where}: scale은 0 이상 precision 이하여야 함 ({precision},{scale})")
     elif precision is not None or scale is not None:
