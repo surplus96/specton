@@ -2,7 +2,8 @@
 
 검증기 전체는 5단계(파싱 → 허용 SQL 검사 → 격리 DB 실행 → 롤백 → 잔여 객체 확인)다(#167 제안).
 이 모듈은 앞 두 단계만 실행하고, 뒤 세 단계는 `not_run`으로 남긴다. 그래서 정상 SQL도 전체 상태는
-`unverified`이며 `passed`가 되지 않는다. 격리 DB 단계는 후속 PR에서 같은 결과 모양에 채운다.
+`unverified`이며 `passed`가 되지 않는다. 뒤 세 단계는 `specton.validate.sandbox`가 같은 결과 모양에
+채운다.
 
 허용 목록 방식이다. DDL 생성기(#165)가 내는 두 문장만 받는다.
 - `CREATE TABLE`: 칸(허용 타입 11개), `NOT NULL`·`NULL`, `PRIMARY KEY`·`UNIQUE`·`REFERENCES`
@@ -34,7 +35,7 @@ from pydantic import BaseModel, ConfigDict
 
 from specton.contracts.base import SqlType
 
-VALIDATOR_VERSION = "sql-validator-v0"  # 검증기 동작이 바뀌면 올린다. 임시 값이다.
+VALIDATOR_VERSION = "sql-validator-v1"  # 검증기 동작이 바뀌면 올린다. 임시 값이다. v1: 격리 DB 단계
 POLICY_VERSION = "allowed-sql-v0"  # 허용 목록이 바뀌면 올린다. 임시 값이다.
 # 대상 DB. DDL 생성기(#165 `DDL_TARGET`)와 같은 값이다. #165 병합 뒤 한 곳으로 합친다.
 TARGET = "postgresql-18"
@@ -42,7 +43,25 @@ TARGET = "postgresql-18"
 StageName = Literal["parse", "allowed_sql", "sandbox_execute", "rollback", "residual_check"]
 StageState = Literal["passed", "failed", "error", "not_run"]
 OverallState = Literal["unverified", "passed", "failed", "error"]
-ProblemKind = Literal["parse_error", "not_allowed", "empty", "not_utf8", "nul_byte", "internal"]
+ProblemKind = Literal[
+    "parse_error",
+    "not_allowed",
+    "empty",
+    "not_utf8",
+    "nul_byte",
+    "internal",
+    # 격리 DB 단계 (specton.validate.sandbox)
+    "execution_error",  # SQL 결함으로 확인된 실행 오류 (failed)
+    "connection",  # 연결 실패·끊김
+    "environment",  # 권한·사전 확인 실패 등 실행 환경 문제
+    "timeout",  # 문장 하나의 시간 제한
+    "budget_exceeded",  # SQL 전체 실행 예산
+    "lock_timeout",  # 잠금 대기 시간 제한
+    "database",  # 그 밖의 DB 장애
+    "rollback_failed",
+    "residual_found",  # 검증 스키마가 남음
+    "residual_check_failed",  # 남았는지 확인하지 못함
+]
 STAGES: tuple[StageName, ...] = (
     "parse",
     "allowed_sql",
@@ -92,6 +111,7 @@ class SqlProblem(BaseModel):
     kind: ProblemKind
     statement: int | None  # 몇 번째 문장(0부터). 문장 단위가 아니면 None
     detail: str
+    sqlstate: str | None = None  # DB 오류 코드 (격리 DB 단계)
 
 
 class StageResult(BaseModel):
@@ -132,7 +152,8 @@ def check_allowed_sql(sql: bytes) -> SqlValidation:
 def build_result(sql: bytes, done: Iterable[StageResult]) -> SqlValidation:
     """실행한 단계 결과로 전체 결과를 만든다. 실행하지 않은 단계는 `not_run`으로 채운다.
 
-    앞 단계가 실패·장애이면 뒤 단계는 실행하지 않은 것으로 본다. 격리 DB 단계도 이 함수를 쓴다.
+    앞 단계가 실패·장애이면 뒤 단계는 실행하지 않는다. 예외는 정리 단계(롤백·잔여 확인)다:
+    격리 DB에서 실행이 실패해도 롤백과 잔여 확인은 시도하고 그 결과를 남긴다 (`sandbox`).
     """
     done = tuple(done)
     names = [s.stage for s in done]
