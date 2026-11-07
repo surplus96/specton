@@ -3,3 +3,4 @@
 # `uv run python -m specton.packs.build`를 실행한다.
 versions:
   0.1.6: 3947b0b10b0a2180420674e331dcac6ee9d5b995957e35e2cdcf46b583d8d6d4
+  0.1.7: 24f6b9826a060c34144f39e37ef06351e8a792867ac8942df4d3987866eeea07

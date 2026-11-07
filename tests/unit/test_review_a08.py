@@ -1,13 +1,31 @@
-"""TC-A08: A08 정규화 검토 관점 (설정형 리뷰어로 실행)."""
+"""TC-A08: A08 정규화 검토 관점 (설정형 리뷰어로 실행).
+
+A08은 요구사항·엔티티와 함께 A04 관계와 모델 정리 결과 요약을 받는다 (#12). 그래서 검토할 상태는
+정리 결과를 담아야 한다. 정리는 실제 코드로 하고, 실제 팩에 아직 없는 단어는 테스트용 사전을 쓴다.
+"""
 
 import json
+from pathlib import Path
+from typing import Any, ClassVar
 
+import pytest
+import yaml
+
+from specton.codegen.model import Normalized
+from specton.codegen.naming import NamingRules, TermInfo
+from specton.codegen.normalize import PackRef, normalize
 from specton.config import Settings
-from specton.contracts import DesignState, Entity, FindingDraft, Requirement
+from specton.contracts import DesignState, Entity, FindingDraft, Relationship, Requirement
 from specton.llm.stub import refusal, reply, stub_client
 from specton.packs.examples import load_examples
+from specton.review.normalized_view import normalized_view
 from specton.review.perspective import PERSPECTIVES_DIR, load_perspective, load_perspectives
-from specton.review.reviewer import ReviewOutput, review_perspective
+from specton.review.reviewer import (
+    CombinedReviewOutput,
+    ReviewOutput,
+    review_combined,
+    review_perspective,
+)
 
 A08 = load_perspective(PERSPECTIVES_DIR / "A08.yaml")
 
@@ -48,6 +66,54 @@ def _entity(name: str, *attributes: dict[str, object]) -> Entity:
     )
 
 
+class _Words:
+    """테스트용 사전. 이 이름들은 실제 팩 사전에 아직 없거나 예시용 가상 이름이다 (#12 계획 3-3)."""
+
+    digest = "a08-test"
+    words: ClassVar[dict[str, str]] = {
+        "수불문서": "SBL_DOC",
+        "문서번호": "DOC_NO",
+        "품목코드목록": "ITEM_CD_LIST",
+        "품목": "ITEM",
+        "품목코드": "ITEM_CD",
+        "품목명": "ITEM_NM",
+        "수불내역": "SBL_DSCTN",
+        "내역순번": "DSCTN_SN",
+        "수량": "QTY",
+        "기술자": "ENGNR",
+        "기술자코드": "ENGNR_CD",
+        "기술자명": "ENGNR_NM",
+        "소속팀코드목록": "TEAM_CD_LIST",
+        "보전작업": "MNTN_JOB",
+        "작업번호": "JOB_NO",
+        "부품": "PRTS",
+        "부품코드": "PRTS_CD",
+        "부품명": "PRTS_NM",
+        "단위명": "UNIT_NM",
+        "사용부품실적": "USE_PRTS_RSLT",
+        "사용수량": "USE_QTY",
+        "적용단가": "APLCN_UNTPRC",
+        "사용일시": "USE_DT",
+        "기록자식별값": "RCDR_IDNTF_VL",
+    }
+
+    def term(self, logical_name: str) -> TermInfo | None:
+        return None
+
+    def compose(self, logical_name: str) -> str | None:
+        return self.words.get(logical_name)
+
+
+_RULES = NamingRules(max_bytes=63, reserved_words=frozenset())
+
+
+def _normalized(state: DesignState, pack: str = "inventory") -> DesignState:
+    """그래프의 정리 노드처럼 정리 결과를 상태에 담는다."""
+    result = normalize(state, pack=PackRef(pack, "test"), lexicon=_Words(), rules=_RULES)
+    assert isinstance(result, Normalized), result
+    return state.evolve(normalized=result.model)
+
+
 def _state() -> DesignState:
     """수불문서가 품목 코드 여러 개를 한 칸에 담는 설계."""
     document = _entity(
@@ -55,7 +121,9 @@ def _state() -> DesignState:
         _attribute("ATTR-01", "문서번호", is_key=True, nullable=False),
         _attribute("ATTR-02", "품목코드목록"),
     )
-    return DesignState(run_id="run-1", requirements=[_requirement(DOC_TEXT)], entities=[document])
+    return _normalized(
+        DesignState(run_id="run-1", requirements=[_requirement(DOC_TEXT)], entities=[document])
+    )
 
 
 def _snapshot_state() -> DesignState:
@@ -65,7 +133,9 @@ def _snapshot_state() -> DesignState:
         _attribute("ATTR-01", "품목코드", is_key=True, nullable=False),
         _attribute("ATTR-02", "품목명", description="거래 당시 품목명"),
     )
-    return DesignState(run_id="run-1", requirements=[_requirement(SNAPSHOT_TEXT)], entities=[line])
+    return _normalized(
+        DesignState(run_id="run-1", requirements=[_requirement(SNAPSHOT_TEXT)], entities=[line])
+    )
 
 
 def _no_basis_state() -> DesignState:
@@ -75,8 +145,12 @@ def _no_basis_state() -> DesignState:
         _attribute("ATTR-01", "품목코드", is_key=True, nullable=False),
         _attribute("ATTR-02", "품목명"),
     )
-    return DesignState(
-        run_id="run-1", requirements=[_requirement("각 내역은 한 품목을 가진다.")], entities=[line]
+    return _normalized(
+        DesignState(
+            run_id="run-1",
+            requirements=[_requirement("각 내역은 한 품목을 가진다.")],
+            entities=[line],
+        )
     )
 
 
@@ -95,9 +169,11 @@ def _settings() -> Settings:
     return Settings(_env_file=None)
 
 
-def test_a08_reads_requirements_and_entities_only() -> None:
-    assert set(A08.inputs) == {"requirements", "entities"}
-    assert A08.prompt_version == "a08-v1"
+def test_a08_reads_relationships_and_the_normalized_result() -> None:
+    assert A08.inputs == ("requirements", "entities", "relationships", "normalized")
+    assert A08.prompt_version == "a08-v2"
+    # 정리 결과의 테이블·컬럼 ID는 구조 연결용이고 지적 대상은 원래 ID라는 안내
+    assert "엔티티·속성·관계 ID" in A08.instructions
     assert "A08" in [p.reviewer_id for p in load_perspectives()]
 
 
@@ -194,12 +270,130 @@ def test_a08_refusal_fails_the_branch_without_retrying() -> None:
     assert not run.complete
 
 
-def test_maintenance_examples_separate_multi_value_from_recorded_values() -> None:
-    """MNT-004는 다중값 지적, MNT-015는 요구사항이 남기라고 한 값이라 지적이 없다."""
-    multi_value, recorded = load_examples("maintenance", "A08", ReviewOutput)
+def test_maintenance_examples_keep_only_the_multi_value_finding() -> None:
+    """MNT-004는 다중값 지적이다. MNT-015는 실행용 예시에서 뺐다 (#12 계획 4절).
 
-    assert multi_value.source_id == "MNT-004"
-    assert [f.kind for f in multi_value.output.findings] == ["multi_valued_attribute"]
-    assert recorded.source_id == "MNT-015"
-    assert recorded.output.findings == ()
-    assert "부품명" in [a["name"] for a in recorded.input["entities"][0]["attributes"]]
+    기대 결과가 확정되지 않은 예시를 남기면 YAML 주석과 달리 LLM에는 "지적 없음" 답으로 전달된다.
+    """
+    examples = load_examples("maintenance", "A08", ReviewOutput)
+
+    assert [e.source_id for e in examples] == ["MNT-004"]
+    assert [f.kind for f in examples[0].output.findings] == ["multi_valued_attribute"]
+
+
+# ── 미확정 MNT-015: 실행용 예시 밖의 시험 자료 (#12) ─────────────────
+
+PENDING_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "a08_mnt015_pending.yaml"
+PENDING_TEXT = "작업에는 사용한 부품의"  # MNT-015 요구 문장 앞부분
+
+
+def _maintenance_state() -> DesignState:
+    """MNT-015 설계 구조를 정리한 상태. 프롬프트에 그 예시가 섞이는지 보려고 쓴다."""
+    pending = yaml.safe_load(PENDING_FIXTURE.read_text(encoding="utf-8"))
+    return _normalized(_example_state(pending["input"]), "maintenance")
+
+
+def test_pending_mnt015_structure_matches_the_real_normalization() -> None:
+    """원문 확인 전 보관한 구조. 부모 키는 관계에서 오고, 실적이 부품명·단위명을 따로 남긴다."""
+    pending = yaml.safe_load(PENDING_FIXTURE.read_text(encoding="utf-8"))
+    assert (pending["source_id"], "output" in pending) == ("MNT-015", False)  # 기대 결과 없음
+    state = _normalized(_example_state(pending["input"]), pending["pack"])
+    assert state.normalized is not None
+    assert pending["input"]["normalized"] == normalized_view(state.normalized)
+    names = {e["name"]: [a["name"] for a in e["attributes"]] for e in pending["input"]["entities"]}
+    assert {"부품명", "단위명"} <= set(names["부품"]) & set(names["사용부품실적"])
+
+
+def test_parallel_prompt_does_not_carry_the_pending_example() -> None:
+    client, transport = stub_client(reply(ReviewOutput(findings=())))
+
+    review_perspective(client, A08, _maintenance_state(), _settings(), pack="maintenance")
+
+    *examples, data = transport.sent[0].messages
+    assert all(PENDING_TEXT not in m.content for m in examples)  # 예시 대화 쌍에 없음
+    assert "소속팀코드목록" in " ".join(m.content for m in examples)  # MNT-004 예시는 들어감
+    assert PENDING_TEXT in data.content  # 검토할 실제 입력에는 있다
+
+
+def test_combined_prompt_does_not_carry_the_pending_example_in_the_a08_block() -> None:
+    perspectives = load_perspectives()
+    output = CombinedReviewOutput.model_validate(
+        {"perspectives": [{"reviewer_id": p.reviewer_id, "findings": []} for p in perspectives]}
+    )
+    client, transport = stub_client(reply(output))
+
+    review_combined(client, perspectives, _maintenance_state(), _settings(), pack="maintenance")
+
+    system = transport.sent[0].messages[0].content
+    a08_block = system[system.index("## A08") :]
+    assert "소속팀코드목록" in a08_block
+    assert PENDING_TEXT not in a08_block
+
+
+# ── 예시 검증 (#12) ──────────────────────────────────────────────────
+
+
+def _example_state(example_input: dict[str, Any]) -> DesignState:
+    return DesignState(
+        run_id="example",
+        requirements=[
+            Requirement(
+                id=r["id"],
+                source_ref={"file_format": "csv", "row": 2},
+                text=r["text"],
+                draft_text=r["text"],
+                type=r["type"],
+                nfr_category=r["nfr_category"],
+                analysis_version=1,
+            )
+            for r in example_input["requirements"]
+        ],
+        entities=[Entity.model_validate(e) for e in example_input["entities"]],
+        relationships=[Relationship.model_validate(r) for r in example_input["relationships"]],
+    )
+
+
+_EXAMPLES = [
+    (pack, n, example)
+    for pack in ("inventory", "maintenance")
+    for n, example in enumerate(load_examples(pack, "A08", ReviewOutput))
+]
+
+
+@pytest.mark.parametrize(
+    ("pack", "example"),
+    [pytest.param(pack, ex, id=f"{pack}-{n}-{ex.source_id}") for pack, n, ex in _EXAMPLES],
+)
+def test_example_input_matches_the_real_normalization(pack: str, example: Any) -> None:
+    """예시의 normalized 블록은 손으로 쓴 값이 아니라 정리 코드 결과와 같아야 한다."""
+    assert list(example.input) == ["requirements", "entities", "relationships", "normalized"]
+    state = _normalized(_example_state(example.input), pack)
+    assert state.normalized is not None
+    assert example.input["normalized"] == normalized_view(state.normalized)
+
+
+@pytest.mark.parametrize(
+    ("pack", "example"),
+    [pytest.param(pack, ex, id=f"{pack}-{n}-{ex.source_id}") for pack, n, ex in _EXAMPLES],
+)
+def test_example_does_not_put_parent_keys_in_child_attributes(pack: str, example: Any) -> None:
+    """부모 키는 A03 속성이 아니라 관계에서 파생된다. 예시도 실제 흐름과 같은 모양이다."""
+    view = example.input["normalized"]
+    attribute_names = {
+        e["id"]: {a["name"] for a in e["attributes"]} for e in example.input["entities"]
+    }
+    for table in view["tables"]:
+        inherited = {c["name"] for c in table["columns"] if "relationship_id" in c}
+        assert not inherited & attribute_names[table["entity_id"]], table["name"]
+
+
+def test_inventory_line_example_shows_the_inherited_key_in_its_primary_key() -> None:
+    """수불내역 PK = 문서번호(식별 관계 REL-01에서 옴) + 내역순번(자기 키)."""
+    _, line_example = load_examples("inventory", "A08", ReviewOutput)
+    [line] = [t for t in line_example.input["normalized"]["tables"] if t["name"] == "수불내역"]
+    by_id = {c["id"]: c for c in line["columns"]}
+    assert [
+        (by_id[c]["name"], by_id[c].get("relationship_id") or by_id[c].get("attribute_id"))
+        for c in line["primary_key"]
+    ] == [("문서번호", "REL-01"), ("내역순번", "ATTR-03")]
+    assert line_example.output.findings == ()
