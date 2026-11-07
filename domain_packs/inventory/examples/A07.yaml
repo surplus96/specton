@@ -1,7 +1,68 @@
 # few-shot 예시 (inventory · A07 nfr_review). 사람이 작성하는 입력 파일이다.
 # - 입력은 개발용 세트(비공개, 저장소에 올리지 않음)에서만 가져오고 source_id에 원문 ID를 적는다. 평가용 세트 문서는 넣지 않는다.
 # - output은 해당 노드의 LLM 출력 모델과 같은 모양이어야 한다. load_examples가 그 모델로 검증한다 (docs/04 "노드 작성 규칙").
+# - 요구사항 문장은 합성 개발용 세트(INV-FR-010·INV-NF-003, R2 11/7 공유)의 것이고, 검토 대상 기능·엔티티는 예시를 위해 만든 가상 설계다.
 agent: A07
 role: nfr_review
 status: draft
-examples: []
+examples:
+# 지적 예시: 이력 엔티티와 정정 속성은 있지만, 기능이 이력을 고치고 지울 수 있게 되어 있다.
+# 속성이 있다는 것만으로 「수정·삭제 금지」가 충족됐다고 보지 않는다 (A07 checklist 3).
+- source_id: INV-FR-010
+  input:
+    requirements:
+    - id: REQ-01
+      type: FR
+      nfr_category: null
+      text: 한번 남긴 재고 이력은 수정하거나 삭제할 수 없어야 한다. 잘못 입력한 변동을 바로잡을 때는 기존 이력을 그대로 두고 반대 방향의 정정 이력을 새로 남기는 방식으로만 처리해야 한다. 정정 이력에는 정정 대상 이력 번호, 정정 사유, 정정 담당자, 정정 일시가 남아야 한다. 이력은 5년 동안 보존해야 한다.
+    functions:
+    - {id: FUNC-01, name: 재고 이력 관리, description: 재고 이력을 조회하고 잘못 입력한 이력을 수정하거나 삭제한다, req_ids: [REQ-01]}
+    entities:
+    - id: ENT-01
+      pack: inventory
+      name: 재고이력
+      description: 품목별 재고 변동 기록
+      req_ids: [REQ-01]
+      crud_exemptions: []
+      attributes:
+      - {id: ATTR-01, name: 이력번호, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-02, name: 변동수량, data_type: numeric, precision: 15, scale: 3, req_ids: [REQ-01]}
+      - {id: ATTR-03, name: 정정대상이력번호, data_type: varchar, length: 20, req_ids: [REQ-01]}
+      - {id: ATTR-04, name: 정정사유, data_type: varchar, length: 500, req_ids: [REQ-01]}
+      - {id: ATTR-05, name: 정정담당자, data_type: varchar, length: 20, req_ids: [REQ-01]}
+      - {id: ATTR-06, name: 정정일시, data_type: timestamp, req_ids: [REQ-01]}
+  output:
+    findings:
+    - kind: history_not_protected
+      severity: major
+      targets:
+      - {kind: function, id: FUNC-01}
+      evidence:
+      - req_id: REQ-01
+        quote: 한번 남긴 재고 이력은 수정하거나 삭제할 수 없어야 한다
+      suggestion: 재고 이력 관리 기능이 이력을 수정·삭제하게 되어 있다. 수정·삭제를 빼고 정정 이력을 새로 등록하는 기능으로 바꾸고, 재고이력 엔티티에 수정·삭제를 두지 않는 근거(CRUD 면제)를 남긴다.
+      target_stage: functions
+# 지적 없음 예시: 백업·복구는 운영 요구로 A07이 보는 권한·감사·이력 수정 금지·사용 중지·원자성 어디에도 걸리지 않는다.
+# 설계에 백업 기능이나 속성이 없다는 이유로 지적하지 않는다.
+- source_id: INV-NF-003
+  input:
+    requirements:
+    - id: REQ-01
+      type: NFR
+      nfr_category: availability
+      text: 재고 데이터는 하루에 한 번 이상 백업하고, 장애가 나면 전날 백업을 기준으로 복구할 수 있어야 한다. 백업 파일은 시스템과 다른 장소에 보관해야 한다.
+    functions:
+    - {id: FUNC-01, name: 재고 현황 조회, description: 품목·창고별 현재 재고를 조회한다, req_ids: [REQ-01]}
+    entities:
+    - id: ENT-01
+      pack: inventory
+      name: 재고
+      description: 품목·창고별 현재 재고
+      req_ids: [REQ-01]
+      crud_exemptions: []
+      attributes:
+      - {id: ATTR-01, name: 품목코드, data_type: varchar, length: 10, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-02, name: 창고코드, data_type: varchar, length: 10, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-03, name: 현재고수량, data_type: numeric, precision: 15, scale: 3, req_ids: [REQ-01]}
+  output:
+    findings: []

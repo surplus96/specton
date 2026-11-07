@@ -23,6 +23,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import interrupt
 
+from specton.artifacts import GeneratedArtifact
 from specton.config import get_settings
 from specton.contracts import (
     BranchResult,
@@ -117,6 +118,13 @@ def _merge_versions(
     return {**old, **new}
 
 
+def _merge_artifacts(
+    old: Mapping[str, GeneratedArtifact], new: Mapping[str, GeneratedArtifact]
+) -> dict[str, GeneratedArtifact]:
+    """병렬 생성 결과를 revision·종류·형식별로 모으고 export 결과로 갱신한다."""
+    return {**old, **new}
+
+
 class GraphState(TypedDict, total=False):
     design: DesignState
     documents: tuple[DocumentRef, ...]  # 업로드 문서 (parse 노드 입력)
@@ -124,6 +132,7 @@ class GraphState(TypedDict, total=False):
         RunNote, ...
     ]  # 방금 끝난 노드가 남긴 안내. 실행기는 노드 결과(update)에서만 읽는다
     branches: Annotated[dict[str, BranchResult], _merge_branches]
+    generated_artifacts: Annotated[dict[str, GeneratedArtifact], _merge_artifacts]
     rule_findings: tuple[Finding, ...]  # 규칙 검사(#15) 결과
     normalization_failed: bool  # 정리 실패이면 생성·LLM 검토를 건너뛴다
     requires_manual_review: bool  # 사전·명명 규칙 등 자동 수정으로 해결할 수 없는 문제
@@ -150,6 +159,7 @@ def initial_state(design: DesignState, documents: tuple[DocumentRef, ...] = ()) 
         design=design,
         documents=documents,
         branches={},
+        generated_artifacts={},
         rule_findings=(),
         normalization_failed=False,
         requires_manual_review=False,
@@ -270,22 +280,38 @@ def _as_dict(node: Node) -> Callable[[GraphState], dict[str, Any]]:
     return lambda state: dict(node(state))
 
 
+def _artifact_design(state: GraphState) -> DesignState:
+    design = state["design"]
+    if "generated_artifacts" not in state:
+        return design  # 기존 체크포인트·직접 주입한 상태도 읽는다
+    refs = tuple(
+        item["ref"]
+        for _, item in sorted(state["generated_artifacts"].items())
+        if item["ref"].revision == design.revision
+    )
+    return design.evolve(artifacts=refs)
+
+
 def _with_status(node: Node, status: RunState) -> Callable[[GraphState], dict[str, Any]]:
     def run(state: GraphState) -> dict[str, Any]:
-        update = dict(node(state))
-        design: DesignState = update.get("design", state["design"])
-        update["design"] = design.evolve(status=status)
+        current: GraphState = {**state, "design": _artifact_design(state)}
+        update = dict(node(current))
+        joined: GraphState = {
+            "design": update.get("design", current["design"]),
+            "generated_artifacts": {
+                **state.get("generated_artifacts", {}),
+                **update.get("generated_artifacts", {}),
+            },
+        }
+        update["design"] = _artifact_design(joined).evolve(status=status)
         return update
 
     return run
 
 
 def _waiting(status: RunState) -> Callable[[GraphState], dict[str, Any]]:
-    """상태만 바꾸는 노드. 사람 확인 직전에도 쓴다.
-
-    interrupt 노드는 반환 전에 멈춰 상태를 남기지 못하므로 따로 둔다.
-    """
-    return lambda state: {"design": state["design"].evolve(status=status)}
+    """사람 확인 직전·완료 상태. 승인 후 export 결과도 DesignState에 모은다."""
+    return lambda state: {"design": _artifact_design(state).evolve(status=status)}
 
 
 def _next_after_analysis(state: GraphState) -> str:

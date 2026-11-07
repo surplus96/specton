@@ -15,8 +15,10 @@ from specton.api.errors import install_error_handlers
 from specton.api.runs import router as runs_router
 from specton.config import Settings, get_settings
 from specton.graph import GraphState, build_graph
+from specton.normalization_node import normalization_node
 from specton.parse_node import parse_node
 from specton.persistence.db import Pool, apply_schema, create_checkpointer, create_pool
+from specton.review.normalization_findings import failure_mapper, rule_severities
 from specton.runner import Runner
 
 
@@ -28,8 +30,13 @@ class HealthResponse(BaseModel):
 def create_graph(
     settings: Settings, checkpointer: BaseCheckpointSaver[Any]
 ) -> CompiledStateGraph[GraphState, None, GraphState, GraphState]:
-    """실행기가 돌릴 그래프 (#17). 문서 읽기·에이전트(A01~A09)는 실제 노드, 생성·규칙은 빈 노드."""
-    nodes = {"parse": parse_node(settings.storage_dir), **openai_agent_nodes(settings)}
+    """문서·에이전트·모델 정리를 실제 노드로 잇는다. 생성·후속 규칙·내보내기는 빈 노드다."""
+    mapper = failure_mapper(rule_severities(root=settings.pack_root))
+    nodes = {
+        **openai_agent_nodes(settings),
+        "parse": parse_node(settings.storage_dir),
+        "normalize": normalization_node(mapper, root=settings.pack_root),
+    }
     return build_graph(nodes, checkpointer=checkpointer)
 
 
