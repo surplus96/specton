@@ -4,8 +4,8 @@
 (b) 예비 경로(`rhwp dump`) 인자 모양 시험, (c) 비공개 원문이 있을 때만 도는 회귀 시험.
 
 제안(#24 선진행): (c)를 「원문 파일이 없으면 skip」으로 두는 방식은 팀이 정한 것이 아니라 제안이다.
-원문은 비공개라 저장소에 넣지 않으므로, 환경변수 `SPECTON_HANGUL_SAMPLES`(없으면 아래
-`_DEFAULT_SAMPLES`)에 두 파일이 있을 때만 돌고 없으면 건너뛴다. 시험 데이터에는 원문 글을 길게
+원문은 비공개라 저장소에 넣지 않으므로, 환경변수 `SPECTON_HANGUL_SAMPLES`가 가리키는 폴더에
+두 파일이 있을 때만 돌고, 지정하지 않았거나 파일이 없으면 건너뛴다. 시험 데이터에는 원문 글을 길게
 복사하지 않고 숫자·고유번호·문단 번호만 고정한다.
 """
 
@@ -41,7 +41,6 @@ from specton.ingest.tabular import (
     UnsupportedInput,
 )
 
-_DEFAULT_SAMPLES = Path("/Users/hykim/Desktop/dev/capstone/share/in/2026-10-28_재고자재_RFP")
 _KITECH = "kitech_과업지시서.hwp"
 _GYEONGNAM = "경남로봇랜드_붙임3_과업지시서.hwp"
 
@@ -295,6 +294,41 @@ class TestRules:
         with pytest.raises(UnsupportedInput):
             read_hangul(empty, "doc-1")
 
+    def test_file_access_error_has_its_own_notice(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """권한 오류는 엔진 연결 오류가 아니라 파일 접근 안내로 멈춘다."""
+
+        def boom(path: Path) -> None:
+            raise PermissionError(13, "denied")
+
+        monkeypatch.setattr(hangul, "read_blocks", boom)
+        with pytest.raises(UnsupportedInput) as info:
+            read_hangul(Path("x.hwp"), "doc-1")
+        assert "파일 권한이나 경로" in info.value.notice
+        assert "PermissionError" in info.value.detail
+        assert "엔진" not in info.value.detail
+
+    def test_directory_path_is_file_access_error(self, tmp_path: Path) -> None:
+        """폴더를 파일로 준 경우도(실제 엔진 경유) 연결 오류가 아닌 접근 안내다."""
+        with pytest.raises(UnsupportedInput) as info:
+            read_hangul(tmp_path, "doc-1")
+        assert "파일 권한이나 경로" in info.value.notice
+        assert "엔진" not in info.value.detail
+
+    def test_id_value_cell_vanished_by_merge(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """고유번호 값 칸이 병합으로 사라진 표: 파일이 멈추지 않고 review 블록이 된다."""
+        table = _kitech_detail(8, "SFR-001")
+        cells = tuple(c for c in table.cells if not (c.row == 1 and c.col == 2))
+        table = HangulTable(0, 8, table.rows, table.cols, cells)
+        result = _read(monkeypatch, _kitech_detail(3, "SFR-002"), table)
+        broken = next(r for r in result.requirements if r.source_id is None)
+        assert broken.extraction_status is ExtractionStatus.REVIEW
+        assert broken.block_id == "S0-P8"
+        assert NOTICE_NO_ID in (broken.notice or "")
+        assert NOTICE_BROKEN_MERGE in (broken.notice or "")
+        # 위치 칸은 값 칸이 없어 표의 첫 칸(A1)으로 대신한다
+        assert broken.source_ref.cell == "A1"
+        assert len(result.requirements) == 2
+
     def test_missing_file_is_not_hidden(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError):
             read_hangul(tmp_path / "없음.hwp", "doc-1")
@@ -347,9 +381,12 @@ class TestFallbackDump:
 
 
 def _samples() -> Path:
-    folder = Path(os.environ.get("SPECTON_HANGUL_SAMPLES", _DEFAULT_SAMPLES))
-    if not (folder / _KITECH).exists() or not (folder / _GYEONGNAM).exists():
-        pytest.skip("비공개 한글 원문 두 파일이 없어 회귀 시험을 건너뜀(SPECTON_HANGUL_SAMPLES)")
+    given = os.environ.get("SPECTON_HANGUL_SAMPLES")
+    folder = Path(given) if given else None
+    if folder is None or not (folder / _KITECH).exists() or not (folder / _GYEONGNAM).exists():
+        pytest.skip(
+            "비공개 한글 원문이 없어 건너뜀. 환경변수 SPECTON_HANGUL_SAMPLES를 지정하면 돌아간다"
+        )
     return folder
 
 

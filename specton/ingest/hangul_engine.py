@@ -106,7 +106,7 @@ def read_blocks(path: Path) -> HangulDocument:
 
     - 파일을 못 읽으면(깨짐·형식 불량) `HangulFormatError`(ValueError의 하위 종류)
     - 그 밖의 엔진·연결부 오류는 `EngineError`
-    - 파일이 없으면(FileNotFoundError)은 호출 쪽 실수이므로 그대로 올린다
+    - 파일 접근 오류(OSError 계열: 없음·권한·폴더 등)는 엔진 문제가 아니므로 그대로 올린다
     """
     try:
         doc = rhwp.parse(str(path))
@@ -124,7 +124,7 @@ def read_blocks(path: Path) -> HangulDocument:
                 if text is not None and prov is not None:
                     blocks.append(HangulParagraph(prov.section_idx, prov.para_idx, text))
         return HangulDocument(tuple(blocks))
-    except FileNotFoundError:
+    except OSError:
         raise
     except ValueError as exc:
         # rhwp-python은 읽지 못한 파일에 ValueError를 낸다(0.8.1에서 빈 파일·깨진 파일·잘린 파일·

@@ -263,6 +263,12 @@ def read_hangul(path: Path, document_id: str) -> TabularResult:
         ) from exc
     except FileNotFoundError:
         raise
+    except OSError as exc:
+        # 권한 없음·폴더 경로 등 파일 접근 오류. 엔진 연결 오류와 구분해 안내한다
+        raise UnsupportedInput(
+            "파일을 열 수 없어요. 파일 권한이나 경로를 확인해 주세요.",
+            f"파일에 접근하지 못했어요: {type(exc).__name__}",
+        ) from exc
     except Exception as exc:  # EngineError 포함: 엔진 연결부 오류는 빈 결과로 넘기지 않는다
         raise UnsupportedInput(
             "한글 파일을 읽는 도중 문제가 생겼어요. 잠시 뒤 다시 시도하거나 .hwpx로 저장해 주세요.",
