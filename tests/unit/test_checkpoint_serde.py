@@ -6,7 +6,16 @@ from enum import StrEnum
 import pytest
 from langgraph.checkpoint.serde.event_hooks import SerdeEvent, register_serde_event_listener
 
-from specton.contracts import Column, DesignState, NormalizedModel, Table
+from specton.contracts import (
+    VALIDATION_STEPS,
+    Column,
+    DesignState,
+    NormalizedModel,
+    SqlValidation,
+    Table,
+    ValidationIssue,
+    ValidationStep,
+)
 from specton.contracts.base import TargetStage
 from specton.contracts.findings import Finding
 from specton.persistence.db import CHECKPOINT_TYPES, GRAPH_STATE_TYPES, checkpoint_serde
@@ -56,6 +65,26 @@ def test_design_with_a_normalized_model_comes_back_without_warnings(
     assert events == []
 
 
+def test_sql_validation_comes_back_without_warnings(events: list[SerdeEvent]) -> None:
+    """실행기가 체크포인트에 담는 검증 결과도 허용 목록으로 다시 읽힌다 (#175)."""
+    serde = checkpoint_serde()
+    issue = ValidationIssue(code="syntax_error", statement_index=0, sqlstate="42601")
+    steps = (
+        ValidationStep(name=VALIDATION_STEPS[0], status="failed", issues=(issue,)),
+        *(ValidationStep(name=name, status="not_run") for name in VALIDATION_STEPS[1:]),
+    )
+    validation = SqlValidation(
+        status="failed", artifact_hash="0" * 64, validator_version="v1", policy_version="p1",
+        postgres_version="18", steps=steps,
+    )
+
+    restored = serde.loads_typed(serde.dumps_typed({"validation": validation}))
+
+    assert restored == {"validation": validation}
+    assert type(restored["validation"].steps[0].issues[0]) is ValidationIssue
+    assert events == []
+
+
 def test_unlisted_type_is_blocked(events: list[SerdeEvent]) -> None:
     serde = checkpoint_serde()
 
@@ -71,6 +100,7 @@ def test_every_contract_and_graph_state_type_is_listed() -> None:
     assert GRAPH_STATE_TYPES <= CHECKPOINT_TYPES
     assert all(module.startswith("specton.") for module, _ in CHECKPOINT_TYPES)
     assert ("specton.contracts.normalized", "NormalizedModel") in CHECKPOINT_TYPES
+    assert ("specton.contracts.validation", "SqlValidation") in CHECKPOINT_TYPES
 
 
 def _normalized(physical_name: str = "ord") -> NormalizedModel:

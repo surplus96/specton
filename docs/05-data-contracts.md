@@ -1,7 +1,7 @@
 # 데이터 계약
 
 > 상태: **동결** (2026-10-26, #48). 이후 변경은 `contract-change`로 하고 재동결 절차는 없다
-> 구현: `specton/contracts/` (`base`·`requirements`·`design`·`findings`·`state`·`api`)
+> 구현: `specton/contracts/` (`base`·`requirements`·`design`·`findings`·`normalized`·`state`·`api`·`validation`)
 > 변경 규칙: `specton/contracts/` 변경은 `contract-change` 라벨과 2인 승인. R1 작성 PR의 예외는 [CONTRIBUTING](../CONTRIBUTING.md)
 
 ## 계약 현황
@@ -27,6 +27,7 @@
 | #136 | `RequirementsResponse.answers_for`로 저장된 요구사항 ID·중복 답·문장 수·빈 문장을 검사하고, 잘못된 답은 resume API에서 422로 거절한다 |
 | #140 | `SourceRequirement`: `review`·`fail` 블록은 `notice` 필수 |
 | #143 | 정리 결과 모델을 계약으로 이전하고 `DesignState.normalized` 추가. 정리 결과가 있으면 스냅샷 저장·해시에 포함하고 체크포인트 허용 타입에 등록 |
+| #176 | SQL 검증 결과 공용 계약 `SqlValidation`·`ValidationStep`·`ValidationIssue` 추가 (#167). 저장·승인 검사는 후속 |
 
 남은 작업: requirements·추적 검사 설명 (#107), FK 파생·참조 키 (#12), 값 범위 제약 (#15)
 
@@ -55,6 +56,7 @@
 | Relationship | `id`, `parent`, `child`, `cardinality`, `optional`, `identifying`, `rationale`, `req_ids` | 참조 키 선택·복합 키 표현 |
 | Finding | `id`, `severity`, `kind`, `source`, `targets`, `evidence`, `suggestion`, `target_stage`, `fingerprint`, `iteration` | `reviewer_id`, 근거 위치, 필터 결과 |
 | NormalizedModel | `pack`, `pack_version`, `rules_version`, `lexicon_digest`, `tables`(`Table`: 컬럼·PK·UNIQUE), `foreign_keys`(`ForeignKey`) | 모델 정리(#12) 성공 결과(`specton/contracts/normalized.py`). PK·FK·UNIQUE는 컬럼 ID 묶음(순서 있음). 실패는 `NormalizeFailed`(`problems`)로 따로 돌려주며 상태에 두지 않는다. ID 기준은 ADR-0016 |
+| SqlValidation | `status`, `artifact_hash`, `validator_version`, `policy_version`, `postgres_version`, `steps`(`ValidationStep`: `name`·`status`·`issues`) | SQL 파일 하나의 검증 결과(`specton/contracts/validation.py`, #167). 단계는 `parse` → `allowed_statements` → `execute` → `rollback` → `cleanup`이 순서대로 한 번씩 있고, 실행하지 않은 단계는 `not_run`이다. 단계 상태 `failed`는 SQL 결함, `error`는 검증 환경·정리 장애이며 둘 다 `issues`(`ValidationIssue`: `code`·`message`·`statement_index`·`sqlstate`)가 1건 이상이다. 전체 `status`는 `error` > `failed` > `unverified`(실패 없이 `not_run`이 있음) > `passed` 순으로 단계에서 정해지고 계약이 일치를 검사한다. 파싱·허용 문장 검사를 통과하지 않으면 `execute`는 `not_run`이다. `message`에는 보여도 되는 문장만 넣는다. run·revision·`model_hash`·검증 시도 ID는 검증기가 모르며 실행기·저장 쪽이 붙인다. 최종 승인 근거는 `passed`뿐이다 |
 | DesignState | `source_requirements`, `requirements`, `functions`, `entities`, `relationships`, `normalized`, `artifacts`, `findings`, `iteration` | `normalized`는 모델 정리 성공 결과이며 설계가 바뀌면 비우고 다시 채운다(ADR-0016). `run_id`, `revision`, `status`, `interrupt_id`, 문서·팩·프롬프트·모델 버전, 병렬 가지 결과 |
 
 - 추가 필드를 모두 LLM 출력에 넣지 않는다. 실행 메타데이터·버전·ID·필터 결과는 코드가 채운다.
