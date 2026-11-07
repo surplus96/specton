@@ -29,6 +29,7 @@ from specton.ingest.hangul_engine import (
     HangulDocument,
     HangulFormatError,
     HangulTable,
+    _cell_text_and_picture,
     dump_paragraph_text,
     read_blocks,
 )
@@ -112,6 +113,16 @@ def _list_table(para: int, rows: list[tuple[str, str]]) -> HangulTable:
     return _table(para, cells)
 
 
+def _list_with_head(
+    para: int, head: tuple[str, str, str], rows: list[tuple[str, str]]
+) -> HangulTable:
+    """머리 이름을 고를 수 있는 3열 목록표: (구분, 번호류, 이름) 머리 + 행마다 1건."""
+    cells: list[Spec] = [(0, 0, 1, 1, head[0]), (0, 1, 1, 1, head[1]), (0, 2, 1, 1, head[2])]
+    for i, (sid, name) in enumerate(rows, start=1):
+        cells += [(i, 1, 1, 1, sid), (i, 2, 1, 1, name)]
+    return _table(para, cells)
+
+
 def _read(monkeypatch: pytest.MonkeyPatch, *tables: HangulTable) -> TabularResult:
     """가짜 표들로 `read_hangul`을 돌린다(엔진 대신 자료형을 넣는다)."""
     monkeypatch.setattr(hangul, "read_blocks", lambda path: HangulDocument(tuple(tables)))
@@ -182,6 +193,57 @@ class TestRules:
             0,
             "B3",
         )
+
+    @pytest.mark.parametrize(
+        "head",
+        [
+            ("구 분", "번 호", "요구사항명"),  # 자치인재원 모양
+            ("구분", "ID", "요구사항명"),
+            ("요구사항 구분", "Id", "요구사항 명칭"),  # 부록 예시 모양(대소문자 무시)
+            ("구분", "요구사항 ID", "요구사항명"),
+            ("구분", "요구사항 번호", "요구사항명"),
+        ],
+    )
+    def test_list_header_variants_keep_list_only_ids(
+        self, monkeypatch: pytest.MonkeyPatch, head: tuple[str, str, str]
+    ) -> None:
+        """머리가 「번호」「ID」 등인 목록표도 인식해, 상세표에 없는 번호를 review로 남긴다."""
+        list_table = _list_with_head(
+            119, head, [("SFR-01", "첫째"), ("SFR-02", "둘째"), ("COR-09", "셋째")]
+        )
+        result = _read(
+            monkeypatch, list_table, _kitech_detail(130, "SFR-01"), _kitech_detail(131, "SFR-02")
+        )
+        by_id = {r.source_id: r for r in result.requirements}
+        assert sorted(by_id) == ["COR-09", "SFR-01", "SFR-02"]
+        assert len(result.requirements) == 3  # 상세표 번호는 상세표만(중복 없음)
+        assert by_id["SFR-01"].notice is None and by_id["SFR-02"].notice is None
+        only = by_id["COR-09"]
+        assert only.extraction_status is ExtractionStatus.REVIEW
+        assert only.notice == NOTICE_LIST_ONLY
+        assert only.source_text == "셋째"
+        assert only.source_ref.paragraph == 119
+
+    def test_ellipsis_rows_in_list_are_skipped_but_named_ones_stay(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """번호가 「...」이고 이름이 빈 행은 블록이 없고, 이름이 있으면 review로 남는다."""
+        list_table = _list_with_head(
+            5, ("구분", "ID", "요구사항명"), [("SFR-01", "첫째"), ("...", ""), ("..", "이름 있음")]
+        )
+        result = _read(monkeypatch, list_table, _kitech_detail(9, "SFR-02"))
+        by_id = {r.source_id: r for r in result.requirements}
+        assert sorted(by_id) == ["..", "SFR-01", "SFR-02"]  # 「...」 행만 빠짐
+        assert by_id[".."].extraction_status is ExtractionStatus.REVIEW
+        assert by_id[".."].source_text == "이름 있음"
+
+    def test_number_label_without_number_values_is_not_a_list(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """「번호」「요구사항명」 라벨만 있고 아래에 번호꼴 값이 없으면 목록표가 아니다."""
+        lookalike = _list_with_head(5, ("구분", "번호", "요구사항명"), [("(없음)", "이름")])
+        result = _read(monkeypatch, lookalike, _kitech_detail(9, "SFR-01"))
+        assert [r.source_id for r in result.requirements] == ["SFR-01"]
 
     def test_table_index_counts_in_section_document_order(
         self, monkeypatch: pytest.MonkeyPatch
@@ -441,6 +503,49 @@ class TestRegressionOnRealFiles:
             exported = tmp_path / (Path(name).stem + ".hwpx")
             rhwp.parse(str(_samples() / name)).export_hwpx(str(exported))
             assert _key_map(exported) == _key_map(_samples() / name)
+
+
+class ParagraphBlock:
+    """엔진 객체 모양 흉내: 클래스 이름이 엔진 블록 종류와 같아야 한다(type(x).__name__로 구분)."""
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+
+class PictureBlock:  # text 속성이 없는 것까지 엔진과 같다
+    pass
+
+
+class _FakeCell:
+    def __init__(self, row: int, col: int, *blocks: object) -> None:
+        self.row, self.col, self.blocks = row, col, list(blocks)
+
+
+class TableBlock:
+    def __init__(self, cells: list[_FakeCell], text: str = "") -> None:
+        self.cells, self.text = cells, text
+
+
+def test_nested_tables_keep_all_text_two_levels_deep() -> None:
+    """칸 안 2단 중첩 표의 글이 모두 칸 글에 들어간다(엔진 `.text`는 안쪽 표를 빠뜨린다)."""
+    inner = TableBlock([_FakeCell(0, 0, ParagraphBlock("안쪽 둘째 단"))], text="")
+    outer = TableBlock(
+        [
+            _FakeCell(0, 1, ParagraphBlock("가운데 오른쪽")),
+            _FakeCell(0, 0, ParagraphBlock("가운데 왼쪽"), inner),
+            _FakeCell(1, 0, ParagraphBlock("")),  # 빈 글은 건너뜀
+        ],
+        text="엔진이 만든 불완전한 글",
+    )
+    text, picture = _cell_text_and_picture([ParagraphBlock("칸 첫 문단"), outer])
+    assert text == "칸 첫 문단\n가운데 왼쪽\n안쪽 둘째 단\n가운데 오른쪽"
+    assert picture is False
+
+
+def test_picture_inside_nested_table_sets_flag() -> None:
+    inner = TableBlock([_FakeCell(0, 0, PictureBlock())])
+    outer = TableBlock([_FakeCell(0, 0, inner)])
+    assert _cell_text_and_picture([outer]) == ("", True)
 
 
 def test_read_blocks_is_the_only_engine_door() -> None:

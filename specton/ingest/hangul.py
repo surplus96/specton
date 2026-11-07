@@ -9,6 +9,10 @@
 - 「요구사항 목록표」(머리 행에 고유번호와 요구사항명 칸이 함께 있는 큰 표)는 요구사항이 아니라
   대조용이다. 상세표에 같은 고유번호가 있으면 상세표만 내고, 목록표에만 있는 고유번호는
   요구사항명만으로 `review` 블록을 낸다(조용히 버리지 않음, ADR-0015).
+- 목록표의 생략 표시 줄(번호 칸에 숫자가 하나도 없고 이름 칸도 빈 행. 예: 「...」「..」)은 내용이
+  없어 블록으로 만들지 않고 건너뛴다. 번호가 숫자 없는 글이어도 이름이 있으면 review로 남긴다.
+  한계: 건너뛴 줄의 개수는 결과에 남지 않는다. `ExtractionIssue`는 원문 한 곳을 가리키는 「확인
+  필요」 1건이라 개수 안내용으로 쓰면 화면의 확인 필요 건수가 부풀어, 쓰지 않았다(이음 임시 제안).
 - 원문 위치(`SourceRef`)는 아래 `_source_ref`의 독스트링을 본다.
 - `source_text`는 「정의」 값과 「세부내용」 값을 줄바꿈으로 이은 글이다. 칸마다 글자는 원문
   그대로(앞뒤 공백만 뺌, tabular와 같음)다.
@@ -62,6 +66,14 @@ _LABELS = {
 _EXTRA_NAMES = {"category": "요구사항 분류", "name": "요구사항 명칭", "output": "산출정보"}
 
 
+# 목록표 머리의 번호 칸 라벨(공백 제거·소문자 비교). 상세표 라벨(_LABELS)과 따로 둔다:
+# 「번호」「ID」는 상세표 안에서는 라벨이 아니므로, 같은 행에 요구사항명 칸이 있는 목록표
+# 머리에서만 번호 칸으로 본다.
+_LIST_ID_LABELS = frozenset(
+    {"고유번호", "요구사항고유번호", "번호", "id", "요구사항id", "요구사항번호"}
+)
+
+
 @dataclass(frozen=True)
 class _Detail:
     """상세표 1개를 읽은 중간 결과."""
@@ -111,18 +123,27 @@ def _grid(table: HangulTable) -> dict[tuple[int, int], HangulCell]:
 
 
 def _list_header(table: HangulTable) -> tuple[int, int, int] | None:
-    """목록표 머리 (행, 고유번호 열, 명칭 열). 한 행에 고유번호 칸과 명칭 칸이 함께 있으면 목록표다.
+    """목록표 머리 (행, 번호 열, 명칭 열).
+
+    한 행에 번호 칸과 명칭 칸이 함께 있고 아래에 번호꼴 값이 있으면 목록표다.
 
     상세표에서는 고유번호 라벨과 명칭 라벨이 서로 다른 행에 있으므로 구분된다.
     """
     by_row: dict[int, dict[str, int]] = {}
     for cell in table.cells:
-        key = _key(cell.text)
-        if key in ("id", "name"):
-            by_row.setdefault(cell.row, {}).setdefault(key, cell.col)
+        if "".join(cell.text.split()).lower() in _LIST_ID_LABELS:
+            by_row.setdefault(cell.row, {}).setdefault("id", cell.col)
+        elif _key(cell.text) == "name":
+            by_row.setdefault(cell.row, {}).setdefault("name", cell.col)
+    grid = _grid(table)
     for row in sorted(by_row):
         found = by_row[row]
-        if "id" in found and "name" in found:
+        if "id" not in found or "name" not in found:
+            continue
+        # 머리 아래 행에서 번호꼴 값(숫자가 든 글)이 하나라도 나와야 목록표다.
+        # 라벨만 우연히 한 행에 모인 다른 표를 목록표로 오인하지 않기 위함이다
+        below = (grid.get((r, found["id"])) for r in range(row + 1, table.rows))
+        if any(c is not None and any(ch.isdigit() for ch in c.text) for c in below):
             return row, found["id"], found["name"]
     return None
 
@@ -220,6 +241,9 @@ def _list_only(
             if id_cell is None or not source_id or source_id in detail_ids:
                 continue
             name = _text(grid.get((row, name_col)))
+            if not name and not any(ch.isdigit() for ch in source_id):
+                # 생략 표시 줄(「...」 등)은 내용이 없어 건너뜀. 이름이 있으면 review로 남김
+                continue
             out.append(
                 (
                     SourceRequirement(

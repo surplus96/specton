@@ -74,7 +74,12 @@ class HangulDocument:
 
 
 def _cell_text_and_picture(blocks: list[Any]) -> tuple[str, bool]:
-    """칸 안 블록들의 글과 그림 포함 여부. 그림 블록은 text 속성이 없어 getattr로 읽는다."""
+    """칸 안 블록들의 글과 그림 포함 여부. 그림 블록은 text 속성이 없어 getattr로 읽는다.
+
+    중첩 표는 엔진의 표 `.text`를 쓰지 않는다: 이 엔진의 `.text`는 그 표 안에 또 든 표(2단 중첩)의
+    글을 빠뜨려 세부내용이 조용히 잘린다. 대신 표의 칸들(행→열 순서)을 같은 함수로 재귀해 칸마다
+    글을 모으고(빈 글은 건너뜀) 줄바꿈으로 잇는다. 그림 판정도 같은 재귀로 한다.
+    """
     texts: list[str] = []
     picture = False
     for block in blocks:
@@ -82,11 +87,11 @@ def _cell_text_and_picture(blocks: list[Any]) -> tuple[str, bool]:
         if kind == "PictureBlock":
             picture = True
         elif kind == "TableBlock":
-            # 중첩 표: 글은 엔진이 만든 표 text를 쓰고, 안쪽 그림도 찾는다
-            texts.append(getattr(block, "text", "") or "")
-            picture = picture or any(
-                _cell_text_and_picture(list(cell.blocks))[1] for cell in block.cells
-            )
+            for cell in sorted(block.cells, key=lambda c: (c.row, c.col)):
+                text, has_picture = _cell_text_and_picture(list(cell.blocks))
+                if text:
+                    texts.append(text)
+                picture = picture or has_picture
         else:
             texts.append(getattr(block, "text", "") or "")
     return "\n".join(texts), picture
