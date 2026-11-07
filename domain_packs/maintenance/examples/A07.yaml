@@ -1,7 +1,68 @@
 # few-shot 예시 (maintenance · A07 nfr_review). 사람이 작성하는 입력 파일이다.
 # - 입력은 개발용 세트(비공개, 저장소에 올리지 않음)에서만 가져오고 source_id에 원문 ID를 적는다. 평가용 세트 문서는 넣지 않는다.
 # - output은 해당 노드의 LLM 출력 모델과 같은 모양이어야 한다. load_examples가 그 모델로 검증한다 (docs/04 "노드 작성 규칙").
+# - 요구사항 문장은 개발용 세트(MNT-021·MNT-022)의 것이고, 검토 대상 기능·엔티티는 예시를 위해 만든 가상 설계다.
 agent: A07
 role: nfr_review
 status: draft
-examples: []
+examples:
+# 지적 예시: 설비에 수정자·수정일시는 있지만 변경 전후 값과 사유를 남길 곳이 없다.
+# 마지막 수정자만 남기는 속성은 「변경 전후 값과 사유로 추적」을 충족하지 않는다 (A07 checklist 2).
+- source_id: MNT-022
+  input:
+    requirements:
+    - id: REQ-01
+      type: NFR
+      nfr_category: audit
+      text: 설비·계획·팀 소속·작업의 변경은 사내 계정 식별값, 일시, 변경 전후 값과 사유로 추적할 수 있어야 한다. 일반 사용자는 변경 이력과 확정된 수행 기록을 삭제할 수 없어야 한다.
+    functions:
+    - {id: FUNC-01, name: 설비 정보 수정, description: 설비의 이름·위치·사용 여부를 수정하고 수정자와 수정 일시를 남긴다, req_ids: [REQ-01]}
+    entities:
+    - id: ENT-01
+      pack: maintenance
+      name: 설비
+      description: 보전 대상 설비
+      req_ids: [REQ-01]
+      crud_exemptions: []
+      attributes:
+      - {id: ATTR-01, name: 설비코드, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-02, name: 설비명, data_type: varchar, length: 300, req_ids: [REQ-01]}
+      - {id: ATTR-03, name: 수정자, data_type: varchar, length: 20, req_ids: [REQ-01]}
+      - {id: ATTR-04, name: 수정일시, data_type: timestamp, req_ids: [REQ-01]}
+  output:
+    findings:
+    - kind: missing_change_history
+      severity: major
+      targets:
+      - {kind: entity, id: ENT-01}
+      evidence:
+      - req_id: REQ-01
+        quote: 사내 계정 식별값, 일시, 변경 전후 값과 사유로 추적할 수 있어야 한다
+      suggestion: 설비에는 마지막 수정자와 수정 일시만 있어 이전 변경의 전후 값과 사유를 추적할 수 없다. 변경마다 변경자·일시·변경 전후 값·사유를 남기는 설비 변경 이력 엔티티를 두고, 일반 사용자의 삭제를 막는 근거를 남긴다.
+      target_stage: data_model
+# 지적 없음 예시: 역할별 허용 작업은 각 기능 설명에 드러나고, 인증과 역할 배정은 요구사항이 기존 사내 인증 체계에 맡겼다.
+# 사용자·역할 엔티티가 없다는 이유로 지적하지 않는다 (false_positive_guards 1).
+- source_id: MNT-021
+  input:
+    requirements:
+    - id: REQ-01
+      type: NFR
+      nfr_category: security
+      text: 웹 브라우저로 접속하며 보전 담당자는 접수·계획·배정을, 기술자는 본인에게 배정된 작업의 수행 결과를, 승인 담당자는 검토·종료를 수행한다. 인증과 역할 배정은 기존 사내 인증 체계를 사용한다.
+    functions:
+    - {id: FUNC-01, name: 고장 접수·계획·배정, description: 보전 담당자 역할만 고장을 접수하고 계획을 세우고 작업을 배정한다, req_ids: [REQ-01]}
+    - {id: FUNC-02, name: 수행 결과 입력, description: 작업에 배정된 기술자 본인만 수행 결과를 입력한다, req_ids: [REQ-01]}
+    - {id: FUNC-03, name: 작업 검토·종료, description: 승인 담당자 역할만 수행 결과를 검토하고 작업을 종료한다, req_ids: [REQ-01]}
+    entities:
+    - id: ENT-01
+      pack: maintenance
+      name: 작업
+      description: 고장·예방 보전 작업
+      req_ids: [REQ-01]
+      crud_exemptions: []
+      attributes:
+      - {id: ATTR-01, name: 작업번호, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-02, name: 담당기술자ID, description: 사내 계정 식별값, data_type: varchar, length: 20, req_ids: [REQ-01]}
+      - {id: ATTR-03, name: 작업상태, data_type: varchar, length: 10, req_ids: [REQ-01]}
+  output:
+    findings: []

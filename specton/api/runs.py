@@ -19,6 +19,7 @@ from specton.api.deps import ConnDep, PoolDep, SettingsDep
 from specton.api.errors import ApiError
 from specton.api.session import OwnerRef
 from specton.api.uploads import discard_upload, save_upload
+from specton.artifacts import ARTIFACT_FORMATS
 from specton.config import Settings
 from specton.contracts import (
     ErrorCode,
@@ -40,15 +41,6 @@ router = APIRouter(prefix="/runs")
 RunId = Annotated[UUID, Path(alias="id")]
 _KEEPALIVE_SECONDS = 15.0
 
-# 산출물 kind별 허용 형식 (06 문서 "산출물 형식"). PDF는 승인한 revision에서만 생긴다
-ARTIFACT_FORMATS: dict[str, tuple[str, ...]] = {
-    "requirements": ("md",),
-    "functions": ("md", "pdf"),
-    "erd": ("mmd", "pdf"),
-    "ddl": ("sql",),
-    "rtm": ("xlsx", "csv"),
-    "review": ("md",),
-}
 _MEDIA_TYPES = {
     "md": "text/markdown; charset=utf-8",
     "pdf": "application/pdf",
