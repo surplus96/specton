@@ -53,7 +53,6 @@ _RULES: dict[ProblemCode, tuple[str, bool]] = {
     ProblemCode.OPTIONAL_IDENTIFYING: ("RULE-04", False),
     ProblemCode.IDENTIFYING_CYCLE: ("RULE-04", False),
     ProblemCode.REQUIRED_SELF_REFERENCE: ("RULE-04", False),
-    ProblemCode.UNSUPPORTED_RELATIONSHIP: ("RULE-04", False),
     ProblemCode.UNRESOLVED_NAME: ("RULE-05", True),
     ProblemCode.NAMING_RULE_MISSING: ("RULE-05", True),
     ProblemCode.NAME_TOO_LONG: ("RULE-05", True),
@@ -63,6 +62,13 @@ _RULES: dict[ProblemCode, tuple[str, bool]] = {
 # FK 컬럼 충돌: D13은 자식이 부모 키와 같은 이름의 속성을 이미 가진 설계 문제, D4는 다른 관계의
 # FK와 물리명이 겹치는 명명 문제다 (#15 댓글, R1 #157 인계: decision 값으로 구분).
 _FK_CONFLICT: dict[str, tuple[str, bool]] = {"D13": ("RULE-04", False), "D4": ("RULE-05", True)}
+# 처리하지 않는 관계: D8은 A04 인계 규칙(#79) 위반이라 설계 재작업, D4는 지원(이름 규칙)이 없어
+# 사람이 지원 방안을 정한다. 지원 부족을 LLM 재작업으로 풀게 하지 않는다 (#15 R1 댓글 2번).
+_UNSUPPORTED: dict[str, tuple[str, bool]] = {"D8": ("RULE-04", False), "D4": ("RULE-04", True)}
+_BY_DECISION: dict[ProblemCode, dict[str, tuple[str, bool]]] = {
+    ProblemCode.FK_COLUMN_CONFLICT: _FK_CONFLICT,
+    ProblemCode.UNSUPPORTED_RELATIONSHIP: _UNSUPPORTED,
+}
 _TRACE_KINDS: frozenset[str] = frozenset(get_args(TraceIssueKind))
 _TRACE_SUGGESTIONS: dict[str, str] = {
     "missing_req_ids": "근거 요구사항(req_ids)을 채운다.",
@@ -85,7 +91,11 @@ _SUGGESTIONS: dict[str, str] = {
     "optional_identifying_conflict": "식별 관계를 필수로 바꾸거나 비식별 관계로 바꾼다.",
     "identifying_cycle": "식별 관계의 순환을 끊는다.",
     "required_self_reference": "자기참조를 선택 관계로 바꿔 최상위 행이 들어갈 수 있게 한다.",
-    "unsupported_relationship": "식별 자기참조·식별 N:M·자기참조 N:M을 지원하는 관계로 바꾼다.",
+    "unsupported_relationship:D8": "자기참조·N:M 관계는 비식별 관계로 바꾼다 (A04 규칙).",
+    "unsupported_relationship:D4": (
+        "자기참조 N:M은 아직 지원하지 않는다. 관계의 업무 의미는 바꾸지 말고, "
+        "연결 테이블 칸 이름 규칙 등 지원 방안을 정한다."
+    ),
     "fk_column_conflict:D13": "자식의 부모 키 속성을 지우고 FK는 관계에서 파생되게 한다.",
     "fk_column_conflict:D4": "같은 부모를 여러 번 참조하는 FK의 이름 규칙을 정하거나 관계를 본다.",
     "unresolved_name": "팩 용어·사전에 없는 낱말을 팩에 등록하거나 사전 낱말로 된 이름을 쓴다.",
@@ -160,12 +170,13 @@ def map_normalization_failure(
 
 def _classify(item: Problem) -> tuple[str, str, bool]:
     """(규칙 코드, 지적 종류, 사람 확인 여부). 지적 종류는 같은 대상의 다른 문제를 구분한다."""
-    if item.code is ProblemCode.FK_COLUMN_CONFLICT:
-        if item.decision not in _FK_CONFLICT:
+    if item.code in _BY_DECISION:
+        table = _BY_DECISION[item.code]
+        if item.decision not in table:
             raise ValueError(
-                f"FK 충돌의 결정 번호를 알 수 없습니다: {item.decision!r} ({item.target})"
+                f"{item.code.value}의 결정 번호를 알 수 없습니다: {item.decision!r} ({item.target})"
             )
-        rule_code, needs_person = _FK_CONFLICT[item.decision]
+        rule_code, needs_person = table[item.decision]
         return rule_code, f"{item.code.value}:{item.decision}", needs_person
     if item.code is ProblemCode.INPUT_TRACE:
         trace_kind = _trace_kind(item)

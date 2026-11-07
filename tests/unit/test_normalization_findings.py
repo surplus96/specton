@@ -85,10 +85,16 @@ CASES: list[tuple[Any, ...]] = [
     ("required_self_reference", [WAREHOUSE], [_rel("REL-01", "ENT-wh", "ENT-wh")],
      LEXICON, RULES_SELF, ProblemCode.REQUIRED_SELF_REFERENCE, "RULE-04",
      "required_self_reference", [("relationship", "REL-01")], TargetStage.DATA_MODEL, False),
-    ("unsupported_relationship", [WAREHOUSE, SUPPLIER],
+    # 설계 규칙 위반(A04 #79): 설계 재작업
+    ("unsupported_relationship_d8", [WAREHOUSE, SUPPLIER],
      [_rel("REL-01", "ENT-wh", "ENT-sp", cardinality="N:M", identifying=True)], LEXICON, RULES,
-     ProblemCode.UNSUPPORTED_RELATIONSHIP, "RULE-04", "unsupported_relationship",
+     ProblemCode.UNSUPPORTED_RELATIONSHIP, "RULE-04", "unsupported_relationship:D8",
      [("relationship", "REL-01")], TargetStage.DATA_MODEL, False),
+    # 지원 부족(자기참조 N:M 이름 규칙 없음): 재작업으로 관계 의미를 바꾸지 않고 사람 확인
+    ("unsupported_relationship_d4", [WAREHOUSE],
+     [_rel("REL-01", "ENT-wh", "ENT-wh", cardinality="N:M", optional=True)], LEXICON,
+     RULES_SELF, ProblemCode.UNSUPPORTED_RELATIONSHIP, "RULE-04",
+     "unsupported_relationship:D4", [("relationship", "REL-01")], None, True),
     ("fk_conflict_d13",
      [WAREHOUSE, _entity("ENT-rc", "입고", _attr("ATTR-rc-no", "입고번호", is_key=True),
                          _attr("ATTR-rc-wh", "창고코드", nullable=False))],
@@ -266,11 +272,16 @@ def test_unknown_target_stops_instead_of_linking_to_another_object(item: Problem
         (problem(ProblemCode.OUTPUT_TRACE, "ENT-wh", "결과 검사"), "규칙 지적으로 바꾸지 않는"),
         (problem(ProblemCode.FK_COLUMN_CONFLICT, "REL-01", "결정 없음"), "결정 번호"),
         (problem(ProblemCode.FK_COLUMN_CONFLICT, "REL-01", "D99", decision="D99"), "결정 번호"),
+        (problem(ProblemCode.UNSUPPORTED_RELATIONSHIP, "REL-01", "결정 없음"), "결정 번호"),
+        (
+            problem(ProblemCode.UNSUPPORTED_RELATIONSHIP, "REL-01", "D13", decision="D13"),
+            "결정 번호",
+        ),
         (_trace("ENT-wh", "알 수 없는 형식"), "세부 유형"),
         (_trace("ENT-wh", "entity made_up_kind: 설명"), "세부 유형"),
     ],
     ids=["pack_mismatch", "output_trace", "fk_no_decision", "fk_unknown_decision",
-         "trace_format", "trace_kind"],
+         "unsupported_no_decision", "unsupported_other_decision", "trace_format", "trace_kind"],
 )  # fmt: skip
 def test_unsupported_problem_stops_with_a_clear_error(item: Problem, message: str) -> None:
     with pytest.raises(ValueError, match=message):
