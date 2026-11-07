@@ -505,22 +505,26 @@ def test_duplicate_column_and_table_names_fail() -> None:
 
 
 @pytest.mark.parametrize(
-    ("parent", "changes"),
+    ("parent", "changes", "decision", "pending"),
     [
-        ("ENT-wh", {"cardinality": "N:M", "identifying": True}),
-        ("ENT-rc", {"identifying": True}),  # 자기참조
-        ("ENT-rc", {"cardinality": "N:M", "optional": True}),  # 자기참조
+        ("ENT-wh", {"cardinality": "N:M", "identifying": True}, "D8", False),
+        ("ENT-rc", {"identifying": True}, "D8", False),  # 자기참조
+        ("ENT-rc", {"cardinality": "N:M", "optional": True}, "D4", True),  # 자기참조
     ],
     ids=["identifying_many_to_many", "identifying_self_reference", "self_many_to_many"],
 )
 def test_unsupported_relationship_kinds_fail_instead_of_partial_result(
-    parent: str, changes: dict[str, Any]
+    parent: str, changes: dict[str, Any], decision: str, pending: bool
 ) -> None:
-    """A04가 막는 조합(식별 N:M·식별 자기참조, #79)과 이름 규칙이 없는 자기참조 N:M."""
+    """원인을 decision으로 나눈다 (#15 R1 댓글 2번).
+
+    D8: A04가 막는 조합(식별 N:M·식별 자기참조, #79) → 설계 수정. D4: 설계는 맞지만 이름 규칙이
+    없어 처리하지 못하는 자기참조 N:M → 결정 대기(pending), 사람이 지원 방안을 정한다.
+    """
     design = _design([WAREHOUSE, RECEIPT], [_rel("REL-01", parent, "ENT-rc", **changes)])
-    assert _codes(_failed(design, rules=RULES_SELF)) == {
-        (ProblemCode.UNSUPPORTED_RELATIONSHIP, None)
-    }
+    result = _failed(design, rules=RULES_SELF)
+    assert _codes(result) == {(ProblemCode.UNSUPPORTED_RELATIONSHIP, decision)}
+    assert [p.pending for p in result.problems] == [pending]
 
 
 def test_d11_optional_identifying_relationship_fails() -> None:

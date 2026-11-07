@@ -135,13 +135,20 @@ def _accept(rel: Relationship, run: _Run) -> bool:
     if rel.identifying and (self_ref or many):
         # A04 인계: 자기참조·N:M은 항상 비식별이다 (#79). 들어오면 처리하지 않는다.
         kind = "자기참조" if self_ref else "N:M"
-        run.problems.append(_unsupported(rel, f"식별 {kind} 관계"))
+        run.problems.append(_unsupported(rel, f"식별 {kind} 관계", decision="D8"))
         return False
     if self_ref and many:
         # 임시(#11): 자기참조 N:M의 연결 테이블에는 같은 테이블을 가리키는 FK 칸이 둘 생겨 상위·하위
         #   두 단어가 필요한데, 「하위」가 공통 단어 사전에 없고 지금 팩 패턴에도 없어 막는다.
         #   필요해지면 naming.yaml column에 키를 하나 더한다 (R2 답).
-        run.problems.append(_unsupported(rel, "자기참조 N:M 관계 (연결 테이블 칸 이름 규칙 없음)"))
+        run.problems.append(
+            _unsupported(
+                rel,
+                "자기참조 N:M 관계 (연결 테이블 칸 이름 규칙 없음)",
+                decision="D4",
+                pending=True,
+            )
+        )
         return False
     if rel.identifying and rel.optional:
         run.problems.append(
@@ -177,8 +184,18 @@ def _accept(rel: Relationship, run: _Run) -> bool:
     return True
 
 
-def _unsupported(rel: Relationship, reason: str) -> Problem:
-    return problem(ProblemCode.UNSUPPORTED_RELATIONSHIP, rel.id, reason)
+def _unsupported(
+    rel: Relationship, reason: str, *, decision: str, pending: bool = False
+) -> Problem:
+    """처리하지 않는 관계. 원인을 `decision`으로 나눈다 (#15 R1 댓글 2번).
+
+    - D8: A04 인계 규칙(#79) 위반(식별 자기참조·식별 N:M). 설계를 고치면 풀린다.
+    - D4: 설계는 맞지만 지금 정리 코드가 이름을 지을 수 없음(자기참조 N:M). 지원 방안을 사람이
+      정한다. 자동 재작업으로 관계의 업무 의미를 바꾸게 하지 않는다. `pending`=결정 대기.
+    """
+    return problem(
+        ProblemCode.UNSUPPORTED_RELATIONSHIP, rel.id, reason, decision=decision, pending=pending
+    )
 
 
 # ── 테이블 ────────────────────────────────────────────────────────────
