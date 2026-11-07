@@ -24,6 +24,7 @@ from specton.config import Settings
 from specton.contracts import (
     BranchResult,
     Entity,
+    Relationship,
     Requirement,
     RunStatus,
     SseEvent,
@@ -63,6 +64,14 @@ def _entity(*, keyed: bool = True, name: str = "설비") -> Entity:
 
 def _unexpected(*args: Any) -> Any:
     pytest.fail("불필요한 A09가 호출됐습니다")
+
+
+def _self_relationship(*, cardinality: str = "N:M", identifying: bool = False) -> Relationship:
+    return Relationship.model_validate({
+        "id": "REL-01", "parent": "ENT-eq", "child": "ENT-eq", "cardinality": cardinality,
+        "optional": not identifying, "identifying": identifying,
+        "rationale": "설비 간 관계", "req_ids": ["REQ-01"],
+    })  # fmt: skip
 
 
 class _Pipeline:
@@ -314,6 +323,101 @@ def test_repeated_failure_stops_rework_and_preserves_both_finding_revisions(
     assert [item["iteration"] for item in findings] == [0, 1]
     assert [row["revision"] for row in world.models(run_id)] == [0, 1]
     assert world.answer(run_id, "approve").status_code == 422
+
+
+@pytest.mark.parametrize("mixed", [False, True], ids=["unsupported_only", "with_missing_key"])
+def test_unsupported_self_many_to_many_goes_directly_manual_after_restart(
+    pipeline: Callable[..., _Pipeline],
+    mixed: bool,
+) -> None:
+    """#168 D4: 지원 부족은 PK 수정 지적이 섞여도 A03·A09 반복 없이 사람에게 전달한다."""
+    attempts: list[int] = []
+
+    def design(state: GraphState) -> Mapping[str, Any]:
+        current = state["design"]
+        attempts.append(current.revision)
+        return {"design": current.evolve(
+            entities=(_entity(keyed=not mixed),), relationships=(_self_relationship(),),
+        )}  # fmt: skip
+
+    first = pipeline(design)
+    run_id = first.create()
+    first.runner.run_pending()
+
+    assert (first.status(run_id).status, first.status(run_id).revision) == ("awaiting_review", 0)
+    assert attempts == [0] and first.visited == []
+    checkpoint = first.graph.get_state({"configurable": {"thread_id": run_id}})
+    assert checkpoint.values["requires_manual_review"] is True
+    assert checkpoint.values["rework_count"] == 0
+    assert checkpoint.values["design"].normalized is None
+    [interrupt] = [event for event in first.events(run_id) if event.event == "interrupt"]
+    assert interrupt.data.payload["hitl_reason"] == "manual_review"
+    assert interrupt.data.payload["failed_branches"] == []
+    review = first.client.get(f"/runs/{run_id}/view", params={"section": "review"}).json()["items"]
+    finding = next(item for item in review if item["kind"] == "unsupported_relationship:D4")
+    assert (finding["rule_code"], finding["severity"], finding["target_stage"]) == (
+        "RULE-04", "critical", None,
+    )  # fmt: skip
+    assert finding["targets"] == [{"kind": "relationship", "id": "REL-01"}]
+    assert ("no_primary_key" in {item["kind"] for item in review}) == mixed
+    assert "업무 의미는 바꾸지 말고" in finding["suggestion"]
+
+    restarted = pipeline(design, previous=first)
+    before = restarted.status(run_id), restarted.events(run_id), restarted.models(run_id)
+    response = restarted.answer(run_id, "approve")
+    assert (response.status_code, response.json()["code"]) == (422, "INVALID_RESPONSE")
+    assert (restarted.status(run_id), restarted.events(run_id), restarted.models(run_id)) == before
+    with restarted.pool.connection() as conn:
+        row = conn.execute(
+            "SELECT count(*) AS n FROM approval WHERE run_id = %s AND decision = 'approve'",
+            (UUID(run_id),),
+        ).fetchone()
+    assert row is not None and row["n"] == 0
+    assert attempts == [0] and restarted.visited == []
+
+
+@pytest.mark.parametrize("cardinality", ["1:N", "N:M"])
+def test_invalid_identifying_relationship_still_reworks_and_can_complete_after_restart(
+    pipeline: Callable[..., _Pipeline],
+    cardinality: str,
+) -> None:
+    """#168 D8: 설계 위반은 자동 재작업을 유지하고, 수정 후 재시작·승인·완료할 수 있다."""
+    attempts: list[int] = []
+
+    def design(state: GraphState) -> Mapping[str, Any]:
+        current = state["design"]
+        attempts.append(current.revision)
+        relationships = (
+            (_self_relationship(cardinality=cardinality, identifying=True),)
+            if current.revision == 0
+            else ()
+        )
+        return {"design": current.evolve(entities=(_entity(),), relationships=relationships)}
+
+    first = pipeline(design)
+    run_id = first.create()
+    first.runner.run_pending()
+
+    assert attempts == [0, 1]
+    assert (first.status(run_id).status, first.status(run_id).revision) == ("awaiting_review", 1)
+    review = first.client.get(
+        f"/runs/{run_id}/view", params={"section": "review", "revision": 0}
+    ).json()["items"]
+    [finding] = review
+    fields = ("kind", "rule_code", "severity", "target_stage")
+    assert tuple(finding[key] for key in fields) == (
+        "unsupported_relationship:D8", "RULE-04", "critical", "data_model",
+    )  # fmt: skip
+    assert set(first.visited) == {(name, 1) for name in DOWNSTREAM if name != "export"}
+    failed, repaired = first.models(run_id)
+    assert "normalized" not in failed["normalized_model"]
+    assert repaired["normalized_model"]["normalized"]["tables"]
+
+    restarted = pipeline(design, previous=first)
+    assert restarted.answer(run_id, "approve").status_code == 202
+    restarted.runner.run_pending()
+    assert restarted.status(run_id).status == "completed"
+    assert restarted.visited == [("export", 1)]
 
 
 @pytest.mark.parametrize("failure", ["version_changed", "missing_naming_file"])
