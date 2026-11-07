@@ -11,8 +11,9 @@
 - 확정 (문서·PR): N:M은 연결 테이블 + FK 2개, 파생 객체는 원래 관계의 req_ids를 물려받음,
   도메인 이름·정밀도 보존, 63바이트 초과·예약어 거부, PK 없음은 차단 (RULE-03)
 - R4 제안 (#12 확인 전): 이름 기반 해시 ID(D1), 파생 ID는 관계 ID + 부모 키 칸 ID(D3),
-  FK 칸 이름 = 부모 키 이름(D4), 자기참조는 사전 단어 접두어(D4, 값은 naming.yaml 빈칸이라 주입),
-  연결 테이블 이름 = 부모 + 자식 테이블 이름(D4), A04 인계 FK 규칙(D8), 선택+식별 충돌(D11),
+  FK 칸 이름 = 부모 키 이름(D4), 자기참조는 사전 단어 접두어(D4, naming.yaml
+  `column.self_reference_prefix`), 연결 테이블 이름 = 부모 + 자식 테이블 이름(D4, naming.yaml
+  `table.junction_name`), A04 인계 FK 규칙(D8), 선택+식별 충돌(D11),
   복합 키는 부모 PK 순서대로 짝(D12), 기존 속성 재사용 안 함(D13), 식별 관계 순서(D14)
 - 한계: 관계 ID가 A04 순번(`REL-01`)이라, A04가 순번을 다시 매기면 파생 ID가 바뀐다 (D2)
 
@@ -134,10 +135,20 @@ def _accept(rel: Relationship, run: _Run) -> bool:
     if rel.identifying and (self_ref or many):
         # A04 인계: 자기참조·N:M은 항상 비식별이다 (#79). 들어오면 처리하지 않는다.
         kind = "자기참조" if self_ref else "N:M"
-        run.problems.append(_unsupported(rel, f"식별 {kind} 관계"))
+        run.problems.append(_unsupported(rel, f"식별 {kind} 관계", decision="D8"))
         return False
     if self_ref and many:
-        run.problems.append(_unsupported(rel, "자기참조 N:M 관계 (연결 테이블 칸 이름 규칙 없음)"))
+        # 임시(#11): 자기참조 N:M의 연결 테이블에는 같은 테이블을 가리키는 FK 칸이 둘 생겨 상위·하위
+        #   두 단어가 필요한데, 「하위」가 공통 단어 사전에 없고 지금 팩 패턴에도 없어 막는다.
+        #   필요해지면 naming.yaml column에 키를 하나 더한다 (R2 답).
+        run.problems.append(
+            _unsupported(
+                rel,
+                "자기참조 N:M 관계 (연결 테이블 칸 이름 규칙 없음)",
+                decision="D4",
+                pending=True,
+            )
+        )
         return False
     if rel.identifying and rel.optional:
         run.problems.append(
@@ -158,12 +169,14 @@ def _accept(rel: Relationship, run: _Run) -> bool:
             )
         )
         return False
+    # 자기참조 FK 칸 접두어는 load_naming_rules가 naming.yaml `column.self_reference_prefix`
+    # (사전 단어, 예: 상위 → UP)에서 읽어 온다. 빈칸(미정)이면 이름을 만들 수 없어 막는다.
     if self_ref and run.rules.self_reference_prefix is None:
         run.problems.append(
             problem(
                 ProblemCode.NAMING_RULE_MISSING,
                 rel.id,
-                "자기참조 FK 칸 이름 규칙이 없음 (naming.yaml column.foreign_key 빈칸)",
+                "자기참조 FK 칸 이름 규칙이 없음 (naming.yaml column.self_reference_prefix 빈칸)",
                 decision="D4",
             )
         )
@@ -171,8 +184,18 @@ def _accept(rel: Relationship, run: _Run) -> bool:
     return True
 
 
-def _unsupported(rel: Relationship, reason: str) -> Problem:
-    return problem(ProblemCode.UNSUPPORTED_RELATIONSHIP, rel.id, reason)
+def _unsupported(
+    rel: Relationship, reason: str, *, decision: str, pending: bool = False
+) -> Problem:
+    """처리하지 않는 관계. 원인을 `decision`으로 나눈다 (#15 R1 댓글 2번).
+
+    - D8: A04 인계 규칙(#79) 위반(식별 자기참조·식별 N:M). 설계를 고치면 풀린다.
+    - D4: 설계는 맞지만 지금 정리 코드가 이름을 지을 수 없음(자기참조 N:M). 지원 방안을 사람이
+      정한다. 자동 재작업으로 관계의 업무 의미를 바꾸게 하지 않는다. `pending`=결정 대기.
+    """
+    return problem(
+        ProblemCode.UNSUPPORTED_RELATIONSHIP, rel.id, reason, decision=decision, pending=pending
+    )
 
 
 # ── 테이블 ────────────────────────────────────────────────────────────
@@ -390,7 +413,7 @@ def _derive_junction(rel: Relationship, run: _Run) -> None:
     table_id = stable_id("TBL", run.pack.name, rel.id)
     physical = ""
     if parent.physical_name and child.physical_name:  # 빈 이름은 이미 D5 문제로 보고됨
-        physical = run.rules.separator.join((parent.physical_name, child.physical_name))
+        physical = _junction_name(parent, child, run.rules)
         run.problems.extend(check_name(physical, table_id, run.rules))
     run.tables[key] = Table(
         id=table_id,
@@ -409,6 +432,17 @@ def _derive_junction(rel: Relationship, run: _Run) -> None:
             return
         columns.extend(fk.columns)
     run.tables[key] = run.tables[key].model_copy(update={"primary_key": tuple(columns)})
+
+
+def _junction_name(parent: Table, child: Table, rules: NamingRules) -> str:
+    """연결 테이블 물리명 (naming.yaml `table.junction_name`).
+
+    `parent_child`와 미정(None)은 같은 동작이다: 부모 테이블 물리명 + 자식 테이블 물리명 (D4).
+    다른 값은 load_naming_rules가 이미 거절했다.
+    """
+    if rules.junction_name not in (None, "parent_child"):
+        raise ValueError(f"알 수 없는 연결 테이블 이름 규칙: {rules.junction_name}")
+    return rules.separator.join((parent.physical_name, child.physical_name))
 
 
 def _derive_fk(
@@ -443,7 +477,9 @@ def _derive_fk(
             name = f"{prefix[0]}{key.name}"
             if physical:
                 physical = run.rules.separator.join((prefix[1], physical))
-                run.problems.extend(check_name(physical, col_id, run.rules))
+                # 대상은 이 FK 칸을 만든 관계다. 정리에 실패하면 칸이 만들어지지 않으므로,
+                # 실패 변환기(#15)가 칸 ID를 되짚지 않고 원래 관계로 바로 잇게 한다.
+                run.problems.extend(check_name(physical, rel.id, run.rules))
         # 빈 물리명은 이미 D5 문제로 보고된 자리표시라 서로 겹친다고 보지 않는다
         clash = (taken.get(physical) if physical else None) or taken_logical.get(name)
         if clash is not None:
@@ -501,10 +537,14 @@ def _self_reference_prefix(rel: Relationship, run: _Run) -> tuple[str, str] | No
 def _fk_conflict(rel: Relationship, table: Table, physical: str, clash: Column) -> Problem:
     if clash.relationship_id is not None:
         # 같은 테이블에 같은 이름의 FK 칸을 만드는 관계가 또 있음 → 이름 구분 규칙이 필요 (D4, D2)
+        # 임시(#11): 역할 단어(출발·도착)로 구분하려면 A04 관계 출력에 칸을 더하는 계약 변경이
+        #   필요해 후속으로 둔다 (#11 질문 3). 그때까지는 겹친 이름으로 모델을 만들지 않고 멈춘다.
         return problem(
             ProblemCode.FK_COLUMN_CONFLICT,
             rel.id,
-            f"{table.name}.{physical}: 관계 {clash.relationship_id}의 FK 칸과 이름이 같음",
+            f"{table.name}.{physical}: 관계 {clash.relationship_id}의 FK 칸과 이름이 같음. "
+            "같은 이름의 부모 키를 두 번 가리키는 관계라(예: 출발 창고·도착 창고) "
+            "역할 구분이 필요합니다",
             decision="D4",
         )
     # 기존 속성과 이름이 같음. 같은 대상을 가리킨다는 근거가 없어 재사용하지 않는다 (D13)
