@@ -10,12 +10,15 @@ import pytest
 import yaml
 
 from specton import ddl_adapter
+from specton.artifacts import artifact_key
 from specton.codegen.ddl import DdlResult
 from specton.codegen.model import Normalized
 from specton.codegen.normalize_step import normalize_design
 from specton.contracts import DesignState, Entity, Relationship, Requirement, VersionInfo
-from specton.ddl_adapter import prepare_ddl
+from specton.ddl_adapter import create_ddl_artifact, prepare_ddl
+from specton.model_hash import model_hash
 from specton.packs.build import DEFAULT_ROOT, read_yaml
+from specton.persistence.db import checkpoint_serde
 from specton.validate import allowed_sql
 
 
@@ -220,3 +223,145 @@ def test_generator_error_is_not_made_into_a_validation_result(
     monkeypatch.setattr(ddl_adapter, "generate_ddl", unavailable)
     with pytest.raises(ValueError, match="generator failed"):
         prepare_ddl(design)
+
+
+@pytest.mark.parametrize("pack", ["inventory", "maintenance"])
+def test_ddl_file_handoff_keeps_checked_bytes_and_current_model(
+    pack: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    design = _normalized(_design(pack)).evolve(revision=2)
+    before = design.model_dump(mode="json")
+
+    result = create_ddl_artifact(design, storage_dir=tmp_path)
+
+    item = result.generated
+    ref = item["ref"]
+    assert (tmp_path / item["storage_ref"]).read_bytes() == result.prepared.sql_bytes
+    assert ref.hash == result.prepared.validation.sql_sha256
+    assert ref.hash == hashlib.sha256(result.prepared.sql_bytes).hexdigest()
+    assert (ref.kind, ref.file_format, ref.revision, ref.approved) == ("ddl", "sql", 2, False)
+    assert item["storage_ref"] == f"{design.run_id}/r2/ddl-{ref.hash}.sql"
+    assert item["model_hash"] == model_hash(design)
+    assert result.prepared.validation.state == "unverified"
+    assert design.model_dump(mode="json") == before
+    monkeypatch.setenv("LANGGRAPH_STRICT_MSGPACK", "true")
+    packet = {artifact_key(ref): item}
+    serde = checkpoint_serde()
+    assert serde.loads_typed(serde.dumps_typed(packet)) == packet
+
+
+def test_repeated_ddl_files_keep_path_but_track_model_and_revision(
+    design: DesignState, tmp_path: Path
+) -> None:
+    first = create_ddl_artifact(design, storage_dir=tmp_path)
+    path = tmp_path / first.generated["storage_ref"]
+    inode = path.stat().st_ino
+    repeated = create_ddl_artifact(design, storage_dir=tmp_path)
+    requirement = design.requirements[0].evolve(text="동일한 SQL을 쓰는 변경된 요구사항 설명")
+    changed = design.evolve(requirements=(requirement,))
+    updated = create_ddl_artifact(changed, storage_dir=tmp_path)
+    revised = create_ddl_artifact(design.evolve(revision=1), storage_dir=tmp_path)
+
+    assert repeated.generated == first.generated
+    assert path.stat().st_ino == inode
+    assert updated.generated["storage_ref"] == first.generated["storage_ref"]
+    assert updated.generated["model_hash"] == model_hash(changed)
+    assert updated.generated["model_hash"] != first.generated["model_hash"]
+    assert revised.generated["ref"].hash == first.generated["ref"].hash
+    assert revised.generated["ref"].revision == 1
+    assert revised.generated["storage_ref"] != first.generated["storage_ref"]
+    assert len(list(tmp_path.rglob("*.sql"))) == 2
+
+
+@pytest.mark.parametrize("failure", ["syntax", "forbidden", "checker"])
+def test_failed_or_error_sql_is_stored_as_draft_with_its_result(
+    design: DesignState, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    if failure == "checker":
+
+        def unavailable(*args: Any, **kwargs: Any) -> None:
+            raise RuntimeError("private diagnostic")
+
+        monkeypatch.setattr(allowed_sql, "parse_sql", unavailable)
+    else:
+        generate = ddl_adapter.generate_ddl
+
+        def changed_sql(*args: Any, **kwargs: Any) -> DdlResult:
+            result = generate(*args, **kwargs)
+            suffix = "\nCOMMIT;\n" if failure == "forbidden" else "\nCREATE TABLE (\n"
+            return DdlResult.model_validate({**result.model_dump(), "sql": result.sql + suffix})
+
+        monkeypatch.setattr(ddl_adapter, "generate_ddl", changed_sql)
+
+    result = create_ddl_artifact(design, storage_dir=tmp_path)
+
+    assert result.prepared.validation.state == ("error" if failure == "checker" else "failed")
+    assert result.generated["ref"].approved is False
+    content = (tmp_path / result.generated["storage_ref"]).read_bytes()
+    assert content == result.prepared.sql_bytes
+    assert hashlib.sha256(content).hexdigest() == result.prepared.validation.sql_sha256
+
+
+@pytest.mark.parametrize(
+    "failure, error_type, message",
+    [
+        ("missing_model", ValueError, "정리 결과"),
+        ("generator", ValueError, "generator failed"),
+        ("pack", FileNotFoundError, r"naming\.yaml"),
+        ("hash", ValueError, "해시"),
+    ],
+)
+def test_invalid_ddl_preparation_creates_no_file(
+    design: DesignState,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+    error_type: type[Exception],
+    message: str,
+) -> None:
+    root = DEFAULT_ROOT
+    if failure == "missing_model":
+        design = design.evolve(normalized=None)
+    elif failure == "generator":
+
+        def unavailable(*args: Any, **kwargs: Any) -> DdlResult:
+            raise ValueError("generator failed")
+
+        monkeypatch.setattr(ddl_adapter, "generate_ddl", unavailable)
+    elif failure == "pack":
+        root = tmp_path / "missing-pack"
+    else:
+        check = ddl_adapter.check_allowed_sql
+
+        def mismatched(sql: bytes) -> allowed_sql.SqlValidation:
+            return check(sql).model_copy(update={"sql_sha256": "0" * 64})
+
+        monkeypatch.setattr(ddl_adapter, "check_allowed_sql", mismatched)
+
+    storage = tmp_path / "storage"
+    with pytest.raises(error_type, match=message):
+        create_ddl_artifact(design, storage_dir=storage, root=root)
+    assert not storage.exists()
+
+
+def test_corrupt_ddl_file_is_not_overwritten(design: DesignState, tmp_path: Path) -> None:
+    first = create_ddl_artifact(design, storage_dir=tmp_path)
+    path = tmp_path / first.generated["storage_ref"]
+    path.write_bytes(b"corrupted")
+
+    with pytest.raises(ValueError, match="해시"):
+        create_ddl_artifact(design, storage_dir=tmp_path)
+
+    assert path.read_bytes() == b"corrupted"
+
+
+def test_ddl_file_write_error_propagates(
+    design: DesignState, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unavailable(*args: Any, **kwargs: Any) -> None:
+        raise OSError("write failed")
+
+    monkeypatch.setattr(ddl_adapter, "write_artifact", unavailable)
+    with pytest.raises(OSError, match="write failed"):
+        create_ddl_artifact(design, storage_dir=tmp_path)
+    assert list(tmp_path.iterdir()) == []

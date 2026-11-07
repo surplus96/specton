@@ -1,4 +1,4 @@
-"""#17: 실제 파일·병렬 그래프·Postgres·승인·다운로드 연결. 생성기만 고정 바이트를 반환한다."""
+"""#17: 실제 파일·병렬 그래프·Postgres·승인·다운로드 연결. 실제 DDL 인계도 확인한다."""
 
 import hashlib
 from collections.abc import Callable, Iterator, Mapping
@@ -15,9 +15,11 @@ import specton.runner as runner_module
 from specton.api.main import create_app
 from specton.api.session import SESSION_COOKIE
 from specton.artifacts import GeneratedArtifact, artifact_key, write_artifact
+from specton.codegen.normalize_step import normalize_design
 from specton.config import Settings
-from specton.contracts import NormalizedModel, RunStatus
+from specton.contracts import Entity, Normalized, NormalizedModel, Requirement, RunStatus
 from specton.contracts.base import TargetStage
+from specton.ddl_adapter import DdlArtifact, create_ddl_artifact
 from specton.graph import GraphState, Node, build_graph
 from specton.persistence.db import Pool, create_checkpointer
 from specton.persistence.runs import events_after, request_cancel
@@ -43,15 +45,43 @@ def _normalize(state: GraphState) -> Mapping[str, Any]:
     return {"design": state["design"].evolve(normalized=model)}
 
 
+def _real_normalize(state: GraphState) -> Mapping[str, Any]:
+    design = state["design"].evolve(
+        requirements=(Requirement(
+            id="REQ-01", source_ref={"file_format": "csv", "row": 2}, type="FR",
+            text="창고를 등록한다", draft_text="창고를 등록한다", analysis_version=1,
+        ),),
+        entities=(Entity.model_validate({
+            "id": "ENT-01", "pack": "inventory", "name": "창고", "description": "창고",
+            "req_ids": ["REQ-01"], "attributes": [{
+                "id": "ATTR-01", "name": "창고코드", "data_type": "varchar", "length": 10,
+                "is_key": True, "nullable": False, "req_ids": ["REQ-01"],
+            }],
+        }),),
+    )  # fmt: skip
+    result = normalize_design(design)
+    assert isinstance(result, Normalized), result
+    return {"design": design.evolve(normalized=result.model)}
+
+
 class _World:
     def __init__(
-        self, pool: Pool, settings: Settings, client: TestClient, mutate: Mutate | None = None
+        self,
+        pool: Pool,
+        settings: Settings,
+        client: TestClient,
+        mutate: Mutate | None = None,
+        *,
+        real_ddl: bool = False,
     ) -> None:
         self.pool, self.settings, self.client, self.mutate = pool, settings, client, mutate
+        self.real_ddl = real_ddl
+        self.ddl_results: list[DdlArtifact] = []
         self.generated: list[tuple[str, int]] = []
         nodes = {name: self._generator(name) for name in OUTPUTS}
         nodes.update(
-            normalize=_normalize, rules=self._rules, export=self._export,
+            normalize=_real_normalize if real_ddl else _normalize,
+            rules=self._rules, export=self._export,
             a09=lambda state: {"router_stage": TargetStage.DATA_MODEL},
         )  # fmt: skip
         self.graph = build_graph(nodes, checkpointer=create_checkpointer(pool))
@@ -60,14 +90,23 @@ class _World:
     def _generator(self, name: str) -> Node:
         def node(state: GraphState) -> Mapping[str, Any]:
             self.generated.append((name, state["design"].revision))
-            file_format, content = OUTPUTS[name]
-            item = write_artifact(
-                self.settings.storage_dir,
-                state["design"],
-                name,
-                file_format,
-                b"DRAFT\n" + content,
-            )  # type: ignore[arg-type]
+            if name == "ddl" and self.real_ddl:
+                result = create_ddl_artifact(
+                    state["design"],
+                    storage_dir=self.settings.storage_dir,
+                    root=self.settings.pack_root,
+                )
+                self.ddl_results.append(result)
+                item = result.generated
+            else:
+                file_format, content = OUTPUTS[name]
+                item = write_artifact(
+                    self.settings.storage_dir,
+                    state["design"],
+                    name,
+                    file_format,
+                    b"DRAFT\n" + content,
+                )  # type: ignore[arg-type]
             if name == "ddl" and self.mutate is not None:
                 self.mutate(state, item)
             return {"generated_artifacts": {artifact_key(item["ref"]): item}}
@@ -157,12 +196,14 @@ def world(
     unregister = register_serde_event_listener(serde_events.append)
     with ExitStack() as stack:
 
-        def make(previous: _World | None = None, mutate: Mutate | None = None) -> _World:
+        def make(
+            previous: _World | None = None, mutate: Mutate | None = None, *, real_ddl: bool = False
+        ) -> _World:
             client = stack.enter_context(TestClient(create_app(settings, pool)))
             if previous is not None:
                 previous.runner.stop()
                 client.cookies.update(previous.client.cookies)
-            result = _World(pool, settings, client, mutate)
+            result = _World(pool, settings, client, mutate, real_ddl=real_ddl)
             worlds.append(result)
             return result
 
@@ -273,10 +314,11 @@ def test_invalid_generation_publishes_no_metadata_or_events(
     assert response.status_code == 409
 
 
+@pytest.mark.parametrize("real_ddl", [False, True])
 def test_checkpoint_ahead_of_app_recovers_files_without_regeneration_or_duplicate_events(
-    world: Callable[..., _World], monkeypatch: pytest.MonkeyPatch
+    world: Callable[..., _World], monkeypatch: pytest.MonkeyPatch, real_ddl: bool
 ) -> None:
-    first = world()
+    first = world(real_ddl=real_ddl)
     run_id = first.create()
     publish = runner_module.publish_artifacts
 
@@ -292,7 +334,7 @@ def test_checkpoint_ahead_of_app_recovers_files_without_regeneration_or_duplicat
     assert first.artifacts(run_id) == first.events(run_id) == []
     assert len(first.generated) == 3
     monkeypatch.setattr(runner_module, "publish_artifacts", publish)
-    restarted = world(previous=first)
+    restarted = world(previous=first, real_ddl=real_ddl)
     restarted.runner.run_pending()
     assert restarted.status(run_id).status == "awaiting_review"
     assert restarted.generated == []
@@ -301,16 +343,58 @@ def test_checkpoint_ahead_of_app_recovers_files_without_regeneration_or_duplicat
     assert len(restarted.events(run_id)) == 3
 
 
-def test_cancel_at_generator_boundary_never_publishes_results(world: Callable[..., _World]) -> None:
+@pytest.mark.parametrize("real_ddl", [False, True])
+def test_cancel_at_generator_boundary_never_publishes_results(
+    world: Callable[..., _World], real_ddl: bool
+) -> None:
     def cancel(state: GraphState, item: GeneratedArtifact) -> None:
         with w.pool.connection() as conn:
             request_cancel(conn, UUID(state["design"].run_id), w.client.cookies[SESSION_COOKIE], 0)
 
-    w = world(mutate=cancel)
+    w = world(mutate=cancel, real_ddl=real_ddl)
     run_id = w.create()
     w.runner.run_pending()
     assert w.status(run_id).status == "cancelled"
     assert w.artifacts(run_id) == w.events(run_id) == []
+
+
+def test_real_ddl_handoff_keeps_bytes_hash_and_model_after_restart(
+    world: Callable[..., _World],
+) -> None:
+    first = world(real_ddl=True)
+    run_id = first.create()
+    first.runner.run_pending()
+    assert first.status(run_id).status == "awaiting_review"
+    (result,) = first.ddl_results
+    assert result.prepared.validation.state == "unverified"
+    ref = result.generated["ref"]
+    assert ref.approved is False
+    assert b'CREATE TABLE "wrhus"' in result.prepared.sql_bytes
+    download = first.download(run_id, "ddl", "sql")
+    assert download.content == result.prepared.sql_bytes
+    assert download.headers["etag"] == f'"{result.prepared.validation.sql_sha256}"'
+    with first.pool.connection() as conn:
+        stored = conn.execute(
+            "SELECT a.hash, a.storage_ref, a.approval_status, s.model_hash FROM artifact a "
+            "JOIN model_snapshot s USING (snapshot_id) "
+            "WHERE s.run_id = %s AND s.revision = 0 AND a.kind = 'ddl'",
+            (UUID(run_id),),
+        ).fetchone()
+    assert stored is not None
+    assert stored["hash"] == ref.hash == result.prepared.validation.sql_sha256
+    assert stored["model_hash"] == result.generated["model_hash"]
+    assert stored["storage_ref"] == result.generated["storage_ref"]
+    assert stored["approval_status"] == "draft"
+    assert len(first.events(run_id)) == 3
+
+    restarted = world(previous=first, real_ddl=True)
+    restarted.runner.run_pending()
+    assert restarted.status(run_id).status == "awaiting_review"
+    assert restarted.generated == []
+    assert restarted.ddl_results == []
+    assert restarted.download(run_id, "ddl", "sql").content == download.content
+    assert len(restarted.events(run_id)) == 3
+    assert "storage_ref" not in str(restarted.artifacts(run_id) + restarted.events(run_id))
 
 
 def test_approved_artifact_replacement_and_downgrade_are_rejected(
