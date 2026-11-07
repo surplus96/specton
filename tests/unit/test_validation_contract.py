@@ -36,14 +36,18 @@ def _validation(steps: tuple[ValidationStep, ...], status: str | None = None) ->
         artifact_hash=HASH,
         validator_version="sql-validator-v1",
         policy_version="allowed-sql-v1",
-        postgres_version="18",
+        postgres_version="postgresql-18",
         steps=steps,
     )
 
 
 def test_steps_run_in_the_agreed_order() -> None:
     assert [str(name) for name in VALIDATION_STEPS] == [
-        "parse", "allowed_statements", "execute", "rollback", "cleanup",
+        "parse",
+        "allowed_statements",
+        "execute",
+        "rollback",
+        "cleanup",
     ]
 
 
@@ -57,6 +61,7 @@ def test_steps_run_in_the_agreed_order() -> None:
         ({"cleanup": "error"}, "error"),
         # SQL 결함과 정리 장애가 함께면 error. 결함은 단계에 남는다 (#167 R1 기준 2)
         ({"execute": "failed", "rollback": "error", "cleanup": "not_run"}, "error"),
+        ({"execute": "failed", "cleanup": "error"}, "error"),
     ],
 )
 def test_overall_status_follows_the_steps(statuses: dict[str, str], expected: str) -> None:
@@ -138,8 +143,12 @@ def test_artifact_hash_is_lowercase_sha256_hex(value: str) -> None:
 
     with pytest.raises(ValidationError):
         SqlValidation(
-            status="passed", artifact_hash=value, validator_version="v", policy_version="p",
-            postgres_version="18", steps=steps,
+            status="passed",
+            artifact_hash=value,
+            validator_version="v",
+            policy_version="p",
+            postgres_version="postgresql-18",
+            steps=steps,
         )
 
 
@@ -147,3 +156,10 @@ def test_artifact_hash_is_lowercase_sha256_hex(value: str) -> None:
 def test_versions_are_required(field: str) -> None:
     with pytest.raises(ValidationError):
         _validation(_steps()).evolve(**{field: ""})
+
+
+@pytest.mark.parametrize("name", [ROLLBACK, CLEANUP])
+def test_cleanup_steps_report_errors_not_failures(name: ValidationStepName) -> None:
+    """롤백·잔여 확인 실패는 SQL 결함이 아니라 장애다 (#167 R1 기준 2)."""
+    with pytest.raises(ValidationError, match="error로 적습니다"):
+        ValidationStep(name=name, status="failed", issues=(ValidationIssue(code="x"),))

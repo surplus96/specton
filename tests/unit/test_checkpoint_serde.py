@@ -74,8 +74,12 @@ def test_sql_validation_comes_back_without_warnings(events: list[SerdeEvent]) ->
         *(ValidationStep(name=name, status="not_run") for name in VALIDATION_STEPS[1:]),
     )
     validation = SqlValidation(
-        status="failed", artifact_hash="0" * 64, validator_version="v1", policy_version="p1",
-        postgres_version="18", steps=steps,
+        status="failed",
+        artifact_hash="0" * 64,
+        validator_version="v1",
+        policy_version="p1",
+        postgres_version="postgresql-18",
+        steps=steps,
     )
 
     restored = serde.loads_typed(serde.dumps_typed({"validation": validation}))

@@ -36,7 +36,11 @@ VALIDATION_STEPS: tuple[ValidationStepName, ...] = tuple(ValidationStepName)
 
 
 class StepStatus(StrEnum):
-    """단계 결과. `failed`는 SQL 결함, `error`는 검증 환경·정리 장애다."""
+    """단계 결과. `failed`는 SQL 결함, `error`는 검증 환경·정리 장애다.
+
+    롤백·잔여 객체 확인은 SQL 결함을 판정하지 않으므로 `failed`가 없다. 실패하거나 끝났는지
+    확인하지 못하면 `error`다 (#167 R1 기준 2).
+    """
 
     PASSED = "passed"
     FAILED = "failed"
@@ -68,6 +72,10 @@ class ValidationIssue(Contract):
     sqlstate: SqlState | None = None
 
 
+# 결과가 `failed`일 수 없는 정리 단계
+_CLEANUP_STEPS = frozenset({ValidationStepName.ROLLBACK, ValidationStepName.CLEANUP})
+
+
 class ValidationStep(Contract):
     """단계 결과 한 건. `failed`·`error`는 문제가 1건 이상, `passed`·`not_run`은 문제가 없다."""
 
@@ -77,6 +85,8 @@ class ValidationStep(Contract):
 
     @model_validator(mode="after")
     def _check_issues(self) -> Self:
+        if self.name in _CLEANUP_STEPS and self.status is StepStatus.FAILED:
+            raise ValueError(f"{self.name}: 정리 단계의 실패는 error로 적습니다")
         if self.status in (StepStatus.FAILED, StepStatus.ERROR) and not self.issues:
             raise ValueError(f"{self.name}: {self.status} 단계에는 문제가 1건 이상 있어야 합니다")
         if self.status in (StepStatus.PASSED, StepStatus.NOT_RUN) and self.issues:
@@ -111,7 +121,9 @@ class SqlValidation(Contract):
     artifact_hash: Sha256Hex
     validator_version: NonEmptyText
     policy_version: NonEmptyText
-    postgres_version: NonEmptyText
+    postgres_version: (
+        NonEmptyText  # 대상 DB. DDL 생성기의 `DDL_TARGET`과 같은 값 (예: postgresql-18)
+    )
     steps: tuple[ValidationStep, ...]
 
     @model_validator(mode="after")
