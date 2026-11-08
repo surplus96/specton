@@ -107,13 +107,17 @@ ERD 가지는 `specton.erd_node`를 등록한다. 저장된 `DesignState.normali
 
 실행 문맥은 검증기 밖에서 붙인다. `specton.validation_attempts.run_validation_attempt()`는
 검증 호출마다 새 UUID `validation_id`를 부여하고, `run_id`·`GeneratedArtifact`·공용
-`SqlValidation`을 한 시도로 반환한다. 검증 전에 실행·revision·모델 해시·SQL 바이트 해시를
+`SqlValidation`을 한 시도로 반환한다. 검증기가 반환한 직후 UTC `validated_at`을 한 번 읽어
+결과와 함께 보존한다. 검증 전에 실행·revision·모델 해시·SQL 바이트 해시를
 확인하고, 검증 후에도 결과의 SQL 해시가 같은지 확인한다. `error`·`failed`·`unverified`도
 원래 결과를 유지하며, 예상하지 않은 예외에는 가짜 검증 결과를 만들지 않는다.
 
 생성 노드는 산출물 메타데이터와 함께 `GraphState.validation_attempts`에 시도를 반환한다.
-체크포인트의 기존 시도를 재저장할 때는 새 ID를 만들거나 검증을 다시 호출하지 않는다.
-같은 ID·같은 결과는 중복 없이 합치고, 같은 ID에 다른 결과·산출물 문맥이 오면 거절한다.
+체크포인트의 기존 시도를 재저장할 때는 ID·검증 시각을 그대로 사용하고 검증을 다시 호출하지 않는다.
+같은 ID·같은 결과는 중복 없이 합치고, 같은 ID에 다른 결과·산출물 문맥·검증 시각이 오면 거절한다.
+검증 시각은 시간대가 있는 `datetime`으로 복원하며, 누락된 시각을 재저장 시점으로 추정하지 않는다.
+R3 `save_validation`에 이 시각을 그대로 넘긴다. 검증 시각의 유일성이나 UUID의 시간 순서는
+보장하지 않으므로, 시각이 같은 경우의 최신 기록 판단은 저장부에서도 안전하게 처리해야 한다.
 같은 SQL·버전으로 새 검증을 호출하거나 모델·revision이 바뀌면 새 시도로 남긴다. 이 정보는
 설계 모델·모델 해시나 공개 API에 넣지 않는다. 기존 체크포인트에는 결과를 소급 생성하지 않는다.
 

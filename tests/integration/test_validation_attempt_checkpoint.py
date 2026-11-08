@@ -1,5 +1,6 @@
 """#167: 실제 PostgreSQL 체크포인트를 다시 열어도 검증 시도·문맥이 보존된다."""
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -70,6 +71,9 @@ def test_recreated_postgres_checkpointer_preserves_the_same_attempt(
     first.invoke(initial_state(design), config)
     saved = first.get_state(config).values["validation_attempts"]
     assert len(saved) == 1
+    (original,) = saved.values()
+    assert type(original["validated_at"]) is datetime
+    assert original["validated_at"].utcoffset() == timedelta(0)
 
     # 새 checkpointer와 graph가 DB에서 다시 읽는다. SQL 검증 자체는 고정 응답으로 대신한다.
     restarted = build_graph({"ddl": generate}, checkpointer=create_checkpointer(pool))
@@ -77,6 +81,7 @@ def test_recreated_postgres_checkpointer_preserves_the_same_attempt(
     assert restored == saved
     (attempt,) = restored.values()
     assert type(attempt["result"]) is SqlValidation
+    assert attempt["validated_at"] == original["validated_at"].astimezone(UTC)
     assert attempt["result"].status == status
     if status in ("failed", "error"):
         issue = next(s.issues[0] for s in attempt["result"].steps if s.issues)

@@ -7,6 +7,7 @@
 import hashlib
 import re
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from typing import TypedDict
 from uuid import UUID, uuid4
 
@@ -19,6 +20,7 @@ class ValidationAttempt(TypedDict):
     """검증기에는 넘기지 않는 실행 문맥. 중첩 객체는 기존 체크포인트 허용 계약만 쓴다."""
 
     validation_id: str
+    validated_at: datetime  # 검증 완료 UTC 시각. 재저장 때도 바꾸지 않는다
     run_id: str
     artifact: GeneratedArtifact  # ref의 revision·파일 해시와 생성 당시 model_hash 포함
     result: SqlValidation
@@ -48,6 +50,7 @@ def run_validation_attempt(
     result = validate(sql_bytes)
     attempt = ValidationAttempt(
         validation_id=validation_id,
+        validated_at=datetime.now(UTC),
         run_id=design.run_id,
         artifact=artifact,
         result=result,
@@ -77,6 +80,7 @@ def merge_validation_attempts(
                 raise ValueError("같은 검증 시도 ID에 다른 결과나 산출물 문맥이 있습니다")
             merged[key] = ValidationAttempt(
                 validation_id=key,
+                validated_at=attempt["validated_at"],
                 run_id=run_id,
                 artifact=attempt["artifact"].copy(),
                 result=attempt["result"],
@@ -97,6 +101,9 @@ def _check_artifact(run_id: str, artifact: GeneratedArtifact) -> None:
 def _check_attempt(key: str, attempt: ValidationAttempt) -> None:
     if key != attempt["validation_id"] or str(UUID(key)) != key:
         raise ValueError("검증 시도 ID와 저장 키는 같은 UUID여야 합니다")
+    validated_at = attempt.get("validated_at")
+    if not isinstance(validated_at, datetime) or validated_at.utcoffset() is None:
+        raise ValueError("검증 시각은 시간대가 있는 datetime이어야 합니다")
     if not isinstance(attempt["result"], SqlValidation):
         raise TypeError("검증기는 공용 SqlValidation 결과를 반환해야 합니다")
     _check_artifact(attempt["run_id"], attempt["artifact"])

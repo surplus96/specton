@@ -1,6 +1,7 @@
 """#167: 검증 시도는 새 호출마다 구분하고 체크포인트 재개 때는 그대로 읽는다."""
 
 import hashlib
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -74,11 +75,57 @@ def test_attempt_keeps_the_exact_result_and_artifact_context(
     assert attempt["run_id"] == design.run_id
     assert attempt["artifact"] == artifact
     assert attempt["result"] is result
+    assert isinstance(attempt["validated_at"], datetime)
+    assert attempt["validated_at"].utcoffset() == timedelta(0)
     assert received == [SQL]
     assert artifact["model_hash"] == model_hash(design)
     # 호출자가 원래 인계 dict를 바꾸어도 이미 반환한 검증 문맥은 바뀌지 않는다.
     artifact["model_hash"] = "f" * 64
     assert attempt["artifact"]["model_hash"] == model_hash(design)
+
+
+def test_completion_time_is_read_once_after_the_validator_returns(
+    design: DesignState,
+    artifact: GeneratedArtifact,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events = []
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[no-untyped-def]
+            events.append(("clock", tz))
+            return cls(2026, 11, 8, 9, 0, 0, 123456, tzinfo=tz)
+
+    def validate(payload: bytes) -> SqlValidation:
+        events.append(("validate", None))
+        return _result(payload)
+
+    monkeypatch.setattr("specton.validation_attempts.datetime", Clock)
+    attempt = run_validation_attempt(design, artifact, SQL, validate)
+    key = attempt["validation_id"]
+    first = merge_validation_attempts({}, {key: attempt})
+    replay = merge_validation_attempts(first, {key: attempt})
+
+    assert events == [("validate", None), ("clock", UTC)]
+    assert replay[key]["validated_at"] == datetime(2026, 11, 8, 9, 0, 0, 123456, tzinfo=UTC)
+
+
+@pytest.mark.parametrize("value", [None, "2026-11-08T09:00:00Z", datetime(2026, 11, 8)])
+def test_missing_or_unzoned_time_is_not_replaced_with_the_replay_time(
+    design: DesignState,
+    artifact: GeneratedArtifact,
+    value: object,
+) -> None:
+    attempt = run_validation_attempt(design, artifact, SQL, _result)
+    key = attempt["validation_id"]
+    if value is None:
+        attempt.pop("validated_at")
+    else:
+        attempt["validated_at"] = value  # type: ignore[typeddict-item]
+
+    with pytest.raises(ValueError, match="검증 시각"):
+        merge_validation_attempts({}, {key: attempt})
 
 
 def test_same_sql_and_versions_get_a_new_id_for_each_call(
@@ -148,7 +195,7 @@ def test_unexpected_validator_exception_is_not_a_fabricated_result(
     assert caught.value is error
 
 
-@pytest.mark.parametrize("change", ["result", "model"])
+@pytest.mark.parametrize("change", ["result", "model", "validated_at"])
 def test_replaying_one_id_is_idempotent_but_changed_payload_is_a_conflict(
     design: DesignState,
     artifact: GeneratedArtifact,
@@ -162,8 +209,10 @@ def test_replaying_one_id_is_idempotent_but_changed_payload_is_a_conflict(
     changed = attempt.copy()
     if change == "result":
         changed["result"] = _result(SQL, "error")
-    else:
+    elif change == "model":
         changed["artifact"] = {**artifact, "model_hash": "f" * 64}
+    else:
+        changed["validated_at"] += timedelta(microseconds=1)
     with pytest.raises(ValueError, match="같은"):
         merge_validation_attempts(old, {key: changed})
     assert old[key]["result"].status == "passed"
@@ -201,6 +250,7 @@ def test_checkpoint_restart_keeps_the_id_and_does_not_revalidate(
     assert len(saved) == 1
     (attempt,) = saved.values()
     assert type(attempt["result"]) is SqlValidation
+    assert type(attempt["validated_at"]) is datetime
     assert attempt["result"].status == status
     assert attempt["artifact"]["model_hash"] == model_hash(design)
 
