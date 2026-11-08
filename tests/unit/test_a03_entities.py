@@ -36,7 +36,7 @@ from specton.nodes.a03_entities import (
 )
 from specton.nodes.common import assign_ids, unwrap_data
 from specton.packs.build import DEFAULT_ROOT
-from specton.packs.examples import load_examples
+from specton.packs.examples import FewShot, load_examples
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PACKS = REPO_ROOT / DEFAULT_ROOT
@@ -163,6 +163,28 @@ def test_inventory_example_output_refers_only_to_its_input() -> None:
             for c in op.operations
         }
         assert not exempt & done
+
+
+@pytest.mark.parametrize(
+    "example", load_examples("inventory", "A03", A03Output), ids=lambda e: e.source_id
+)
+def test_every_inventory_example_passes_the_checks_for_its_own_input(
+    example: FewShot[A03Output],
+) -> None:
+    # 새 예시는 팩 용어가 아닌 속성도 쓴다(계약이 허용한다). 그래서 이름 대신 A03 검사기로 본다.
+    pack = example.input["pack"]
+    checked = _checked_against(
+        {f["id"] for f in example.input["functions"]},
+        {r["id"] for r in example.input["requirements"]},
+        [PackTerm.model_validate(t) for t in pack["terms"]],
+        _reasons(pack),
+    )
+
+    checked.model_validate(example.output.model_dump(mode="json"))
+    assert pack["crud_exemption_reasons"] == {
+        reason: list(ops)
+        for reason, ops in _yaml("common/rules.yaml")["crud_exemption_reasons"].items()
+    }
 
 
 def test_maintenance_example_input_is_what_input_data_builds() -> None:
