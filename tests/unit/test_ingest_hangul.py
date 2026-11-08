@@ -12,7 +12,7 @@
 import os
 import stat
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import pytest
 
@@ -533,16 +533,21 @@ class TestFallbackDump:
             dump_paragraph_text(Path("문서.hwp"), 0, 0)
 
 
-def _skip_or_raise_engine_import_error(exc: ImportError) -> None:
+def _is_known_linux_wheel_failure(exc: ImportError) -> bool:
+    """리눅스 휠의 알려진 import 실패(`FT_Palette_Data_Get`, 상류 #31)인가."""
+    return "FT_Palette_Data_Get" in str(exc)
+
+
+def _skip_or_raise_engine_import_error(exc: ImportError) -> NoReturn:
     """엔진 import 실패를 어떻게 다룰지 정한다.
 
     리눅스에서 rhwp-python 0.8.1 휠은 시스템 FreeType 선로드(LD_PRELOAD)가 없으면
     `undefined symbol: FT_Palette_Data_Get`로 import가 실패한다(상류 DanMeon/rhwp-python #31).
     이 알려진 오류만 건너뛰고, 그 밖의 import 실패(의존성 누락·휠 손상)는 그대로 올려
-    시험이 실패하게 한다.
-    `SPECTON_REQUIRE_ENGINE=1`이면 알려진 오류도 실패로 둔다(선로드 단계를 넣은 CI용).
+    시험이 실패하게 한다. 환경변수 `SPECTON_REQUIRE_ENGINE`이 정확히 "1"이면(true·yes는 무시)
+    알려진 오류도 실패로 둔다(선로드 단계를 넣은 CI용).
     """
-    if "FT_Palette_Data_Get" in str(exc) and os.environ.get("SPECTON_REQUIRE_ENGINE") != "1":
+    if _is_known_linux_wheel_failure(exc) and os.environ.get("SPECTON_REQUIRE_ENGINE") != "1":
         pytest.skip(f"rhwp를 불러올 수 없어 건너뜀(상류 #31): {exc}")
     raise exc
 
@@ -553,7 +558,6 @@ def _import_engine() -> Any:
         import rhwp
     except ImportError as exc:
         _skip_or_raise_engine_import_error(exc)
-        raise  # 위 함수가 항상 skip 또는 raise하지만 타입 검사기를 위해 둔다
     return rhwp
 
 
@@ -772,4 +776,6 @@ def test_installed_engine_version_matches_pin() -> None:
     pyproject = (Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(encoding="utf-8")
     pinned = re.search(r'"rhwp-python==([\w.]+)"', pyproject)
     assert pinned, "pyproject.toml에서 rhwp-python 고정 버전을 찾지 못함"
-    assert version("rhwp-python") == pinned.group(1)
+    assert version("rhwp-python") == pinned.group(1), (
+        "설치된 버전이 핀과 다름. `uv sync --locked`로 다시 설치"
+    )
