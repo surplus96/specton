@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     # 명시적으로 끄는 호환 모드에서도 승인 근거(approval_basis)는 남긴다 (#167, #195)
     require_sql_validation: bool = True
 
+    # PDF 엔진 인계·실행 이미지 도구 준비 뒤 활성화한다 (#13·#17·#25).
+    enable_erd_pdf: bool = False
+    mermaid_cli_command: tuple[str, ...] = Field(default=("mmdc",), min_length=1)
+    mermaid_puppeteer_config: Path | None = None
+
     # 실행기·lease 시작값 (ADR-0012). 연결 풀은 동시 실행 수, lease 갱신, API 요청을 합쳐 잡는다.
     run_concurrency: int = Field(default=2, gt=0)
     lease_seconds: int = Field(default=60, gt=0)
