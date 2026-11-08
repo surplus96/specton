@@ -18,7 +18,15 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 # 표기 규칙(A안·Mermaid 글자 제한)은 전체 ERD와 같아야 하므로 erd.py의 것을 그대로 쓴다
-from specton.codegen.erd import ErdEdge, _alias, _attribute, _identifiers, erd_edges
+from specton.codegen.erd import (
+    Direction,
+    ErdEdge,
+    _alias,
+    _attribute,
+    _direction_line,
+    _identifiers,
+    erd_edges,
+)
 from specton.contracts.design import Relationship
 from specton.contracts.normalized import NormalizedModel, Table
 
@@ -118,6 +126,15 @@ def _check_areas(areas: Sequence[ErdArea]) -> None:
 # ── 영역별 상세 ERD ───────────────────────────────────────
 
 
+def _is_key(table: Table, column_id: str, fk_columns: set[str]) -> bool:
+    """PK·FK·UK에 드는 칸인지 (PDF 상세도의 키 속성, ADR-0004)."""
+    return (
+        column_id in table.primary_key
+        or column_id in fk_columns
+        or any(column_id in unique for unique in table.unique_keys)
+    )
+
+
 def area_edges(edges: Sequence[ErdEdge], split: AreaSplit, area: str) -> tuple[ErdEdge, ...]:
     """영역 상세도에 그릴 선: 한쪽 끝이라도 이 영역 테이블이면 그린다.
 
@@ -129,11 +146,18 @@ def area_edges(edges: Sequence[ErdEdge], split: AreaSplit, area: str) -> tuple[E
 
 
 def render_area_erd(
-    model: NormalizedModel, relationships: Sequence[Relationship], split: AreaSplit, area: str
+    model: NormalizedModel,
+    relationships: Sequence[Relationship],
+    split: AreaSplit,
+    area: str,
+    *,
+    keys_only: bool = False,
+    direction: Direction | None = None,
 ) -> str:
     """영역 하나의 상세 ERD (Mermaid `erDiagram`).
 
-    - 이 영역 테이블: 속성까지 그린다 (A안, 전체 ERD와 같은 표기).
+    - 이 영역 테이블: 속성까지 그린다 (A안, 전체 ERD와 같은 표기). `keys_only=True`면 키 속성
+      (PK·FK·UK)만 그린다. PDF 상세도는 이 방식과 `direction="LR"`을 쓴다 (ADR-0004, #197).
     - 선으로 이어진 다른 영역 테이블: 속성 없는 상자로, 이름 뒤에 영역을 붙인다.
       예: `품목 (→ 기준정보)`
     - 식별자는 전체 ERD와 같아서 상세도끼리 같은 테이블은 같은 이름이다.
@@ -145,12 +169,16 @@ def render_area_erd(
     fk_columns = {c for fk in model.foreign_keys for c in fk.columns}
     lines = [
         "erDiagram",
-        f"    %% Specton ERD · {model.pack} {model.pack_version} · {_alias(area)}",
+        *_direction_line(direction),
+        f"    %% Specton ERD · {_alias(model.pack)} {_alias(model.pack_version)} · {_alias(area)}",
     ]
     for table in model.tables:
         if table.id in members:
+            columns = [
+                c for c in table.columns if not keys_only or _is_key(table, c.id, fk_columns)
+            ]
             lines.append(f'    {idents[table.id]}["{_alias(table.name)}"] {{')
-            lines.extend(f"        {_attribute(table, col, fk_columns)}" for col in table.columns)
+            lines.extend(f"        {_attribute(table, col, fk_columns)}" for col in columns)
             lines.append("    }")
         elif table.id in linked:
             label = f"{table.name} (→ {split.area_of(table.id)})"
