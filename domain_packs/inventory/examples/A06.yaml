@@ -146,3 +146,59 @@ examples:
         quote: 부족하면 문서 전체를 확정하지 않는다
       suggestion: 요구사항이 수불을 확정하는 동작과 재고가 부족하면 문서 전체를 확정하지 않는 처리를 정했는데, 기능 목록에는 등록과 조회만 있고 확정을 맡는 기능이 없다. 수불 확정 기능을 추가하고 부족하면 문서 전체를 확정하지 않는 조건을 설명에 넣는다.
       target_stage: functions
+# SFR-206 지적 예시: 요구사항이 1차 매칭 기준으로 이름을 댄 사업자등록번호를 저장할 속성이 설계 어디에도 없다.
+# 통합·병합 이력은 다른 기능·엔티티가 충족하므로 지적하지 않는다. 검토 대상은 A03 SFR-206 설계에서 거래처사업자등록번호만 뺀 가상 설계다.
+# 요구사항은 실제 A01 실행 결과 SFR-206(REQ-32∼37)에서 골라 text·type·nfr_category 그대로 옮기고 예시 안에서 번호만 다시 붙였다.
+# 검토 대상 설계는 A03 SFR-206 예시의 설계(ID는 예시용 ENT·ATTR·REL 번호)를 쓴다.
+- source_id: SFR-206
+  input:
+    requirements:
+    - id: REQ-01
+      type: FR
+      nfr_category: null
+      text: 사업자등록번호가 같은 거래처를 1차로 매칭하고, 번호가 없거나 불명확한 거래처는 2차로 AI 텍스트 유사도 분석을 통해 영문 표기 차이, 오타, 기업명 약칭을 찾아 같은 업체로 묶어야 한다.
+    - id: REQ-02
+      type: FR
+      nfr_category: null
+      text: 병합 규칙을 적용하여 통합 과정의 데이터 충돌을 미리 해소해야 한다.
+    - id: REQ-03
+      type: NFR
+      nfr_category: audit
+      text: 데이터 병합 이력을 추적·관리할 수 있어야 한다.
+    functions:
+    - {id: FUNC-01, name: 중복 거래처 식별, description: 사업자등록번호가 같은 거래처를 1차로 매칭하고 번호가 없거나 불명확한 거래처는 AI 텍스트 유사도 분석으로 영문 표기 차이·오타·약칭을 찾아 같은 업체로 묶는다, req_ids: [REQ-01]}
+    - {id: FUNC-02, name: 거래처 통합, description: 같은 업체로 묶인 거래처를 병합 규칙에 따라 데이터 충돌을 해소해 하나로 통합하고 통합할 때마다 변경 전후 내용·사유·변경자·일시를 병합 이력으로 남긴다, req_ids: [REQ-02, REQ-03]}
+    entities:
+    - id: ENT-01
+      pack: inventory
+      name: 거래처
+      description: 거래하는 업체의 기준 정보. 같은 업체로 묶인 거래처는 하나로 통합한다
+      req_ids: [REQ-01, REQ-02]
+      crud_exemptions: []
+      attributes:
+      - {id: ATTR-01, name: 거래처번호, data_type: varchar, length: 50, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-02, name: 거래처명, description: 영문 표기·약칭이 섞일 수 있는 업체 이름, data_type: varchar, length: 100, req_ids: [REQ-01]}
+    - id: ENT-02
+      pack: inventory
+      name: 거래처변경이력
+      description: 거래처를 통합할 때마다 남기는 데이터 병합 이력
+      req_ids: [REQ-02, REQ-03]
+      crud_exemptions: []
+      attributes:
+      - {id: ATTR-04, name: 이력번호, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-03]}
+      - {id: ATTR-05, name: 변경일시, data_type: timestamp, req_ids: [REQ-03]}
+      - {id: ATTR-06, name: 변경사유, description: 적용한 병합 규칙과 데이터 충돌 해소 내용, data_type: varchar, length: 4000, req_ids: [REQ-02, REQ-03]}
+      - {id: ATTR-07, name: 변경이전내용, description: 통합 전 거래처 정보, data_type: varchar, length: 4000, req_ids: [REQ-03]}
+      - {id: ATTR-08, name: 변경이후내용, description: 통합 후 거래처 정보, data_type: varchar, length: 4000, req_ids: [REQ-03]}
+      - {id: ATTR-09, name: 변경사용자아이디, data_type: varchar, length: 20, req_ids: [REQ-03]}
+  output:
+    findings:
+    - kind: missing_attribute
+      severity: major
+      targets:
+      - {kind: entity, id: ENT-01}
+      evidence:
+      - req_id: REQ-01
+        quote: 사업자등록번호가 같은 거래처를 1차로 매칭하고
+      suggestion: 요구사항이 거래처를 1차로 사업자등록번호로 매칭하라고 했는데, 중복 거래처 식별 기능이 비교할 사업자등록번호를 저장할 속성이 거래처 엔티티와 다른 엔티티 어디에도 없다. 거래처 엔티티에 사업자등록번호 속성을 추가하고, 번호가 없거나 불명확한 거래처도 있으므로 비워 둘 수 있게 한다.
+      target_stage: data_model
