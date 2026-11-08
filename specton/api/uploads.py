@@ -117,7 +117,12 @@ def _check_zip(path: Path, file_format: str, max_unzipped_bytes: int) -> None:
                         413, ErrorCode.UPLOAD_TOO_LARGE,
                         f"압축을 푼 크기가 {max_unzipped_bytes // (1024 * 1024)}MB를 넘습니다.",
                     )  # fmt: skip
-    except (zipfile.BadZipFile, zlib.error, struct.error, EOFError, OSError) as exc:
+    # zip 구조·인코딩·지원 범위 문제만 입력 오류로 본다. 그 밖의 예외는 코드 오류로 그대로 둔다
+    except (
+        zipfile.BadZipFile, zlib.error, struct.error, EOFError, OSError,
+        UnicodeDecodeError,  # UTF-8 표시를 켠 잘못된 파일명 바이트
+        NotImplementedError,  # zipfile이 지원하지 않는 해제 버전
+    ) as exc:  # fmt: skip
         raise ApiError(
             415, ErrorCode.UNSUPPORTED_MEDIA_TYPE,
             f"파일 내용이 .{file_format} 형식이 아닙니다. "

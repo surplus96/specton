@@ -109,3 +109,29 @@ def test_valid_zip_within_the_limit_is_accepted(tmp_path: Path) -> None:
     data = _zip({"[Content_Types].xml": b"<Types/>", "xl/workbook.xml": b"<workbook/>" * 100})
 
     assert _save("req.xlsx", data, tmp_path).file_format == "xlsx"
+
+
+def _patched_central(data: bytes, offset: int, value: bytes) -> bytes:
+    patched = bytearray(data)
+    central = patched.index(b"PK\x01\x02")
+    patched[central + offset : central + offset + len(value)] = value
+    return bytes(patched)
+
+
+@pytest.mark.parametrize(
+    "corrupt",
+    [
+        # UTF-8 표시(일반 비트 11)를 켜고 파일명을 UTF-8이 아닌 바이트로 바꿈 → UnicodeDecodeError
+        lambda d: _patched_central(
+            _patched_central(d, 8, struct.pack("<H", 0x0800)), 46, b"\xff\xfe\xfd\xfc\xfb"
+        ),
+        # 필요한 해제 버전을 지원 범위 밖(100)으로 → NotImplementedError
+        lambda d: _patched_central(d, 6, struct.pack("<H", 100)),
+    ],
+    ids=["invalid-utf8-name", "unsupported-version"],
+)
+def test_zip_encoding_and_version_problems_are_415(tmp_path: Path, corrupt) -> None:  # type: ignore[no-untyped-def]
+    """zip 파싱의 인코딩·지원 범위 예외도 서버 오류가 아니라 입력 오류다 (#216 리뷰)."""
+    data = corrupt(_zip({"a.xml": b"<Types/>"}))
+
+    assert _rejected("req.xlsx", data, tmp_path).status == 415
