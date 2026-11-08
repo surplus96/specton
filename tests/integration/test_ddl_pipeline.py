@@ -1,6 +1,7 @@
 """R1 #17·#167: 재고·설비의 실제 API·DDL·검증·수정·복구·취소·승인·다운로드."""
 
 import hashlib
+import re
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import ExitStack
 from pathlib import Path
@@ -27,6 +28,7 @@ from specton.graph import REVIEWERS, GraphState
 from specton.persistence.db import Pool, create_checkpointer
 from specton.persistence.validations import current_validation
 from specton.runner import Runner
+from specton.validate.sandbox import _statement_texts
 
 pytestmark = pytest.mark.db
 DOMAINS = {
@@ -57,6 +59,40 @@ def _entities(state: GraphState) -> dict[str, Any]:
         }],
     })  # fmt: skip
     return {"design": state["design"].evolve(entities=(entity,))}
+
+
+SECOND_ENTITY = {"inventory": ("품목", "품목코드"), "maintenance": ("부품", "부품코드")}
+
+
+def _two_entities(state: GraphState) -> dict[str, Any]:
+    """표가 둘인 설계. 문장 번호 → 원래 엔티티 연결이 표 순서와 맞는지 실제 DB로 본다."""
+    pack = state["design"].versions.pack_id
+    assert pack is not None
+    pairs = (DOMAINS[pack][:2], SECOND_ENTITY[pack])
+    entities = tuple(
+        Entity.model_validate(
+            {
+                "id": f"ENT-0{i}",
+                "pack": pack,
+                "name": name,
+                "description": name,
+                "req_ids": ["REQ-01"],
+                "attributes": [
+                    {
+                        "id": f"ATTR-0{i}",
+                        "name": key,
+                        "data_type": "varchar",
+                        "length": 10,
+                        "is_key": True,
+                        "nullable": False,
+                        "req_ids": ["REQ-01"],
+                    }
+                ],
+            }
+        )
+        for i, (name, key) in enumerate(pairs, start=1)
+    )
+    return {"design": state["design"].evolve(entities=entities)}
 
 
 def _result(sql: bytes, status: str) -> SqlValidation:
@@ -283,6 +319,13 @@ def test_sql_failure_is_saved_but_never_approved_or_auto_reworked(
             {"configurable": {"thread_id": run_id}},
         )
         assert forced["design"].status == "awaiting_review"
+        if status == "failed":
+            assert any(
+                finding.rule_code == "RULE-07" and finding.severity == "critical"
+                for finding in forced["design"].findings
+            )
+        else:
+            assert all(finding.rule_code != "RULE-07" for finding in forced["design"].findings)
         assert all(not item["ref"].approved for item in forced["generated_artifacts"].values())
     else:
         assert current["error"]["code"] == "INTERNAL"
@@ -504,17 +547,25 @@ def test_real_sandbox_sql_defect_is_preserved_and_a_new_revision_can_be_approved
 
     generate = ddl_adapter.generate_ddl
     generated = []
+    broken_sql: list[str] = []
 
     def broken_once(*args: Any, **kwargs: Any) -> Any:
         result = generate(*args, **kwargs)
         generated.append(result)
         if len(generated) == 1:
-            # 파싱·허용 AST는 통과하지만 실제 DB 실행에서 실패하는 생성 결함 fixture.
-            return result.model_copy(update={"sql": "CREATE TABLE fixture (id numeric(1001));"})
+            # 원래 표·컬럼을 유지하고 두 번째 CREATE TABLE의 첫 타입만 DB가 거절하는 값으로 바꾼다.
+            # 0번이 아닌 문장을 망가뜨려야 문장 번호 → 표 순서가 틀렸을 때 시험이 실패한다.
+            second = result.sql.index("CREATE TABLE", result.sql.index("CREATE TABLE") + 1)
+            sql = result.sql[:second] + result.sql[second:].replace(
+                "varchar(10)", "numeric(1001)", 1
+            )
+            assert sql != result.sql
+            broken_sql.append(sql)
+            return result.model_copy(update={"sql": sql})
         return result
 
     monkeypatch.setattr(ddl_adapter, "generate_ddl", broken_once)
-    w = pipeline(pack=pack, router=_data_model_router)
+    w = pipeline(pack=pack, router=_data_model_router, design=_two_entities)
     run_id = w.create()
     w.runner.run_pending()
     assert w.client.get(f"/runs/{run_id}").json()["status"] == "awaiting_review"
@@ -530,7 +581,23 @@ def test_real_sandbox_sql_defect_is_preserved_and_a_new_revision_can_be_approved
         "passed",
     ]
     assert failed.result.steps[2].issues[0].sqlstate == "22023"
-    assert _download(w, run_id).content == b"CREATE TABLE fixture (id numeric(1001));"
+    # 실제 격리 DB 실행 실패가 망가뜨린 표의 원래 엔티티에 대한 RULE-07 지적이 된다. 기대 대상은
+    # 변환기의 문장 순서 가정을 쓰지 않고, 망가뜨린 문장의 표 물리명에서 읽는다.
+    design = w.graph.get_state({"configurable": {"thread_id": run_id}}).values["design"]
+    assert design.normalized is not None
+    texts = _statement_texts(broken_sql[0])
+    [broken] = [i for i, text in enumerate(texts) if "numeric(1001)" in text]
+    assert broken == 1 and len(design.normalized.tables) == 2
+    created = re.match(r'\s*CREATE TABLE "([^"]+)"', texts[broken])
+    assert created is not None
+    [source] = [t for t in design.normalized.tables if t.physical_name == created.group(1)]
+    issue = failed.result.steps[2].issues[0]
+    assert issue.statement_index == broken
+    rule07 = [f for f in design.findings if f.rule_code == "RULE-07"]
+    assert [(f.kind, f.severity, [(t.kind, t.id) for t in f.targets]) for f in rule07] == [
+        ("execute:" + issue.code, "critical", [("entity", source.entity_id)])
+    ]
+    assert _download(w, run_id).content == broken_sql[0].encode("utf-8")
     assert w.answer(run_id, "revise").status_code == 202
     w.runner.run_pending()
     with w.pool.connection() as conn:

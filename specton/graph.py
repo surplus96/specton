@@ -262,7 +262,7 @@ def _next_after_generation(state: GraphState) -> str:
 
 
 def _validation_failure(state: GraphState) -> dict[str, Any]:
-    # 검증기의 상태 분류를 그대로 소비한다. RULE-07 대상·근거·지문은 R4 변환기가 채운다.
+    # 검증기의 상태 분류를 그대로 소비한다. failed의 RULE-07 지적은 ddl_node가 채운다.
     # 실행하지 않은 후속 리뷰를 실패한 리뷰로 기록하지 않는다.
     return {
         "design": state["design"].evolve(
