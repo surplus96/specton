@@ -84,7 +84,7 @@ def run(
         prompt_version=PROMPT_VERSION,
         system=SYSTEM_PROMPT,
         data=input_data(state),
-        examples=load_examples(pack, "A02", A02Output),
+        examples=load_examples(pack, "A02", A02Output, root=settings.pack_root),
     )
     output_model = _checked_against({r.id: r.text for r in state.requirements})
     result = client.complete(request, output_model, token_budget=token_budget)

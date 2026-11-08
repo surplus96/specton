@@ -251,6 +251,22 @@ def record_progress(
     return saved
 
 
+def record_events(
+    conn: Connection[DictRow],
+    run_id: UUID,
+    holder: str,
+    revision: int,
+    events: Sequence[NewEvent],
+) -> list[SseEvent]:
+    """실행자가 추가 결과를 게시한다. 진행 저장과 같은 트랜잭션에서 부른다."""
+    with conn.transaction():
+        current = _lock_run(conn, run_id)
+        check_holder(conn, run_id, holder)
+        if current["revision"] != revision:
+            raise RevisionConflictError(str(run_id), current["revision"])
+        return _append_events(conn, run_id, revision, events)
+
+
 def request_cancel(
     conn: Connection[DictRow], run_id: UUID, owner_ref: str, expected_revision: int
 ) -> tuple[RunState, list[SseEvent]]:

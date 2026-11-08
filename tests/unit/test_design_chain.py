@@ -1,9 +1,9 @@
 """설계 노드 연속 호출. 앞 단계의 실제 반환값을 상태에 넣어 다음 단계에 넘긴다.
 
 두 갈래로 나뉜다.
-- A02 → A03 → A04 → A08: 기존 테스트. A08은 정리 결과가 아니라 A04까지의 설계 상태를 받는다.
-- A04 → 모델 정리(#12): A04까지의 실제 반환값을 정리 함수에 넣는 연결 테스트. 정리 결과를
-  A08에 넘기지는 않는다 (리뷰어가 정리 결과를 받는 공통 입력이 아직 없다).
+- A02 → A03 → A04 → 모델 정리(#12) → A08: A04까지의 실제 반환값을 정리하고, 그 정리 결과를
+  A08 입력(`relationships`·`normalized`)으로 넘긴다 (#12 A08 재확인).
+- A04 → 모델 정리: 실제 팩 사전으로 정리했을 때의 결과와, 테스트용 단어를 보탠 결과.
 
 노드 사이의 데이터 연결만 고정 응답(stub)으로 확인한다. 실제 LLM의 품질이나 그래프(#17) 전체
 실행을 검증하지 않는다. 고정 응답은 maintenance 예시와 이 파일의 값이지만, 각 단계의 입력 상태는
@@ -14,6 +14,8 @@ import json
 import re
 from dataclasses import dataclass
 from typing import Any
+
+import pytest
 
 from specton.codegen.model import Normalized, NormalizeFailed, ProblemCode
 from specton.codegen.naming import (
@@ -36,8 +38,14 @@ from specton.nodes.common import unwrap_data
 from specton.packs.build import read_yaml
 from specton.packs.examples import load_examples
 from specton.review.merge import merge_review
+from specton.review.normalized_view import normalized_view
 from specton.review.perspective import PERSPECTIVES_DIR, load_perspective
-from specton.review.reviewer import ReviewOutput, ReviewRun, review_perspective
+from specton.review.reviewer import (
+    MissingReviewInput,
+    ReviewOutput,
+    ReviewRun,
+    review_perspective,
+)
 
 PACK = "maintenance"
 A08 = load_perspective(PERSPECTIVES_DIR / "A08.yaml")
@@ -141,12 +149,14 @@ def _attribute_id(state: DesignState, entity: str, attribute: str) -> str:
     return target.id
 
 
-def _finding(target_id: str, quote: str = REPORTER_QUOTE) -> FindingDraft:
+def _finding(
+    target_id: str, quote: str = REPORTER_QUOTE, targets: list[dict[str, str]] | None = None
+) -> FindingDraft:
     """근거 연결만 본다. 지적 내용이 맞는 판단인지는 stub으로 알 수 없다."""
     return FindingDraft(
         kind="duplicated_fact",
         severity="major",
-        targets=[{"kind": "attribute", "id": target_id}],
+        targets=targets or [{"kind": "attribute", "id": target_id}],
         evidence=[{"req_id": "REQ-01", "quote": quote}],
         suggestion="신고자 정보를 한 곳에만 둔다",
         target_stage="data_model",
@@ -234,20 +244,62 @@ def test_a03_retries_a_function_id_that_a02_did_not_return() -> None:
 
 
 def test_a08_request_carries_the_chain_result_within_its_inputs() -> None:
-    state = _run_design().state
+    state = _reviewable_state()
 
     _, sent = _review(state)
 
-    # A08 inputs는 requirements·entities다. 앞에서 A04를 돌려도 relationships는 보내지 않는다
-    assert set(A08.inputs) == {"requirements", "entities"}
+    # A08은 요구사항·엔티티와 함께 A04 관계와 정리 결과 요약을 받는다 (#12)
+    assert A08.inputs == ("requirements", "entities", "relationships", "normalized")
     data = _data(sent[0])
-    assert set(data) == {"requirements", "entities"}
+    assert list(data) == ["requirements", "entities", "relationships", "normalized"]
     assert data["requirements"] == [r.model_dump(mode="json") for r in state.requirements]
     assert data["entities"] == [e.model_dump(mode="json") for e in state.entities]
+    assert data["relationships"] == [r.model_dump(mode="json") for r in state.relationships]
+    assert state.normalized is not None
+    assert data["normalized"] == normalized_view(state.normalized)
+
+
+def test_a08_sees_inherited_keys_with_their_source_relationship() -> None:
+    """FK 칸은 엔티티 속성이 아니라 관계에서 온다. A08은 요약에서 그 출처 관계를 본다."""
+    state = _reviewable_state()
+    _, sent = _review(state)
+    view = _data(sent[0])["normalized"]
+    work_entity = next(e for e in state.entities if e.name == "보전작업")
+    [work] = [t for t in view["tables"] if t.get("entity_id") == work_entity.id]
+    from_relationships = {c["relationship_id"] for c in work["columns"] if "relationship_id" in c}
+    # 고장접수 → 보전작업, 팀 → 보전작업 (A04 반환 순서 1·2번 관계)
+    assert from_relationships == {state.relationships[1].id, state.relationships[2].id}
+    assert {a.id for a in work_entity.attributes} == {
+        c["attribute_id"] for c in work["columns"] if "attribute_id" in c
+    }
+
+
+def test_a08_without_normalized_result_stops_before_calling_the_llm() -> None:
+    """정리 결과 없이 정상 검토처럼 처리하지 않는다 (#12 계획 2-4)."""
+    client, transport = stub_client(reply(ReviewOutput(findings=())))
+    with pytest.raises(MissingReviewInput):
+        review_perspective(client, A08, _run_design().state, _settings(), pack=PACK)
+    assert not transport.sent
+
+
+def test_a08_finding_on_a_relationship_survives_and_table_ids_are_not_targets() -> None:
+    """지적 대상은 원래 엔티티·속성·관계 ID다. 정리 결과의 테이블·컬럼 ID는 대상이 아니다."""
+    state = _reviewable_state()
+    assert state.normalized is not None
+    rel = state.relationships[1]
+    table_id = state.normalized.tables[0].id
+    on_rel = _finding("", targets=[{"kind": "relationship", "id": rel.id}])
+    on_table = _finding("", targets=[{"kind": "entity", "id": table_id}])
+
+    run, _ = _review(state, on_rel, on_table)
+    merged = merge_review(state, run.results, ("A08",))
+
+    assert [f.targets[0].id for f in merged.findings] == [rel.id]
+    assert [r.reason for r in merged.rejected] == ["unknown_target"]
 
 
 def test_grounded_a08_finding_survives_the_common_merge() -> None:
-    state = _run_design().state
+    state = _reviewable_state()
     target_id = _attribute_id(state, "고장접수", "신고자식별값")
 
     run, _ = _review(state, _finding(target_id))
@@ -260,7 +312,7 @@ def test_grounded_a08_finding_survives_the_common_merge() -> None:
 
 
 def test_a08_finding_without_real_target_or_quote_is_rejected_by_the_common_merge() -> None:
-    state = _run_design().state
+    state = _reviewable_state()
     target_id = _attribute_id(state, "고장접수", "신고자식별값")
     findings = (
         _finding(target_id),
@@ -276,7 +328,7 @@ def test_a08_finding_without_real_target_or_quote_is_rejected_by_the_common_merg
 
 
 def test_a08_without_findings_is_a_complete_review() -> None:
-    state = _run_design().state
+    state = _reviewable_state()
 
     run, _ = _review(state)
     merged = merge_review(state, run.results, ("A08",))
@@ -286,7 +338,7 @@ def test_a08_without_findings_is_a_complete_review() -> None:
 
 
 def test_review_does_not_change_the_design_state() -> None:
-    state = _run_design().state
+    state = _reviewable_state()
     before = state.model_dump(mode="json")
     target_id = _attribute_id(state, "고장접수", "신고자식별값")
 
@@ -319,6 +371,41 @@ def _with_pack(state: DesignState) -> DesignState:
     return state.evolve(versions=VersionInfo(pack_id=PACK, pack_version=PACK_VERSION))
 
 
+# 실제 팩에 없는 단어의 테스트용 약어. 실제 사전 단어를 덮어쓰지 않는다.
+_TEST_WORDS = {
+    "기술자": "ENGNR",
+    "보전": "MNTN",
+    "이력": "HSTRY",
+    "신고자": "DCLR",
+    "식별값": "IDNTF_VL",
+    "변경자": "CHGR",
+    "전": "BFR",
+    "후": "AFT",
+    "값": "VL",
+}
+
+
+def _test_lexicon() -> PackLexicon:
+    real = load_pack_lexicon(PACK)
+    assert not set(_TEST_WORDS) & set(real.tokens)  # 실제 사전 단어를 덮어쓰지 않는다
+    return PackLexicon(
+        terms=real.terms,
+        tokens={**real.tokens, **_TEST_WORDS},
+        separator=real.separator,
+        digest=f"{real.digest}+test",
+    )
+
+
+def _reviewable_state() -> DesignState:
+    """A04까지의 실제 반환값을 정리하고, 그 결과를 상태에 담는다(그래프의 정리 노드와 같은 위치)."""
+    state = _with_pack(_run_design().state)
+    result = normalize(
+        state, pack=PackRef(PACK, PACK_VERSION), lexicon=_test_lexicon(), rules=load_naming_rules()
+    )
+    assert isinstance(result, Normalized), result
+    return state.evolve(normalized=result.model)
+
+
 def test_normalize_takes_the_chain_result_and_stops_only_on_unregistered_words() -> None:
     """실제 팩으로는 연결 자체는 되지만, 사전에 없는 단어 때문에 결정 대기(D5)로 멈춘다."""
     state = _with_pack(_run_design().state)
@@ -341,25 +428,7 @@ def test_normalize_derives_keys_from_the_chain_result_when_words_are_supplied() 
 
     보탠 약어는 실제 팩에 없는 테스트용 값이다. 엔티티·관계 등 앞 단계 결과는 그대로 쓴다.
     """
-    real = load_pack_lexicon(PACK)
-    test_only = {
-        "기술자": "ENGNR",
-        "보전": "MNTN",
-        "이력": "HSTRY",
-        "신고자": "DCLR",
-        "식별값": "IDNTF_VL",
-        "변경자": "CHGR",
-        "전": "BFR",
-        "후": "AFT",
-        "값": "VL",
-    }
-    assert not set(test_only) & set(real.tokens)  # 실제 사전 단어를 덮어쓰지 않는다
-    lexicon = PackLexicon(
-        terms=real.terms,
-        tokens={**real.tokens, **test_only},
-        separator=real.separator,
-        digest=f"{real.digest}+test",
-    )
+    lexicon = _test_lexicon()
     state = _with_pack(_run_design().state)
     before = state.model_dump(mode="json")
 
