@@ -4,12 +4,11 @@
 API는 이 표만 읽는다. 체크포인트는 읽지 않는다 (ADR-0012 "화면 상태는 run 기준", #110 리뷰 답 2).
 
 `model_snapshot.normalized_model`은 `DesignState`의 `requirements`·`functions`·`entities`·
-`relationships`를 같은 이름의 칸으로 담는다. 같은 revision은 승인 전까지 덮어쓸 수 있고,
+`relationships`를 같은 이름의 칸으로 담고, 모델 정리 결과가 있으면 `normalized` 칸에 담는다
+(#142). 모두 해시에 들어간다. 같은 revision은 승인 전까지 덮어쓸 수 있고,
 승인 뒤에는 같은 모델을 다시 저장하는 것만 허용한다 (승인 뒤 export·complete 노드도 저장한다).
 """
 
-import hashlib
-import json
 from dataclasses import dataclass
 from typing import Any, Literal
 from uuid import UUID, uuid4
@@ -18,8 +17,11 @@ from psycopg import Connection
 from psycopg.rows import DictRow
 from psycopg.types.json import Jsonb
 
+from specton.artifacts import ArtifactKind as ArtifactKind
+from specton.artifacts import FileFormat as FileFormat
 from specton.contracts import ArtifactRef, DesignState, RunView
 from specton.contracts.base import Contract
+from specton.model_hash import model_hash, model_payload
 from specton.persistence.errors import (
     ArtifactNotReadyError,
     InvalidTransitionError,
@@ -29,10 +31,6 @@ from specton.persistence.errors import (
 from specton.persistence.lease import check_holder
 
 Section = Literal["extraction", "requirements", "design", "review"]
-ArtifactKind = Literal["requirements", "functions", "erd", "ddl", "rtm", "review"]
-FileFormat = Literal["md", "pdf", "mmd", "sql", "xlsx", "csv"]
-
-MODEL_FIELDS = ("requirements", "functions", "entities", "relationships")
 # 설계 화면 항목의 종류. 한 목록에 섞어 보내므로 `type`으로 구분한다
 _DESIGN_TYPES = {"functions": "function", "entities": "entity", "relationships": "relationship"}
 
@@ -49,12 +47,8 @@ def save_model(conn: Connection[DictRow], run_id: UUID, holder: str, state: Desi
     같은 상태를 다시 저장해도 결과가 같다(멱등). 승인된 revision은 모델이 같으면 아무것도
     다시 쓰지 않고, 다르면 InvalidTransitionError다. 돌려주는 값은 그 revision의 `snapshot_id`다.
     """
-    model = {
-        name: [m.model_dump(mode="json") for m in getattr(state, name)] for name in MODEL_FIELDS
-    }
-    model_hash = hashlib.sha256(
-        json.dumps(model, sort_keys=True, ensure_ascii=False).encode()
-    ).hexdigest()
+    model = model_payload(state)
+    digest = model_hash(state)
     with conn.transaction():
         _lock_for_writer(conn, run_id, holder)
         # 승인도 run 행을 잠그고 기록하므로 잠금 뒤에 확인하면 그 사이에 바뀌지 않는다
@@ -68,7 +62,7 @@ def save_model(conn: Connection[DictRow], run_id: UUID, holder: str, state: Desi
             (run_id, state.revision),
         ).fetchone()
         if approved is not None:
-            if approved["model_hash"] != model_hash:
+            if approved["model_hash"] != digest:
                 raise InvalidTransitionError(
                     f"revision {state.revision}은 승인되어 바꿀 수 없습니다"
                 )
@@ -100,7 +94,7 @@ def save_model(conn: Connection[DictRow], run_id: UUID, holder: str, state: Desi
                 normalized_model = EXCLUDED.normalized_model, model_hash = EXCLUDED.model_hash
             RETURNING snapshot_id
             """,
-            (uuid4(), run_id, state.revision, Jsonb(model), model_hash),
+            (uuid4(), run_id, state.revision, Jsonb(model), digest),
         ).fetchone()
         assert row is not None  # INSERT … DO UPDATE는 항상 한 행을 돌려준다
         snapshot_id: UUID = row["snapshot_id"]
@@ -124,10 +118,26 @@ def save_model(conn: Connection[DictRow], run_id: UUID, holder: str, state: Desi
 
 def add_artifact(
     conn: Connection[DictRow], run_id: UUID, holder: str, ref: ArtifactRef, storage_ref: str
-) -> None:
-    """생성한 산출물 파일을 기록한다. 그 revision의 모델이 먼저 저장되어 있어야 한다."""
+) -> bool:
+    """파일을 기록하고 변경 여부를 돌려준다. 승인본은 같은 내용을 다시 저장할 수만 있다."""
     with conn.transaction():
         _lock_for_writer(conn, run_id, holder)
+        existing = conn.execute(
+            "SELECT a.hash, a.storage_ref, a.approval_status FROM artifact a "
+            "JOIN model_snapshot s USING (snapshot_id) "
+            "WHERE s.run_id = %s AND s.revision = %s AND a.kind = %s AND a.file_format = %s",
+            (run_id, ref.revision, ref.kind, ref.file_format),
+        ).fetchone()
+        status = "approved" if ref.approved else "draft"
+        if existing is not None:
+            if (existing["hash"], existing["storage_ref"], existing["approval_status"]) == (
+                ref.hash,
+                storage_ref,
+                status,
+            ):
+                return False
+            if existing["approval_status"] == "approved":
+                raise InvalidTransitionError("승인된 산출물은 바꿀 수 없습니다")
         row = conn.execute(
             """
             INSERT INTO artifact (artifact_id, snapshot_id, kind, file_format, hash,
@@ -146,6 +156,7 @@ def add_artifact(
         ).fetchone()  # fmt: skip
         if row is None:
             raise ValueError(f"revision {ref.revision}의 모델을 먼저 저장해야 합니다 (save_model)")
+    return True
 
 
 def get_view(

@@ -12,6 +12,7 @@ import { followRun, type Connection } from './followRun.ts'
 import {
   SKIPPED_REQUIREMENTS_MESSAGE,
   canCancel,
+  displayStage,
   failureOf,
   progressIndex,
   recentMessages,
@@ -63,6 +64,21 @@ describe('screenFor: 상태 → 화면 (docs/09)', () => {
     expect(progressIndex('parsing')).toBe(0)
     expect(progressIndex('reviewing')).toBe(4)
     expect(progressIndex('review')).toBe(5)
+  })
+
+  it('실패해 stage가 비면 마지막 진행 이벤트의 단계를 쓴다 (실제 서버 확인에서 찾음)', () => {
+    // 실제 서버는 실패하면 run.stage를 비우고 error 이벤트에 stage: 'failed'를 남긴다.
+    // 이때 첫 단계(문서 읽기)가 아니라 실패한 단계(요구사항 분석)에 실패 표시가 가야 한다.
+    const events = [
+      event(1, 'status', '문서를 읽고 있습니다', { stage: 'parsing' }),
+      event(3, 'status', '추출 결과 확인을 기다립니다', { stage: 'awaiting_input' }),
+      event(5, 'status', '답변을 받아 다시 진행합니다', { stage: 'analysing' }),
+      event(6, 'error', '모델을 호출하지 못했습니다.', { stage: 'failed' }),
+    ]
+    expect(displayStage(null, events)).toBe('analysing')
+    expect(progressIndex(displayStage(null, events))).toBe(1)
+    expect(displayStage('designing', events)).toBe('designing') // 서버 stage가 있으면 그대로
+    expect(displayStage(null, [])).toBeNull() // 대기 중(queued)은 그대로 -1
   })
 })
 

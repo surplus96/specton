@@ -43,7 +43,7 @@
 | 출력 모델 | 노드 파일에 `A02Output`처럼 정의하고 계약의 `*Draft`로만 구성한다 (예: `functions: tuple[FunctionDraft, ...]`). ID·버전 필드를 넣지 않는다 |
 | 함수 | `run(client, state, settings, *, pack, token_budget=None) -> NodeRun[...]`. 저장 모델(코드가 ID를 붙인 `Function` 등)과 호출 기록을 돌려준다 |
 | 요청 | `specton.nodes.common.build_request`로 만든다. 공통 규칙(입력 속 지시 무시·ID 생성 금지·원문 인용)과 `<data>` 감싸기, few-shot 대화 쌍, 모델 선택(`role="design"`/`"review"`)을 대신한다 |
-| ID | `assign_ids("FUNC", n)`처럼 코드가 순번으로 붙인다. 형식 확정은 #12 |
+| ID | 기능·관계는 `assign_ids("FUNC", n)`처럼 코드가 순번으로 붙이고, 엔티티·속성은 A03이 팩·이름의 해시로 붙인다. 정리 결과(테이블·컬럼·FK) ID와 재작업 간 동일성은 [ADR-0016](adr/0016-model-ids-and-keys.md) |
 | few-shot | `load_examples(pack, "A02", A02Output)`로 읽는다. 예시의 `output`은 출력 모델과 같은 모양이어야 하며 다르면 `ExampleError`가 난다. `input`은 노드가 `<data>`에 넣는 것과 같은 모양(문자열 또는 매핑) |
 | 실패 | LLM 오류(`LLMError`)는 잡지 않고 그대로 올린다. 그래프가 `exc.code`로 실행 실패를 기록한다. 예외: A09는 실패를 "답 없음"으로 바꿔 HITL 2로 넘긴다 |
 | 테스트 | `tests/unit/test_a02_functions.py` 등. stub으로 정상 응답·형식 오류 후 재요청·거절 3종 이상 |
@@ -188,7 +188,7 @@ def test_a02_raises_refusal() -> None:
 | `prompt_version` | 예 | 프롬프트를 바꿀 때마다 올린다 (예: `a05-v2`). 호출 기록에 남는다 |
 | `instructions` | 예 | 관점의 역할과 할 일 |
 | `checklist` | 예 | 점검 항목 목록 (1개 이상) |
-| `inputs` | 예 | 보여 줄 입력: `requirements`·`functions`·`entities`·`relationships` 중 선택 |
+| `inputs` | 예 | 보여 줄 입력: `requirements`·`functions`·`entities`·`relationships`·`normalized` 중 선택. `normalized`는 모델 정리 결과 요약(테이블·컬럼 ID, 원래 엔티티·속성·관계 출처 ID, PK·UNIQUE, FK의 자식·부모 컬럼 짝. 물리명·타입은 뺌)이다. 고른 관점은 정리 결과가 없으면 LLM을 부르기 전에 멈춘다 (#12) |
 | `false_positive_guards` | 예 | 지적하지 않는 경우 (오탐 기준, 1개 이상) |
 
 - 항목 안에 `: `(콜론+공백)가 있으면 YAML이 키로 읽으므로 작은따옴표로 감싼다. 예: `- '방향이 맞는가 (예: 문서가 부모)'`
@@ -199,7 +199,7 @@ def test_a02_raises_refusal() -> None:
 
 관점마다 `domain_packs/<pack>/examples/<reviewer_id>.yaml`에 예시를 둔다 (#69). 형식은 설계 노드 예시와 같다.
 
-- `input`: 그 관점의 `inputs`에 적은 부분만 담은 매핑. 예: `{requirements: [...], functions: [...], entities: [...]}`
+- `input`: 그 관점의 `inputs`에 적은 부분만 담은 매핑. 예: `{requirements: [...], functions: [...], entities: [...]}`. `normalized`를 고른 관점의 예시는 그 예시 설계를 실제로 정리한 결과 요약을 넣고, 테스트가 정리 코드 결과와 같은지 확인한다(A08)
 - `output`: `ReviewOutput` 모양 `{findings: [...]}`. 지적이 없는 예시는 `findings: []`. 지적의 `severity`는 `major`·`minor`만 쓴다 (ADR-0010)
 - 리뷰어는 `pack`을 받으면 예시를 넣는다. `parallel`은 대화 쌍으로, `combined`는 관점 블록 안에 "예시 n 입력 / 지적"으로 넣는다. 예시 수만큼 입력 토큰이 늘어나므로 관점당 1~2건을 권장한다.
 - 예시 원문 사용 기준은 [07 테스트·평가](07-testing-eval.md#평가-데이터)를 따른다.

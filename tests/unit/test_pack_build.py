@@ -4,7 +4,7 @@ import pytest
 import yaml
 
 from specton.contracts.base import SqlType
-from specton.packs.build import BuildError, build, check, write
+from specton.packs.build import LOCK_NAME, BuildError, build, check, pack_content_hash, write
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -91,8 +91,10 @@ def make_root(tmp_path: Path, specs: list[dict[str, object]]) -> Path:
         encoding="utf-8",
     )
     (root / "common").mkdir()
+    (root / "common/manifest.yaml").write_text("version: 0.1.0\n", encoding="utf-8")
     pack = root / "maintenance"
     pack.mkdir()
+    (pack / "manifest.yaml").write_text("version: 0.1.0\n", encoding="utf-8")
     (pack / "words.yaml").write_text("words: []\n", encoding="utf-8")
     (pack / "term_specs.yaml").write_text(
         yaml.safe_dump({"terms": specs}, allow_unicode=True), encoding="utf-8"
@@ -196,3 +198,140 @@ def test_common_pack_allows_exactly_the_contract_sql_types() -> None:
     domains = yaml.safe_load(domains_file.read_text(encoding="utf-8"))
 
     assert domains["allowed_sql_types"] == [t.value for t in SqlType]
+
+
+# --- pack.lock (task 5) ---
+
+
+def test_build_writes_lock_file_per_pack(tmp_path: Path) -> None:
+    root = make_root(tmp_path, [spec("설비명", ["설비", "명"], "명V200")])
+
+    outputs = build(root)
+
+    assert root / "common" / LOCK_NAME in outputs
+    assert root / "maintenance" / LOCK_NAME in outputs
+    lock = yaml.safe_load(outputs[root / "maintenance" / LOCK_NAME])
+    assert list(lock["versions"]) == ["0.1.0"]
+    assert len(lock["versions"]["0.1.0"]) == 64
+
+
+def test_check_passes_right_after_generating(tmp_path: Path) -> None:
+    root = make_root(tmp_path, [spec("설비명", ["설비", "명"], "명V200")])
+    write(build(root))
+
+    assert check(root) == []
+
+
+def add_example(root: Path) -> Path:
+    examples = root / "maintenance/examples"
+    examples.mkdir()
+    path = examples / "A01.yaml"
+    path.write_text("agent: A01\nrole: x\nstatus: draft\nexamples: []\n", encoding="utf-8")
+    return path
+
+
+def test_check_also_rejects_content_change_without_version_bump(tmp_path: Path) -> None:
+    """check도 내부에서 build를 부르므로, 다시 생성해 보지 않고 검사만 해도 같은 이유로 막힌다."""
+    root = make_root(tmp_path, [spec("설비명", ["설비", "명"], "명V200")])
+    write(build(root))
+    assert check(root) == []
+
+    add_example(root)
+
+    with pytest.raises(BuildError, match="version"):
+        check(root)
+
+
+def test_build_rejects_rebuild_without_version_bump_after_content_change(tmp_path: Path) -> None:
+    """예시를 바꾸고 version은 그대로 둔 채 다시 생성하면 거절한다(controller 리뷰로 찾은 구멍)."""
+    root = make_root(tmp_path, [spec("설비명", ["설비", "명"], "명V200")])
+    write(build(root))
+    add_example(root)
+
+    with pytest.raises(BuildError, match="version") as exc:
+        build(root)
+
+    assert "maintenance" in str(exc.value)
+    assert "0.1.0" in str(exc.value)
+
+
+def test_build_accepts_rebuild_after_version_bump_and_keeps_history(tmp_path: Path) -> None:
+    root = make_root(tmp_path, [spec("설비명", ["설비", "명"], "명V200")])
+    write(build(root))
+    add_example(root)
+    (root / "maintenance/manifest.yaml").write_text("version: 0.1.1\n", encoding="utf-8")
+
+    write(build(root))
+
+    assert check(root) == []
+    lock = yaml.safe_load((root / "maintenance" / LOCK_NAME).read_text(encoding="utf-8"))
+    assert set(lock["versions"]) == {"0.1.0", "0.1.1"}
+    assert lock["versions"]["0.1.0"] != lock["versions"]["0.1.1"]
+
+
+def test_version_bumped_without_rebuild_is_a_stale_lock(tmp_path: Path) -> None:
+    """버전만 올리고 다시 생성하지 않으면 lock에 새 버전 항목이 없어 디스크와 달라진다."""
+    root = make_root(tmp_path, [spec("설비명", ["설비", "명"], "명V200")])
+    write(build(root))
+    assert check(root) == []
+
+    (root / "maintenance/manifest.yaml").write_text("version: 0.1.1\n", encoding="utf-8")
+
+    stale = check(root)
+    assert root / "maintenance" / LOCK_NAME in stale
+
+
+def test_rebuild_with_same_version_and_unchanged_content_passes(tmp_path: Path) -> None:
+    """내용도 버전도 그대로면 다시 생성해도 통과한다(오탐 방지)."""
+    root = make_root(tmp_path, [spec("설비명", ["설비", "명"], "명V200")])
+    write(build(root))
+
+    write(build(root))
+
+    assert check(root) == []
+
+
+def test_pack_content_hash_ignores_crlf_vs_lf(tmp_path: Path) -> None:
+    """줄바꿈만 LF·CRLF로 다른 팩은 해시가 같다(Windows에서 받아도 lock이 깨지지 않게).
+
+    `write_text()`는 Windows에서 `\n`을 `\r\n`으로 바꿔 저장한다. 그러면 LF로 쓴 파일은 CRLF가 되고
+    CRLF로 쓴 파일은 `\r\r\n`이 되어 의도한 비교가 되지 않으므로, `write_bytes()`로 운영체제와
+    상관없이 정확한 바이트를 쓴다(R4가 Windows 실행에서 발견, #141 본문).
+    """
+    pack_dir = tmp_path / "pack"
+    pack_dir.mkdir()
+    (pack_dir / "a.yaml").write_bytes(b"x: 1\ny: 2\n")
+
+    lf_hash = pack_content_hash(pack_dir)
+    (pack_dir / "a.yaml").write_bytes(b"x: 1\r\ny: 2\r\n")
+    crlf_hash = pack_content_hash(pack_dir)
+
+    assert lf_hash == crlf_hash
+
+
+def test_pack_content_hash_ignores_bom(tmp_path: Path) -> None:
+    pack_dir = tmp_path / "pack"
+    pack_dir.mkdir()
+    (pack_dir / "a.yaml").write_text("x: 1\ny: 2\n", encoding="utf-8")
+
+    no_bom_hash = pack_content_hash(pack_dir)
+    (pack_dir / "a.yaml").write_text("x: 1\ny: 2\n", encoding="utf-8-sig")
+    bom_hash = pack_content_hash(pack_dir)
+
+    assert no_bom_hash == bom_hash
+
+
+def test_pack_content_hash_ignores_lock_and_md_files(tmp_path: Path) -> None:
+    pack_dir = tmp_path / "pack"
+    pack_dir.mkdir()
+    (pack_dir / "a.yaml").write_text("x: 1\n", encoding="utf-8")
+    base_hash = pack_content_hash(pack_dir)
+
+    (pack_dir / LOCK_NAME).write_text("version: 9.9.9\nsha256: deadbeef\n", encoding="utf-8")
+    (pack_dir / "RATIONALE.md").write_text("무관한 내용\n", encoding="utf-8")
+
+    assert pack_content_hash(pack_dir) == base_hash
+
+
+def test_real_packs_pass_check_after_build() -> None:
+    assert check(REPO_ROOT / "domain_packs") == []

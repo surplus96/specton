@@ -9,6 +9,7 @@ import type { Connection } from './followRun.ts'
 import {
   PROGRESS_STAGES,
   canCancel,
+  displayStage,
   failureOf,
   progressIndex,
   recentMessages,
@@ -30,7 +31,7 @@ function ProgressPanel({ run, events, connection, onChanged }: Props) {
   const [actionError, setActionError] = useState<string | null>(null)
 
   const failure = run.status === 'failed' ? failureOf(run.error, events) : null
-  const current = progressIndex(run.stage)
+  const current = progressIndex(displayStage(run.stage, events))
   const stepStatus = failure ? 'error' : run.status === 'cancelled' ? 'wait' : 'process'
   const messages = recentMessages(events)
 

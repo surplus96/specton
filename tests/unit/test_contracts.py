@@ -278,6 +278,16 @@ class TestUserDecision:
         with pytest.raises(ValidationError, match="pass"):
             _block(extraction_status="pass", user_decision="excluded", excluded_reason="x")
 
+    @pytest.mark.parametrize("status", ["review", "fail"])
+    @pytest.mark.parametrize("notice", [None, "  "])
+    def test_review_and_fail_blocks_need_a_notice(self, status: str, notice: str | None) -> None:
+        """화면이 확인 이유를 보여 줄 수 있게 판정 이유를 둔다 (#139, ADR-0015)."""
+        with pytest.raises(ValidationError, match="notice"):
+            _block(extraction_status=status, notice=notice)
+
+    def test_pass_block_needs_no_notice(self) -> None:
+        assert _block(extraction_status="pass", notice=None).notice is None
+
     def test_reason_only_with_exclusion(self) -> None:
         with pytest.raises(ValidationError, match="제외 사유"):
             _block(user_decision="confirmed", excluded_reason="범위 밖")

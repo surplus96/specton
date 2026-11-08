@@ -1,7 +1,47 @@
 # few-shot 예시 (inventory · A07 nfr_review). 사람이 작성하는 입력 파일이다.
 # - 입력은 개발용 세트(비공개, 저장소에 올리지 않음)에서만 가져오고 source_id에 원문 ID를 적는다. 평가용 세트 문서는 넣지 않는다.
 # - output은 해당 노드의 LLM 출력 모델과 같은 모양이어야 한다. load_examples가 그 모델로 검증한다 (docs/04 "노드 작성 규칙").
+# - 요구사항 문장은 합성 퓨샷용 세트(SFR-206)의 것이고, 검토 대상 기능·엔티티는 예시를 위해 만든 가상 설계다.
 agent: A07
 role: nfr_review
 status: draft
-examples: []
+examples:
+# SFR-206 지적 예시: 감사(audit) 요구 「데이터 병합 이력을 추적·관리」가 있는데, 이력 엔티티에 이력번호와 변경사유만 있어
+# 누가·언제·어떤 값을 어떤 값으로 바꿨는지 남길 곳이 없다 (A07 checklist 2). 검토 대상은 A03 SFR-206 설계에서 이력 속성 4개를 빼고
+# 거래처 통합 기능 설명을 바꾼 가상 설계다.
+# 요구사항은 실제 A01 실행 결과 SFR-206(REQ-32∼37)에서 골라 text·type·nfr_category 그대로 옮기고 예시 안에서 번호만 다시 붙였다.
+# 검토 대상 설계는 A03 SFR-206 예시의 설계(ID는 예시용 ENT·ATTR·REL 번호)를 쓴다.
+- source_id: SFR-206
+  input:
+    requirements:
+    - id: REQ-02
+      type: FR
+      nfr_category: null
+      text: 병합 규칙을 적용하여 통합 과정의 데이터 충돌을 미리 해소해야 한다.
+    - id: REQ-03
+      type: NFR
+      nfr_category: audit
+      text: 데이터 병합 이력을 추적·관리할 수 있어야 한다.
+    functions:
+    - {id: FUNC-02, name: 거래처 통합, description: 같은 업체로 묶인 거래처를 병합 규칙에 따라 데이터 충돌을 해소해 하나로 통합하고 통합 결과를 이력으로 남긴다, req_ids: [REQ-02, REQ-03]}
+    entities:
+    - id: ENT-02
+      pack: inventory
+      name: 거래처변경이력
+      description: 거래처를 통합할 때마다 남기는 데이터 병합 이력
+      req_ids: [REQ-02, REQ-03]
+      crud_exemptions: []
+      attributes:
+      - {id: ATTR-04, name: 이력번호, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-03]}
+      - {id: ATTR-06, name: 변경사유, description: 적용한 병합 규칙과 데이터 충돌 해소 내용, data_type: varchar, length: 4000, req_ids: [REQ-02, REQ-03]}
+  output:
+    findings:
+    - kind: missing_change_history
+      severity: major
+      targets:
+      - {kind: entity, id: ENT-02}
+      evidence:
+      - req_id: REQ-03
+        quote: 데이터 병합 이력을 추적·관리할 수 있어야 한다
+      suggestion: 거래처변경이력에는 이력번호와 변경사유만 있어 통합할 때마다 누가 언제 어떤 거래처 값을 어떤 값으로 바꿨는지 추적할 수 없다. 변경자·변경 일시·변경 전후 내용을 저장할 속성을 더하고, 거래처 통합 기능 설명에 이 값들을 남기는 책임을 적는다. 요구사항이 이력 항목을 정하지 않았으므로 남길 항목은 확인 질문으로 함께 묻는다.
+      target_stage: data_model
