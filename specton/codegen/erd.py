@@ -96,13 +96,29 @@ def render_erd(
 
 
 def _identifiers(tables: Sequence[Table]) -> dict[str, str]:
-    """엔티티 식별자: 물리명(영문 소문자). Mermaid가 받지 못하는 이름이면 순번으로 대신한다."""
+    """엔티티 식별자: 물리명(영문 소문자). 테이블마다 서로 다르다 (#177 리뷰).
+
+    Mermaid가 받지 못하거나 앞 테이블과 겹치는 물리명은 순번 `t002`로 대신한다.
+    쓸 수 있는 물리명을 먼저 모두 잡아 두고 대체 ID를 고르므로, 대체 ID가 다른 테이블의
+    물리명(앞이든 뒤든)이나 다른 대체 ID와 겹치지 않는다. 겹치면 `t002_2`처럼 뒤에 번호를 붙인다.
+    """
     idents: dict[str, str] = {}
-    for index, table in enumerate(tables, 1):
+    used: set[str] = set()
+    for table in tables:  # 1차: 쓸 수 있는 물리명. 같은 이름이면 먼저 나온 테이블이 갖는다
         name = table.physical_name
-        idents[table.id] = (
-            name if _IDENT.match(name) and name not in idents.values() else f"t{index:03d}"
-        )
+        if _IDENT.match(name) and name not in used:
+            idents[table.id] = name
+            used.add(name)
+    for index, table in enumerate(tables, 1):  # 2차: 남은 테이블에 겹치지 않는 대체 ID
+        if table.id in idents:
+            continue
+        base = candidate = f"t{index:03d}"
+        suffix = 2
+        while candidate in used:
+            candidate = f"{base}_{suffix}"
+            suffix += 1
+        idents[table.id] = candidate
+        used.add(candidate)
     return idents
 
 
