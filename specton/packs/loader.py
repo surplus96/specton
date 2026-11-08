@@ -291,7 +291,11 @@ def load_pack(pack: str, *, root: Path = DEFAULT_ROOT) -> Pack:
 
 
 def _naming_blanks(naming: Naming) -> list[str]:
-    """naming.yaml에서 아직 정하지 않은 값(미정값)의 경로 목록."""
+    """naming.yaml에서 아직 정하지 않은 값(미정값)의 경로 목록.
+
+    null과 빈 문자열을 미정값으로 본다(#151 기준). 공백만 있는 값은 `str_strip_whitespace`로
+    읽을 때 빈 문자열이 되므로 여기서 함께 걸린다.
+    """
     fields = {
         "term.max_words": naming.term.max_words,
         "table.prefix": naming.table.prefix,
@@ -301,7 +305,7 @@ def _naming_blanks(naming: Naming) -> list[str]:
         "column.foreign_key": naming.column.foreign_key,
         "column.self_reference_prefix": naming.column.self_reference_prefix,
     }
-    return [path for path, value in fields.items() if value is None]
+    return [path for path, value in fields.items() if value is None or value == ""]
 
 
 def _rules_blanks(rules: Rules) -> list[str]:

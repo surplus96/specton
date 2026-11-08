@@ -445,6 +445,35 @@ crud_exemption_reasons:
 """
 
 
+@pytest.mark.parametrize("empty", ['""', '"  "'], ids=["empty", "spaces"])
+def test_approved_common_rejects_empty_self_reference_prefix(tmp_path: Path, empty: str) -> None:
+    """approved에서는 빈 문자열·공백만 있는 접두어도 미정값이다 (#166 R1 리뷰, #151 기준).
+
+    다른 값은 모두 채우고 이 칸만 비워, 다른 미정값 때문에 걸리는 것과 구분한다.
+    """
+    naming = FILLED_NAMING.replace("self_reference_prefix: 상위", f"self_reference_prefix: {empty}")
+    make_common(tmp_path, status="approved", naming=naming, rules=FILLED_RULES)
+
+    with pytest.raises(PackError, match="미정값") as exc:
+        load_common(root=tmp_path)
+
+    assert "column.self_reference_prefix" in str(exc.value)
+
+
+@pytest.mark.parametrize("empty", ['""', '"  "'], ids=["empty", "spaces"])
+def test_draft_common_allows_empty_self_reference_prefix(tmp_path: Path, empty: str) -> None:
+    """draft에서는 빈 문자열·공백도 지금처럼 받아 준다(미정값 허용 유지).
+
+    공백만 있는 값은 `str_strip_whitespace`로 읽을 때 빈 문자열이 된다.
+    """
+    naming = FILLED_NAMING.replace("self_reference_prefix: 상위", f"self_reference_prefix: {empty}")
+    make_common(tmp_path, status="draft", naming=naming, rules=FILLED_RULES)
+
+    common = load_common(root=tmp_path)
+
+    assert common.naming.column.self_reference_prefix == ""
+
+
 def test_approved_common_with_all_values_filled_passes(tmp_path: Path) -> None:
     make_common(tmp_path, status="approved", naming=FILLED_NAMING, rules=FILLED_RULES)
 
