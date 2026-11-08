@@ -120,6 +120,7 @@ class _Pipeline:
         nodes.update({name: review(name) for name in REVIEWERS})
         with patch.context() as context:
             context.setattr(main, "openai_agent_nodes", lambda settings: nodes)
+            context.setattr(main, "document_node", lambda root: lambda state: {})
             if status != "real" or validate is not None:
 
                 def validate_bytes(sql: bytes) -> SqlValidation:
