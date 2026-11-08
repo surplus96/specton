@@ -19,7 +19,7 @@
 | 웹 | React (`frontend/`) |
 | 품질 | ruff, mypy, pytest |
 
-미정: PDF·HWPX 엔진(ADR-0004), 화면 라이브러리(ADR-0005), AWS 구성(ADR-0013).
+미정: PDF 엔진(ADR-0004, HWP·HWPX 엔진은 2026-11-08 채택), 화면 라이브러리(ADR-0005), AWS 구성(ADR-0013).
 
 ## 시작하기
 

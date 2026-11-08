@@ -19,7 +19,7 @@ The design reference documents (Korean) live in [docs/](docs/README.md), and dec
 | Web | React (`frontend/`) |
 | Quality | ruff, mypy, pytest |
 
-Undecided: PDF·HWPX engines (ADR-0004), UI library (ADR-0005), AWS setup (ADR-0013).
+Undecided: PDF engines (ADR-0004; the HWP/HWPX engine was adopted on 2026-11-08), UI library (ADR-0005), AWS setup (ADR-0013).
 
 ## Getting started
 
