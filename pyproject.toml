@@ -18,8 +18,9 @@ dependencies = [
     "pglast>=6.0",
     "openpyxl>=3.1",
     "pyyaml>=6.0",
+    "rhwp-python==0.8.1",
 ]
-# PDF 추출·출력, HWPX 엔진은 ADR-0004 결정 후 추가한다.
+# PDF 추출·출력은 ADR-0004 결정 후 추가한다. rhwp-python은 HWPX 엔진이라 버전을 고정한다(PyPI Alpha·성숙도 위험은 ADR-0004).
 
 [dependency-groups]
 dev = [
