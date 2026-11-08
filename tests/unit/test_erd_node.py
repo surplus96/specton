@@ -142,6 +142,7 @@ def test_api_registers_real_erd_and_skips_it_after_normalization_failure(
     monkeypatch.setattr(main, "openai_agent_nodes", lambda settings: {})
     monkeypatch.setattr(main, "parse_node", lambda root: lambda state: {})
     monkeypatch.setattr(main, "ddl_node", lambda settings: lambda state: {})
+    monkeypatch.setattr(main, "document_node", lambda root: lambda state: {})
     design = _design()
     if failed:
         entity = design.entities[0].evolve(name="사전미등록XYZ")
