@@ -37,7 +37,12 @@ XLSX = ("req.xlsx", b"PK\x03\x04 fake workbook", "application/octet-stream")
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
-    return Settings(_env_file=None, storage_dir=tmp_path / "storage", sse_poll_seconds=0.01)
+    return Settings(
+        _env_file=None,
+        require_sql_validation=False,
+        storage_dir=tmp_path / "storage",
+        sse_poll_seconds=0.01,
+    )
 
 
 @pytest.fixture
