@@ -217,9 +217,11 @@ def test_empty_naming_value_is_unset(tmp_path: Path, value: str | None) -> None:
 def test_self_reference_prefix_is_read_the_same_way_as_the_pack_loader(
     tmp_path: Path, value: str | None, expected: str | None
 ) -> None:
-    """팩 로더(앞뒤 공백 지움, 빈 문자열·null은 미정)와 같은 접두어를 읽는다 (#166 리뷰).
+    """팩 로더(앞뒤 공백 지움, 빈 문자열·null은 미정)와 같은 뜻으로 접두어를 읽는다 (#166 리뷰).
 
     정리 경로는 팩 로더를 거치지 않고 naming.yaml을 직접 읽으므로 따로 맞춘다. draft 기준이다.
+    반환값이 글자 그대로 같은지가 아니라 뜻이 같은지를 본다: draft에서 로더는 미정을 빈 문자열로
+    돌려주고 정리 코드는 None으로 돌려주므로, 로더 쪽 빈 문자열을 None으로 바꿔 비교한다.
     """
     shutil.copytree(DEFAULT_PACK_ROOT / "common", tmp_path / "common")
     _set_naming(tmp_path, {("column", "self_reference_prefix"): value})
