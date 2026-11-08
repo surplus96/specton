@@ -22,13 +22,14 @@ from specton.artifacts import FileFormat as FileFormat
 from specton.contracts import ArtifactRef, DesignState, RunView
 from specton.contracts.base import Contract
 from specton.model_hash import model_hash, model_payload
+from specton.persistence import validations
 from specton.persistence.errors import (
     ArtifactNotReadyError,
     InvalidTransitionError,
     RevisionConflictError,
     RunNotFoundError,
 )
-from specton.persistence.lease import check_holder
+from specton.persistence.lease import lock_for_writer
 
 Section = Literal["extraction", "requirements", "design", "review"]
 # 설계 화면 항목의 종류. 한 목록에 섞어 보내므로 `type`으로 구분한다
@@ -203,11 +204,30 @@ def get_view(
                 for name, kind in _DESIGN_TYPES.items()
                 for item in model.get(name, [])
             ]
-    artifacts = [a.ref.model_dump(mode="json") for a in _artifacts(conn, run_id, revision)]
+    artifacts = [_artifact_item(conn, run_id, a.ref) for a in _artifacts(conn, run_id, revision)]
     return RunView(
         run_id=run_id, revision=revision, section=section, items=tuple(items),
         artifacts=tuple(artifacts),
     )  # fmt: skip
+
+
+def _artifact_item(conn: Connection[DictRow], run_id: UUID, ref: ArtifactRef) -> dict[str, Any]:
+    """화면용 산출물 항목. SQL이면 지금 기준의 검증 상태를 붙인다 (#195, 06 문서).
+
+    기록이 없으면 `unverified`다. 해시·단계별 내부 메시지는 넣지 않는다.
+    """
+    item = ref.model_dump(mode="json")
+    if (ref.kind, ref.file_format) == ("ddl", "sql"):
+        stored = validations.current_validation(conn, run_id, ref.revision)
+        item["validation"] = (
+            {"status": "unverified", "validated_at": None}
+            if stored is None
+            else {
+                "status": stored.result.status.value,
+                "validated_at": stored.validated_at.isoformat(),
+            }
+        )
+    return item
 
 
 def find_artifact(
@@ -230,13 +250,6 @@ def find_artifact(
 
 def _jsonb(model: Contract) -> Jsonb:
     return Jsonb(model.model_dump(mode="json"))
-
-
-def lock_for_writer(conn: Connection[DictRow], run_id: UUID, holder: str) -> None:
-    """run → job_lease 순서로 잠근다 (lease.py 잠금 순서). lease를 잃었으면 LeaseLostError."""
-    if conn.execute("SELECT 1 FROM run WHERE run_id = %s FOR UPDATE", (run_id,)).fetchone() is None:
-        raise RunNotFoundError(str(run_id))
-    check_holder(conn, run_id, holder)
 
 
 def _run_revision(conn: Connection[DictRow], run_id: UUID, owner_ref: str) -> int:
