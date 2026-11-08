@@ -6,7 +6,7 @@
 
 import hashlib
 import os
-from pathlib import Path
+from pathlib import Path, PurePath, PureWindowsPath
 from tempfile import NamedTemporaryFile
 from typing import Literal, TypedDict
 from uuid import UUID
@@ -43,10 +43,29 @@ def storage_ref(run_id: str, ref: ArtifactRef) -> str:
     return f"{UUID(run_id)}/r{ref.revision}/{ref.kind}-{ref.hash}.{ref.file_format}"
 
 
+def is_within_storage(path: PurePath, root: PurePath) -> bool:
+    """resolve()로 심볼릭 링크를 해결한 두 경로의 저장소 포함 여부.
+
+    Windows의 resolve()는 생성 중인 경로에만 확장 접두어를 남길 수 있다 (#17).
+    비교할 때만 드라이브·UNC 표기를 맞추며, 실제 파일 경로와 다른 네임스페이스는 바꾸지 않는다.
+    원래 경로에 이 검사를 쓰면 링크 이탈을 놓치므로 호출자는 먼저 resolve()해야 한다.
+    """
+    return _comparison_path(path).is_relative_to(_comparison_path(root))
+
+
+def _comparison_path(path: PurePath) -> PurePath:
+    if isinstance(path, PureWindowsPath) and path.is_absolute():
+        if len(path.drive) == 2 and path.drive[1] == ":":
+            return PureWindowsPath("\\\\?\\" + str(path))
+        if path.drive.startswith("\\\\") and not path.drive.startswith(("\\\\?\\", "\\\\.\\")):
+            return PureWindowsPath("\\\\?\\UNC\\" + str(path)[2:])
+    return path
+
+
 def artifact_path(root: Path, run_id: str, ref: ArtifactRef) -> Path:
     root = root.resolve()
     path = root / storage_ref(run_id, ref)
-    if not path.resolve().is_relative_to(root):
+    if not is_within_storage(path.resolve(), root):
         raise ValueError("산출물 경로가 저장소를 벗어납니다")
     return path
 
