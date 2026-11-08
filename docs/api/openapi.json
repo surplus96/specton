@@ -672,6 +672,13 @@
           "message": {
             "type": "string"
           },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "「자세히 보기」에 펼칠 문장. 없으면 null (#19)."
+          },
           "run_id": {
             "type": [
               "string",

@@ -154,7 +154,8 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 {"code": "RUN_REVISION_CONFLICT", "message": "다른 revision입니다.", "run_id": "…", "retryable": false}
 ```
 
-- `code`/`message`/`run_id`/`retryable`로 통일한다. 코드 값은 `ErrorCode`(ADR-0009)다.
+- `code`/`message`/`detail`/`run_id`/`retryable`로 통일한다. 코드 값은 `ErrorCode`(ADR-0009)다.
+- `message`는 짧은 안내이고, `detail`은 화면의 「자세히 보기」에 펼칠 문장이다. 없으면 null이며 화면은 `message`만 보여 준다 (#19). 실행 상태 조회의 `error`에도 같은 칸이 있어 실패 뒤 다시 열어도 「자세히 보기」를 보여 줄 수 있다. SSE `error` 이벤트는 지금처럼 `payload.detail`에도 담는다.
 
 | 코드 | 언제 | HTTP | 다시 시도 |
 |---|---|---|---|

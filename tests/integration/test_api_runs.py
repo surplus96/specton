@@ -502,6 +502,7 @@ def test_missing_requirements_model_is_internal_and_keeps_waiting(
     assert response.json() == {
         "code": "INTERNAL",
         "message": "서버 오류입니다.",
+        "detail": None,
         "run_id": run_id,
         "retryable": True,
     }
