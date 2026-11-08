@@ -20,12 +20,19 @@ from psycopg import Connection
 from psycopg.rows import DictRow
 from psycopg.types.json import Jsonb
 
-from specton.contracts import SqlValidation
-from specton.persistence.errors import InvalidTransitionError
-from specton.persistence.snapshots import lock_for_writer
+from specton.contracts import SqlValidation, ValidationStatus
+from specton.persistence.errors import InvalidTransitionError, UnverifiedSqlError
+from specton.persistence.lease import lock_for_writer
+from specton.validate.allowed_sql import POLICY_VERSION, TARGET, VALIDATOR_VERSION
 
 # 검증 대상 산출물. DDL 생성기(#165)가 내는 SQL 파일 하나다
 _KIND, _FORMAT = "ddl", "sql"
+# 지금 요구하는 검증 기준. 따로 설정하지 않고 검증기 상수 한 곳을 따른다 (#195)
+REQUIRED_VERSIONS = {
+    "validator_version": VALIDATOR_VERSION,
+    "policy_version": POLICY_VERSION,
+    "postgres_version": TARGET,
+}
 _COLUMNS = (
     "artifact_id", "artifact_hash", "model_hash", "status", "steps",
     "validator_version", "policy_version", "postgres_version", "validated_at",
@@ -132,6 +139,31 @@ def latest_validation(
         )
     })  # fmt: skip
     return StoredValidation(row["validation_id"], row["model_hash"], row["validated_at"], result)
+
+
+def current_validation(
+    conn: Connection[DictRow], run_id: UUID, revision: int
+) -> StoredValidation | None:
+    """지금 요구하는 버전 기준의 가장 최근 시도. 화면 표시와 승인 검사가 같이 쓴다."""
+    return latest_validation(conn, run_id, revision, **REQUIRED_VERSIONS)
+
+
+def require_passed(conn: Connection[DictRow], run_id: UUID, revision: int) -> StoredValidation:
+    """최종 승인 전 확인. SQL이 없거나 가장 최근 시도가 `passed`가 아니면 UnverifiedSqlError.
+
+    이전 `passed`로 돌아가지 않는다. 새 버전 기준의 시도가 없으면 이전 버전 성공도 쓰지 않는다.
+    """
+    exists = conn.execute(
+        "SELECT 1 FROM artifact a JOIN model_snapshot s USING (snapshot_id) "
+        "WHERE s.run_id = %s AND s.revision = %s AND a.kind = %s AND a.file_format = %s",
+        (run_id, revision, _KIND, _FORMAT),
+    ).fetchone()
+    if exists is None:
+        raise UnverifiedSqlError("승인할 SQL 산출물이 없습니다.")
+    stored = current_validation(conn, run_id, revision)
+    if stored is None or stored.result.status is not ValidationStatus.PASSED:
+        raise UnverifiedSqlError("검증을 통과하지 않은 SQL이 있어 승인할 수 없습니다.")
+    return stored
 
 
 def _row(

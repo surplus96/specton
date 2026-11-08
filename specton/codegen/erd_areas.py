@@ -1,7 +1,7 @@
 """ERD 업무 영역 나누기 (#13): 테이블을 이름에 든 낱말로 영역에 넣는다.
 
 PDF는 전체 관계 개요 한 장과 업무 영역별 상세 ERD로 나눠 그린다 (#13 R1 결정).
-영역과 낱말은 도메인 정보라 팩(`erd_areas.yaml`, #166 뒤 로더 연결)에서 받고 여기에 적지 않는다.
+영역과 낱말은 도메인 정보라 팩의 `erd_areas.yaml`에서 받고 여기에 적지 않는다 (`pack_areas`).
 
 배정 규칙 (#13 댓글 6702688564):
 - 비교 대상은 정리 결과의 한글 `name`이다. 물리명은 바뀔 수 있어 쓰지 않는다.
@@ -16,6 +16,7 @@ PDF는 전체 관계 개요 한 장과 업무 영역별 상세 ERD로 나눠 그
 import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 # 표기 규칙(A안·Mermaid 글자 제한)은 전체 ERD와 같아야 하므로 erd.py의 것을 그대로 쓴다
 from specton.codegen.erd import (
@@ -29,6 +30,8 @@ from specton.codegen.erd import (
 )
 from specton.contracts.design import Relationship
 from specton.contracts.normalized import NormalizedModel, Table
+from specton.packs.build import DEFAULT_ROOT
+from specton.packs.loader import PackError, load_erd_areas
 
 OTHER_AREA = "기타"
 
@@ -79,6 +82,21 @@ class AreaSplit:
             if name == area:
                 return table_ids
         raise KeyError(area)
+
+
+def pack_areas(pack: str, *, root: Path = DEFAULT_ROOT) -> tuple[ErdArea, ...]:
+    """팩의 ERD 업무 영역. 파일이 없으면 빈 목록(영역을 나누지 않음)이다.
+
+    영역 이름이 「기타」이거나 겹치고, 같은 낱말이 두 영역에 있으면 팩 오류로 멈춘다.
+    """
+    try:
+        areas = tuple(ErdArea(a.name, a.words) for a in load_erd_areas(pack, root=root))
+        _check_areas(areas)
+    except PackError:
+        raise
+    except ValueError as exc:
+        raise PackError(f"{root / pack / 'erd_areas.yaml'}: {exc}") from exc
+    return areas
 
 
 def area_for_name(name: str, areas: Sequence[ErdArea]) -> str:
