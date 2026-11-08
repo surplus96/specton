@@ -97,6 +97,33 @@ def test_spec_uses_only_the_agreed_markdown() -> None:
             table = []
 
 
+def _gfm_cells(row: str) -> list[str]:
+    """GFM 표 행을 칸으로 나눈다. 역슬래시는 다음 글자를 글자로 만든다(`\\|`는 칸 구분이 아님)."""
+    cells, current, chars = [], "", iter(row.strip().strip("|"))
+    for c in chars:
+        if c == "\\":
+            current += next(chars, "")
+        elif c == "|":
+            cells.append(current.strip())
+            current = ""
+        else:
+            current += c
+    return [*cells, current.strip()]
+
+
+def test_backslash_and_pipe_in_names_keep_the_columns() -> None:
+    """이름에 `\\|`가 있어도 칸이 갈라져 관련 요구사항이 잘리지 않는다 (#213 리뷰 P2)."""
+    tricky = _design().functions[0].evolve(name="재고 \\| 출력", description="**굵게** `코드` \\끝")
+    text = render_function_spec(_design(functions=(tricky,)))
+
+    row = next(line for line in text.splitlines() if line.startswith("| FUNC-01 |"))
+    assert _gfm_cells(row) == ["FUNC-01", "재고 \\| 출력", "Must (원문 명시)", "REQ-01, REQ-02"]
+    crud = next(line for line in text.splitlines() if line.startswith("| FUNC-01 재고"))
+    assert len(_gfm_cells(crud)) == 1 + len(_design().entities)
+    # 굵게·코드 기호는 글자로 보이게 이스케이프한다 (R5 제안)
+    assert "- **설명:** \\*\\*굵게\\*\\* \\`코드\\` \\\\끝" in text
+
+
 def test_same_design_gives_the_same_bytes() -> None:
     assert render_function_spec(_design()) == render_function_spec(_design())
 

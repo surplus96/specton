@@ -31,6 +31,8 @@ _PRIORITY_SOURCE = {
     PrioritySource.INFERRED: "추정",
 }
 _CRUD_ORDER = tuple(Crud)
+# 글자로 보여야 하는 Markdown 기호. 표 구분자 `|`는 표 칸에서만 이스케이프한다
+_MARKDOWN_SIGNS = frozenset("\\*`")
 
 
 def document_info(design: DesignState) -> dict[str, str]:
@@ -132,10 +134,15 @@ def _ops(operations: tuple[Crud, ...]) -> str:
 
 
 def _text(value: str | None) -> str:
-    """문단·목록 안의 글. 줄바꿈은 공백으로 바꾼다 (셀·목록 한 줄 규칙)."""
-    return " ".join((value or "").split())
+    """문단·목록 안의 글. 줄바꿈은 공백으로 바꾸고 Markdown 기호를 글자로 이스케이프한다.
+
+    `\\`를 먼저 이스케이프해야 뒤에 붙이는 이스케이프와 섞이지 않는다. `*`·`` ` ``는 굵게·코드로
+    잘못 보이지 않게 한다 (#213 리뷰, PDF 엔진도 역슬래시 이스케이프를 글자로 보인다).
+    """
+    text = " ".join((value or "").split())
+    return "".join(f"\\{c}" if c in _MARKDOWN_SIGNS else c for c in text)
 
 
 def _cell(value: str) -> str:
-    """표 칸 글. 줄바꿈을 없애고 표 구분자 `|`를 이스케이프한다."""
+    """표 칸 글. `_text`에 더해 표 구분자 `|`를 이스케이프한다."""
     return _text(value).replace("|", "\\|")
