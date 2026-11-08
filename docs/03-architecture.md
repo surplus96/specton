@@ -103,6 +103,24 @@ API의 `create_graph`는 실제 정리 노드와 #15 실패 변환기를 등록�
 
 ERD 가지는 `specton.erd_node`를 등록한다. 저장된 `DesignState.normalized`와 같은 설계의 관계로 상세 Mermaid 원문을 만들고, UTF-8 바이트를 `write_artifact()`로 초안 `.mmd` 파일에 저장한다. 노드는 파일·모델 해시와 현재 revision을 담은 `GeneratedArtifact`만 기존 채널로 반환하며, 실행기가 모델·진행·산출물·이벤트를 같은 트랜잭션으로 게시한다. 정리 실패 시 ERD도 건너뛰며, 생성·저장 오류는 실행 오류로 전달한다. PDF·업무 영역별 출력과 DDL·RTM·후속 규칙·내보내기의 실제 노드 등록은 후속 범위다.
 
+### SQL 검증 시도의 체크포인트 (#17·#167)
+
+실행 문맥은 검증기 밖에서 붙인다. `specton.validation_attempts.run_validation_attempt()`는
+검증 호출마다 새 UUID `validation_id`를 부여하고, `run_id`·`GeneratedArtifact`·공용
+`SqlValidation`을 한 시도로 반환한다. 검증 전에 실행·revision·모델 해시·SQL 바이트 해시를
+확인하고, 검증 후에도 결과의 SQL 해시가 같은지 확인한다. `error`·`failed`·`unverified`도
+원래 결과를 유지하며, 예상하지 않은 예외에는 가짜 검증 결과를 만들지 않는다.
+
+생성 노드는 산출물 메타데이터와 함께 `GraphState.validation_attempts`에 시도를 반환한다.
+체크포인트의 기존 시도를 재저장할 때는 새 ID를 만들거나 검증을 다시 호출하지 않는다.
+같은 ID·같은 결과는 중복 없이 합치고, 같은 ID에 다른 결과·산출물 문맥이 오면 거절한다.
+같은 SQL·버전으로 새 검증을 호출하거나 모델·revision이 바뀌면 새 시도로 남긴다. 이 정보는
+설계 모델·모델 해시나 공개 API에 넣지 않는다. 기존 체크포인트에는 결과를 소급 생성하지 않는다.
+
+이는 R1 실행기 연결의 기반이다. R3의 검증 이력 저장·승인 함수와 R4의 공용 반환형 검증기를
+인계받은 뒤 실제 DDL 노드·앱 DB 트랜잭션·오류 종료·취소 및 승인 검사를 연결한다. 현재 API
+기본 그래프의 DDL 등록·최종 승인 조건은 이 기반 변경으로 활성화하지 않는다.
+
 ### 재작업 복귀 단계
 
 | `target_stage` | 복귀 대상 | 다시 실행하는 범위 |
