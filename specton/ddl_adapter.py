@@ -4,8 +4,8 @@
 그대로 반환한다. create_ddl_artifact는 #163의 공통 파일 저장 함수에 이 바이트를 전달한다.
 
 이 결과는 호출 내부에서만 쓰며 GraphState·체크포인트의 새 계약으로 등록하지 않는다.
-#163 공통 저장·#164 실제 정리 연결을 기반으로 한 API 그래프 등록·DB 게시와
-#167 검증 기록·승인 연결, #15 RULE-07 지적 변환은 후속 범위다.
+API의 ddl_node가 이 결과를 다섯 단계 검증기와 검증 시도 채널에 연결하고, 실행기가 DB에
+게시한다. #15 RULE-07 상세 지적 변환은 R4의 후속 범위다.
 현재 검사는 파싱·허용 AST까지이므로 정상 SQL도 전체 상태는 unverified다. 실패·장애 결과를
 승인 가능 상태로 바꾸지 않으며, 생성기·팩 읽기 예외는 실행 오류로 그대로 전달한다.
 """
@@ -64,7 +64,8 @@ def create_ddl_artifact(
 
     failed·error도 SQL과 함께 보존한다. 호출자는 검사 결과를 기록하고 처리 경로를 결정해야
     한다. generated만 기존 그래프 채널로 인계할 수 있으며, 이 반환 객체 자체를 체크포인트에
-    넣지 않는다. 검증 기록·오류 종료·승인 연결은 #167 공용 계약과 저장 함수 뒤에 연결한다.
+    넣지 않는다. 실제 API에서는 ddl_node와 실행기가 공용 계약에 맞춰 검증 기록·오류 종료·승인에
+    연결한다.
     """
     prepared = prepare_ddl(design, root=root)
     if hashlib.sha256(prepared.sql_bytes).hexdigest() != prepared.validation.artifact_hash:
