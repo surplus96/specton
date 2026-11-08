@@ -53,9 +53,9 @@ def save_validation(
 ) -> bool:
     """검증 시도 하나를 기록하고 새로 썼는지 돌려준다. lease를 가진 실행자만 쓸 수 있다.
 
-    그 revision의 SQL 산출물(`add_artifact`)이 먼저 있어야 한다. 검증한 해시가 산출물 해시와
-    다르거나 `model_hash`가 스냅샷과 다르면 ValueError, 같은 ID에 다른 결과가 오면
-    InvalidTransitionError.
+    그 revision의 SQL 산출물(`add_artifact`)이 먼저 있어야 한다. 새 시도는 검증한 해시가
+    지금 산출물 해시와 다르거나 `model_hash`가 스냅샷과 다르면 ValueError다. 이미 있는 시도의
+    재저장은 그 뒤 SQL이 다시 생성됐어도 내용만 비교하고, 다르면 InvalidTransitionError.
     """
     with conn.transaction():
         lock_for_writer(conn, run_id, holder)
@@ -69,26 +69,30 @@ def save_validation(
             raise ValueError(
                 f"revision {revision}의 SQL 산출물을 먼저 저장해야 합니다 (add_artifact)"
             )
+        row = _row(artifact["artifact_id"], model_hash, validated_at, result)
+        existing = conn.execute(
+            f"SELECT {', '.join(_COLUMNS)} FROM artifact_validation WHERE validation_id = %s",
+            (validation_id,),
+        ).fetchone()
+        if existing is not None:
+            if _differs(existing, row):
+                raise InvalidTransitionError(
+                    f"검증 시도 {validation_id}에 이미 다른 결과가 있습니다"
+                )
+            return False
         if result.artifact_hash != artifact["hash"]:
             raise ValueError("검증한 SQL 해시가 저장된 산출물 해시와 다릅니다")
         if model_hash != artifact["model_hash"]:
             raise ValueError("검증 기록의 model_hash가 스냅샷과 다릅니다")
-        row = _row(artifact["artifact_id"], model_hash, validated_at, result)
         inserted = conn.execute(
             f"INSERT INTO artifact_validation (validation_id, {', '.join(_COLUMNS)}) "
             f"VALUES (%s, {', '.join(['%s'] * len(_COLUMNS))}) "
             "ON CONFLICT (validation_id) DO NOTHING RETURNING validation_id",
             (validation_id, *(row[c] for c in _COLUMNS)),
         ).fetchone()
-        if inserted is not None:
-            return True
-        existing = conn.execute(
-            f"SELECT {', '.join(_COLUMNS)} FROM artifact_validation WHERE validation_id = %s",
-            (validation_id,),
-        ).fetchone()
-        if existing is None or _differs(existing, row):
+        if inserted is None:  # 다른 run에서 같은 ID를 먼저 쓴 경우
             raise InvalidTransitionError(f"검증 시도 {validation_id}에 이미 다른 결과가 있습니다")
-        return False
+        return True
 
 
 def latest_validation(

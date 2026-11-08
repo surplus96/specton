@@ -167,7 +167,8 @@ def test_records_for_other_versions_are_not_used(pool: Pool, sample_state: Facto
 def test_records_for_a_previous_sql_are_not_used(pool: Pool, sample_state: Factory) -> None:
     """SQL이 다시 생성되면 이전 SQL의 통과 기록을 쓰지 않는다. 기록은 지우지 않는다."""
     run_id, digest = _with_sql(pool, sample_state)
-    _save(pool, run_id, digest, _result())
+    old_attempt = uuid4()
+    _save(pool, run_id, digest, _result(), validation_id=old_attempt)
     new_sql = SQL + b"-- regenerated\n"
 
     with pool.connection() as conn:
@@ -176,6 +177,11 @@ def test_records_for_a_previous_sql_are_not_used(pool: Pool, sample_state: Facto
 
     assert _latest(pool, run_id) is None
     assert kept is not None and kept["n"] == 1
+    # 이전 시도의 체크포인트 재저장은 실패하지 않고 아무것도 바꾸지 않는다 (#192 인계)
+    assert not _save(pool, run_id, digest, _result(), validation_id=old_attempt)
+    # 이전 SQL로 새 시도를 저장하는 것은 거절한다
+    with pytest.raises(ValueError, match="산출물 해시와 다릅니다"):
+        _save(pool, run_id, digest, _result())
     _save(pool, run_id, digest, _result(new_sql))
     assert _latest(pool, run_id) is not None
 
