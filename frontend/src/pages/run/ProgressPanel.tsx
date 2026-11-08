@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { Alert, Button, Flex, Popconfirm, Steps, Timeline, Typography } from 'antd'
+import { Alert, Button, Flex, Popconfirm, Steps, Typography } from 'antd'
 import { cancelRun } from '../../api/client.ts'
 import { errorMessage, nextAction } from '../../api/errors.ts'
 import type { ErrorCode, RunStatus, SseEvent } from '../../api/types.ts'
@@ -12,12 +12,12 @@ import {
   displayStage,
   failureOf,
   progressIndex,
-  recentMessages,
   requirementsCheckSkipped,
 } from './screens.ts'
 
 // UI-04 설계 진행 (docs/09-ui-flow.md): 단계·진행 상태 조회, 취소.
 // UI-03을 건너뛰었으면 「분석 확인 생략」, 실패·취소면 원인과 다음 행동을 보인다.
+// 진행 기록(서버 소식)은 화면 옆 서버 작업 패널(ActivityPanel)이 보인다.
 type Props = {
   run: RunStatus
   events: SseEvent[]
@@ -33,7 +33,6 @@ function ProgressPanel({ run, events, connection, onChanged }: Props) {
   const failure = run.status === 'failed' ? failureOf(run.error, events) : null
   const current = progressIndex(displayStage(run.stage, events))
   const stepStatus = failure ? 'error' : run.status === 'cancelled' ? 'wait' : 'process'
-  const messages = recentMessages(events)
 
   async function cancel() {
     setCancelling(true)
@@ -83,13 +82,6 @@ function ProgressPanel({ run, events, connection, onChanged }: Props) {
           />
         )}
         {failure && <FailureNotice failure={failure} onRestart={() => navigate('/start')} />}
-
-        {messages.length > 0 && (
-          <section aria-label="진행 기록">
-            <Typography.Title level={5}>진행 기록</Typography.Title>
-            <Timeline items={messages.map((m, i) => ({ content: m, color: i === messages.length - 1 ? 'blue' : 'gray' }))} />
-          </section>
-        )}
 
         {connection === 'retrying' && (
           <Typography.Text type="secondary">연결이 끊겨 다시 연결하고 있습니다…</Typography.Text>

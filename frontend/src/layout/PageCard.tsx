@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Typography } from 'antd'
-import { colors } from '../theme.ts'
+import { colors, type } from '../theme.ts'
 
 // 화면 본문을 담는 흰 카드. 그림자 없이 얇은 테두리만 둔다.
 type Props = {
@@ -19,7 +19,7 @@ function PageCard({ title, subtitle, children }: Props) {
         padding: 32,
       }}
     >
-      <Typography.Title level={2} style={{ marginTop: 0, fontWeight: 600, letterSpacing: '-0.02em' }}>
+      <Typography.Title level={1} style={{ marginTop: 0, ...type.title }}>
         {title}
       </Typography.Title>
       {subtitle && <Typography.Paragraph type="secondary">{subtitle}</Typography.Paragraph>}

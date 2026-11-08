@@ -6,6 +6,11 @@
 // - 연한 바탕색만으로 구분하지 않는다(연한 파랑도 흰색과 1.2:1이라 프로젝터에서 사라짐). 영역은 테두리로.
 // - 상태는 진한 바탕 + 흰 글자, 주의만 연노랑 + 검정 글자. 색과 함께 반드시 글자(차단·완료 등)를 쓴다.
 // - 글자는 크게: 기본 17px, 표 16px.
+//
+// 글씨체·버튼 모양은 Wise 디자인 분석(DESIGN-wise.md)에서 가져왔다. 색은 위 A안 그대로.
+// - 글꼴: Pretendard (Wise 본문 글꼴 Inter를 바탕으로 한 한글 글꼴. index.html에서 불러옴)
+// - 굵기 두 단계: 큰 제목은 900(아주 굵게), 그 밖의 강조는 600. 본문은 400
+// - 버튼: 높이 48px · 모서리 24px(알약 모양) · 좌우 여백 24px · 글자 600
 import type { ThemeConfig } from 'antd'
 
 export const colors = {
@@ -35,7 +40,22 @@ export const tones = {
 export type Tone = keyof typeof tones
 
 const fontFamily =
-  "system-ui, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif"
+  "'Pretendard Variable', Pretendard, system-ui, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif"
+
+/** 글자 굵기 (Wise: 큰 제목 900, 나머지 강조 600) */
+export const weights = {
+  display: 900, // 첫 화면 큰 제목·화면 제목·카드 제목·이름
+  strong: 600, // 소제목·버튼·표 머리·상태 표시
+  regular: 400, // 본문
+} as const
+
+/** 제목 글자 크기·줄 간격·자간 (Wise 크기 단계를 프로젝터 기준으로 맞춤) */
+export const type = {
+  hero: { fontSize: 'clamp(56px, 10vw, 112px)', fontWeight: weights.display, lineHeight: 0.95, letterSpacing: '-0.03em' },
+  title: { fontSize: 'clamp(30px, 3.6vw, 40px)', fontWeight: weights.display, lineHeight: 1.15, letterSpacing: '-0.02em' },
+  section: { fontSize: 'clamp(26px, 3vw, 32px)', fontWeight: weights.display, lineHeight: 1.2, letterSpacing: '-0.02em' },
+  card: { fontSize: 28, fontWeight: weights.display, lineHeight: 1.2, letterSpacing: '-0.02em' },
+} as const
 
 export const theme: ThemeConfig = {
   token: {
@@ -54,6 +74,12 @@ export const theme: ThemeConfig = {
     colorInfo: colors.primary,
     fontFamily,
     fontSize: 17, // 강의장 뒷자리 기준
+    fontWeightStrong: weights.strong, // 굵은 글자·소제목 600. 화면 제목은 PageCard에서 900
+    fontSizeHeading1: 40,
+    fontSizeHeading2: 32,
+    fontSizeHeading3: 24,
+    fontSizeHeading4: 22,
+    fontSizeHeading5: 22, // 카드 안 소제목 (Wise display-xs 24/600에 가깝게)
     lineWidth: 1.5,
     borderRadius: 8,
     borderRadiusLG: 16,
@@ -62,15 +88,29 @@ export const theme: ThemeConfig = {
   },
   components: {
     Button: {
-      // 알약 모양, 그림자 없음, 파랑 면에 흰 글자
-      borderRadius: 980,
-      borderRadiusLG: 980,
-      borderRadiusSM: 980,
+      // Wise 버튼 모양: 높이 48 · 모서리 24(알약) · 좌우 24 · 글자 600. 그림자 없음
+      // 주 버튼은 파랑 면 + 흰 글자, 보조 버튼은 흰 면 + 남색 테두리·글자 (Wise tertiary)
+      controlHeight: 48,
+      controlHeightLG: 56,
+      controlHeightSM: 36,
+      paddingInline: 24,
+      paddingInlineLG: 32,
+      paddingInlineSM: 16,
+      borderRadius: 24,
+      borderRadiusLG: 28,
+      borderRadiusSM: 18,
+      contentFontSize: 17,
+      contentFontSizeLG: 20,
+      contentFontSizeSM: 15,
+      fontWeight: weights.strong,
       primaryColor: colors.onDark,
+      defaultColor: colors.ink,
+      defaultBorderColor: colors.ink,
+      defaultHoverColor: colors.primary,
+      defaultHoverBorderColor: colors.primary,
       primaryShadow: 'none',
       defaultShadow: 'none',
       dangerShadow: 'none',
-      fontWeight: 600,
     },
     Layout: {
       headerBg: colors.navy,

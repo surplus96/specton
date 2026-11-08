@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
+import ResultSummary from './ResultSummary.tsx'
 import StatusTag from '../../layout/StatusTag.tsx'
 import { Alert, Button, Flex, Select, Spin, Tabs, Typography } from 'antd'
 import { getView } from '../../api/client.ts'
@@ -106,31 +108,32 @@ function WorkspacePanel({ run }: Props) {
                 description="이 revision에서 아직 만들어지지 않았거나 생성에 실패한 산출물입니다."
               />
             )}
+            <ResultSummary design={data.design} findings={data.findings} />
             <Tabs
               items={[
                 {
                   key: 'design',
-                  label: '기능·엔티티·관계',
+                  label: <TabLabel text="기능·엔티티·관계" origin="AI 판단" />,
                   children: <DesignTables items={data.design} names={names} />,
                 },
                 {
                   key: 'erd',
-                  label: 'ERD',
+                  label: <TabLabel text="ERD" origin="코드 생성" />,
                   children: <ErdView runId={run.run_id} artifact={find('erd', 'mmd')} />,
                 },
                 {
                   key: 'ddl',
-                  label: 'DDL',
+                  label: <TabLabel text="DDL" origin="코드 생성" />,
                   children: <TextArtifact runId={run.run_id} artifact={find('ddl', 'sql')} kind="ddl" />,
                 },
                 {
                   key: 'rtm',
-                  label: 'RTM',
+                  label: <TabLabel text="RTM" origin="코드 생성" />,
                   children: <FilesOnly runId={run.run_id} artifacts={data.artifacts} kind="rtm" />,
                 },
                 {
                   key: 'review',
-                  label: `검토 (${data.findings.length})`,
+                  label: <TabLabel text={`검토 (${data.findings.length})`} origin="AI 검토 · 규칙" />,
                   children: <FindingsTable findings={data.findings} names={names} />,
                 },
               ]}
@@ -234,3 +237,28 @@ export function DownloadButton({ runId, artifact }: { runId: string; artifact: A
 }
 
 export default WorkspacePanel
+
+/**
+ * 탭 이름 + 누가 만들었는지. 규칙(CLAUDE.md): LLM은 판단만 하고 ID·SQL·도면·RTM은 코드가 만든다.
+ * 발표에서 이 원칙이 화면에 보이게 한다.
+ */
+function TabLabel({ text, origin }: { text: string; origin: string }): ReactNode {
+  const ai = origin.startsWith('AI')
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      {text}
+      <span
+        style={{
+          fontSize: 13,
+          fontWeight: 600,
+          padding: '1px 8px',
+          borderRadius: 999,
+          border: `1.5px solid ${ai ? colors.primary : colors.border}`,
+          color: ai ? colors.primary : colors.inkMuted,
+        }}
+      >
+        {origin}
+      </span>
+    </span>
+  )
+}

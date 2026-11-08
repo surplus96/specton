@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { ApiError, errorMessage } from '../api/errors.ts'
 import StageSteps, { type ScreenId } from '../layout/StageSteps.tsx'
 import PageCard from '../layout/PageCard.tsx'
+import WithActivity from '../layout/WithActivity.tsx'
+import ActivityPanel from './run/ActivityPanel.tsx'
 import ExtractionPanel from './extraction/ExtractionPanel.tsx'
 import RequirementsPanel from './requirements/RequirementsPanel.tsx'
 import ReviewPanel from './review/ReviewPanel.tsx'
@@ -17,6 +19,7 @@ import { VIEW_LABEL, chosenView, resultViews, type ResultView } from './workspac
 // 상태를 조회하고 이벤트(SSE)로 따라가며, 상태에 맞는 화면(UI-02~07)을 고른다 (run/screens.ts).
 // 결과가 있으면(최종 검토 대기·완료) 위쪽에서 결과 작업공간(UI-05)으로 바꿔 볼 수 있다 (&view=workspace).
 // 새로고침해도 상태 조회와 주소로 같은 화면에 돌아온다.
+// 모든 화면 옆(좁으면 아래)에 서버 작업 패널을 붙여 이벤트를 실시간으로 보인다 (run/ActivityPanel).
 const SCREEN_OF_VIEW: Record<ResultView, ScreenId> = {
   review: 'UI-06',
   workspace: 'UI-05',
@@ -26,7 +29,7 @@ const SCREEN_OF_VIEW: Record<ResultView, ScreenId> = {
 function RunPage({ runId }: { runId: string }) {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
-  const { run, events, connection, loadError, refresh } = useRunStatus(runId)
+  const { run, events, receivedAt, connection, loadError, refresh } = useRunStatus(runId)
 
   if (loadError) {
     const notFound = loadError instanceof ApiError && loadError.status === 404
@@ -66,27 +69,31 @@ function RunPage({ runId }: { runId: string }) {
   return (
     <Flex vertical gap={24}>
       <StageSteps current={screen} unreached={unreached} />
-      {view && (
-        <Segmented<ResultView>
-          aria-label="볼 화면"
-          value={view}
-          onChange={chooseView}
-          options={resultViews(run.status).map((v) => ({ value: v, label: VIEW_LABEL[v] }))}
-        />
-      )}
-      {screen === 'UI-04' ? (
-        <ProgressPanel run={run} events={events} connection={connection} onChanged={refresh} />
-      ) : screen === 'UI-02' ? (
-        <ExtractionPanel run={run} events={events} onChanged={refresh} />
-      ) : screen === 'UI-03' ? (
-        <RequirementsPanel run={run} onChanged={refresh} />
-      ) : screen === 'UI-05' ? (
-        <WorkspacePanel run={run} />
-      ) : screen === 'UI-06' ? (
-        <ReviewPanel run={run} events={events} onChanged={refresh} />
-      ) : (
-        <DownloadPanel run={run} />
-      )}
+      <WithActivity side={<ActivityPanel events={events} receivedAt={receivedAt} connection={connection} status={run.status} />}>
+        <Flex vertical gap={24}>
+          {view && (
+            <Segmented<ResultView>
+              aria-label="볼 화면"
+              value={view}
+              onChange={chooseView}
+              options={resultViews(run.status).map((v) => ({ value: v, label: VIEW_LABEL[v] }))}
+            />
+          )}
+          {screen === 'UI-04' ? (
+            <ProgressPanel run={run} events={events} connection={connection} onChanged={refresh} />
+          ) : screen === 'UI-02' ? (
+            <ExtractionPanel run={run} events={events} onChanged={refresh} />
+          ) : screen === 'UI-03' ? (
+            <RequirementsPanel run={run} onChanged={refresh} />
+          ) : screen === 'UI-05' ? (
+            <WorkspacePanel run={run} />
+          ) : screen === 'UI-06' ? (
+            <ReviewPanel run={run} events={events} onChanged={refresh} />
+          ) : (
+            <DownloadPanel run={run} />
+          )}
+        </Flex>
+      </WithActivity>
     </Flex>
   )
 }

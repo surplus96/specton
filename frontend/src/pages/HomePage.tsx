@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 import { Button, Flex } from 'antd'
 import { useNavigate } from 'react-router'
-import { colors } from '../theme.ts'
+import { colors, type, weights } from '../theme.ts'
 
 // 첫 화면: 팀·프로젝트 소개 (/). "시작하기"를 누르면 UI-01(업로드, /start)로 간다.
 // 대형 강의장 프로젝터 기준(theme.ts): 남색 면 + 흰 글자, 흰 카드 + 진한 테두리, 큰 글자.
@@ -39,15 +39,14 @@ const card: CSSProperties = {
 
 const label: CSSProperties = {
   fontSize: 15,
-  fontWeight: 700,
+  fontWeight: weights.strong,
   letterSpacing: '0.08em',
   color: colors.primary,
   marginBottom: 8,
 }
 
 const heading: CSSProperties = {
-  fontSize: 'clamp(26px, 3.4vw, 34px)',
-  fontWeight: 700,
+  ...type.section,
   margin: '0 0 16px',
   color: colors.ink,
 }
@@ -56,7 +55,7 @@ function HomePage() {
   const navigate = useNavigate()
 
   return (
-    <Flex vertical gap={28}>
+    <Flex vertical gap={28} style={{ maxWidth: 1120, margin: '0 auto' }}>
       {/* 소개: 남색 면 + 흰 글자 */}
       <section
         style={{
@@ -72,7 +71,7 @@ function HomePage() {
             background: colors.primary,
             color: colors.onDark,
             fontSize: 18,
-            fontWeight: 700,
+            fontWeight: weights.strong,
             padding: '6px 20px',
             borderRadius: 980,
           }}
@@ -81,10 +80,7 @@ function HomePage() {
         </span>
         <h1
           style={{
-            fontSize: 'clamp(56px, 10vw, 96px)',
-            fontWeight: 800,
-            letterSpacing: '-0.03em',
-            lineHeight: 1.05,
+            ...type.hero,
             margin: '24px 0 0',
             color: colors.onDark,
           }}
@@ -92,13 +88,13 @@ function HomePage() {
           Spec<span style={{ color: colors.onDarkMuted }}>ton</span>
         </h1>
         <div style={{ width: 72, height: 5, background: colors.primary, borderRadius: 3, margin: '24px auto' }} />
-        <p style={{ fontSize: 'clamp(22px, 3.2vw, 30px)', fontWeight: 700, color: colors.onDark, margin: 0 }}>
+        <p style={{ fontSize: 'clamp(22px, 3.2vw, 30px)', fontWeight: weights.strong, color: colors.onDark, margin: 0 }}>
           요구사항 정의서에서 설계 산출물까지
         </p>
         <p style={{ fontSize: 20, color: colors.onDarkMuted, margin: '12px 0 36px', wordBreak: 'keep-all' }}>
           문서를 올리면 기능 명세와 데이터베이스 설계를 만들고, 사람이 확인한 결과만 내보냅니다.
         </p>
-        <Button type="primary" size="large" onClick={() => navigate('/start')} style={{ fontSize: 20, height: 52, padding: '0 36px' }}>
+        <Button type="primary" size="large" onClick={() => navigate('/start')}>
           시작하기
         </Button>
       </section>
@@ -122,8 +118,8 @@ function HomePage() {
       >
         {FLOW.map((step, i) => (
           <div key={step.title} style={{ background: step.bg, borderRadius: 16, padding: 32 }}>
-            <div style={{ fontSize: 48, fontWeight: 800, lineHeight: 1, color: colors.onDarkMuted }}>{i + 1}</div>
-            <div style={{ fontSize: 28, fontWeight: 700, margin: '14px 0 10px', color: colors.onDark }}>
+            <div style={{ fontSize: 56, fontWeight: weights.display, lineHeight: 1, color: colors.onDarkMuted }}>{i + 1}</div>
+            <div style={{ ...type.card, margin: '14px 0 10px', color: colors.onDark }}>
               {step.title}
             </div>
             <div style={{ fontSize: 19, lineHeight: 1.6, color: colors.onDark, wordBreak: 'keep-all' }}>{step.text}</div>
@@ -154,13 +150,13 @@ function HomePage() {
                   padding: '26px 22px',
                 }}
               >
-                <div style={{ fontSize: 28, fontWeight: 800, color: leader ? colors.onDark : colors.ink }}>
+                <div style={{ ...type.card, color: leader ? colors.onDark : colors.ink }}>
                   {person.name}
                 </div>
                 <div
                   style={{
                     fontSize: 17,
-                    fontWeight: 600,
+                    fontWeight: weights.strong,
                     marginTop: 8,
                     color: leader ? colors.onDark : colors.inkMuted,
                     wordBreak: 'keep-all',
@@ -188,7 +184,7 @@ function HomePage() {
           {PARTNERS.map((name, i) => (
             <Flex key={name} align="center" gap={24}>
               {i > 0 && <span style={{ color: colors.onDarkMuted }}>●</span>}
-              <span style={{ fontSize: 20, fontWeight: 700, color: colors.onDark }}>{name}</span>
+              <span style={{ fontSize: 20, fontWeight: weights.strong, color: colors.onDark }}>{name}</span>
             </Flex>
           ))}
         </Flex>

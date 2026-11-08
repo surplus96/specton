@@ -6,6 +6,8 @@ import { createRun } from '../api/client.ts'
 import type { Pack } from '../api/types.ts'
 import StageSteps from '../layout/StageSteps.tsx'
 import PageCard from '../layout/PageCard.tsx'
+import WithActivity from '../layout/WithActivity.tsx'
+import ActivityPanel from './run/ActivityPanel.tsx'
 import {
   ACCEPT_ATTR,
   ACCEPTED_FORMATS,
@@ -77,64 +79,76 @@ function UploadPage() {
   return (
     <Flex vertical gap={24}>
       <StageSteps current="UI-01" />
-      <PageCard
-        title="요구사항 문서 올리기"
-        subtitle="요구사항 정의서(.xlsx · .csv)를 올리면 기능 명세·ERD·DDL·RTM을 만듭니다."
+      <WithActivity
+        side={
+          <ActivityPanel
+            idleText={
+              submitting
+                ? '파일을 서버로 보내고 있습니다…'
+                : '파일을 올리고 「설계 시작」을 누르면 서버가 하는 일이 여기에 실시간으로 보입니다.'
+            }
+          />
+        }
       >
-        <Form layout="vertical" onFinish={submit} disabled={submitting}>
-          <Form.Item
-            label="요구사항 문서"
-            required
-            validateStatus={fileError ? 'error' : undefined}
-            help={fileError ?? `${formats} · 최대 ${MAX_UPLOAD_MB}MB · 파일 1개`}
-          >
-            <Upload.Dragger
-              accept={ACCEPT_ATTR}
-              maxCount={1}
-              fileList={fileList}
-              beforeUpload={(chosen) => {
-                chooseFile(chosen)
-                return false // 고르기만 하고 올리기는 '설계 시작'에서 한다
-              }}
-              onRemove={() => {
-                setFile(null)
-                setFileError(null)
-              }}
+        <PageCard
+          title="요구사항 문서 올리기"
+          subtitle="요구사항 정의서(.xlsx · .csv)를 올리면 기능 명세·ERD·DDL·RTM을 만듭니다."
+        >
+          <Form layout="vertical" onFinish={submit} disabled={submitting}>
+            <Form.Item
+              label="요구사항 문서"
+              required
+              validateStatus={fileError ? 'error' : undefined}
+              help={fileError ?? `${formats} · 최대 ${MAX_UPLOAD_MB}MB · 파일 1개`}
             >
-              <Typography.Paragraph>파일을 끌어다 놓거나 눌러서 고르세요</Typography.Paragraph>
-              <Typography.Text type="secondary">
-                한글(HWP·HWPX)·PDF 문서는 엑셀이나 CSV로 저장해 올려 주세요.
-              </Typography.Text>
-            </Upload.Dragger>
-          </Form.Item>
-
-          <Form.Item
-            label="도메인 팩"
-            required
-            validateStatus={packError ? 'error' : undefined}
-            help={packError ?? (pack ? PACK_LABELS[pack].description : '문서의 업무 분야를 고르세요')}
-          >
-            <Select<Pack>
-              placeholder="팩 선택"
-              options={PACK_OPTIONS}
-              value={pack ?? undefined}
-              onChange={choosePack}
-            />
-          </Form.Item>
-
-          {formError && (
-            <Form.Item>
-              <Alert type="error" showIcon title={formError} />
+              <Upload.Dragger
+                accept={ACCEPT_ATTR}
+                maxCount={1}
+                fileList={fileList}
+                beforeUpload={(chosen) => {
+                  chooseFile(chosen)
+                  return false // 고르기만 하고 올리기는 '설계 시작'에서 한다
+                }}
+                onRemove={() => {
+                  setFile(null)
+                  setFileError(null)
+                }}
+              >
+                <Typography.Paragraph>파일을 끌어다 놓거나 눌러서 고르세요</Typography.Paragraph>
+                <Typography.Text type="secondary">
+                  한글(HWP·HWPX)·PDF 문서는 엑셀이나 CSV로 저장해 올려 주세요.
+                </Typography.Text>
+              </Upload.Dragger>
             </Form.Item>
-          )}
 
-          <Form.Item>
-            <Button type="primary" htmlType="submit" size="large" loading={submitting}>
-              {submitting ? '접수 중…' : '설계 시작'}
-            </Button>
-          </Form.Item>
-        </Form>
-      </PageCard>
+            <Form.Item
+              label="도메인 팩"
+              required
+              validateStatus={packError ? 'error' : undefined}
+              help={packError ?? (pack ? PACK_LABELS[pack].description : '문서의 업무 분야를 고르세요')}
+            >
+              <Select<Pack>
+                placeholder="팩 선택"
+                options={PACK_OPTIONS}
+                value={pack ?? undefined}
+                onChange={choosePack}
+              />
+            </Form.Item>
+
+            {formError && (
+              <Form.Item>
+                <Alert type="error" showIcon title={formError} />
+              </Form.Item>
+            )}
+
+            <Form.Item>
+              <Button type="primary" htmlType="submit" size="large" loading={submitting}>
+                {submitting ? '접수 중…' : '설계 시작'}
+              </Button>
+            </Form.Item>
+          </Form>
+        </PageCard>
+      </WithActivity>
     </Flex>
   )
 }
