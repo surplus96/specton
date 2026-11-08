@@ -84,8 +84,19 @@ from specton.contracts.state import (
     VersionInfo,
     find_trace_issues,
 )
+from specton.contracts.validation import (
+    VALIDATION_STEPS,
+    SqlValidation,
+    StepStatus,
+    ValidationIssue,
+    ValidationStatus,
+    ValidationStep,
+    ValidationStepName,
+    overall_status,
+)
 
 __all__ = [
+    "VALIDATION_STEPS",
     "ArtifactRef",
     "Attribute",
     "AttributeDraft",
@@ -142,13 +153,20 @@ __all__ = [
     "SourceRef",
     "SourceRequirement",
     "SqlType",
+    "SqlValidation",
     "SseEvent",
     "SseEventData",
     "SseEventType",
+    "StepStatus",
     "Table",
     "TargetStage",
     "TraceIssue",
     "UserDecision",
+    "ValidationIssue",
+    "ValidationStatus",
+    "ValidationStep",
+    "ValidationStepName",
     "VersionInfo",
     "find_trace_issues",
+    "overall_status",
 ]
