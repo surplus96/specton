@@ -67,7 +67,7 @@ def run(
         prompt_version=PROMPT_VERSION,
         system=SYSTEM_PROMPT,
         data=_router_data(state, findings, feedback),
-        examples=load_examples(pack, "A09", A09Output),
+        examples=load_examples(pack, "A09", A09Output, root=settings.pack_root),
     )
     try:
         result = client.complete(request, A09Output, token_budget=token_budget)

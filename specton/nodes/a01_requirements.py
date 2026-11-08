@@ -90,7 +90,7 @@ def run(
         prompt_version=PROMPT_VERSION,
         system=SYSTEM_PROMPT,
         data=input_data(state),
-        examples=load_examples(pack, "A01", A01Output),
+        examples=load_examples(pack, "A01", A01Output, root=settings.pack_root),
     )
     output_model = _checked_against({k: _text(b) for k, b in blocks.items()})
     result = client.complete(request, output_model, token_budget=token_budget)

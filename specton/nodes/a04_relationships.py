@@ -79,7 +79,7 @@ def run(
         prompt_version=PROMPT_VERSION,
         system=SYSTEM_PROMPT,
         data=input_data(state),
-        examples=load_examples(pack, "A04", A04Output),
+        examples=load_examples(pack, "A04", A04Output, root=settings.pack_root),
     )
     entity_ids = {e.name: e.id for e in state.entities}
     output_model = _checked_against(entity_ids.keys(), {r.id: r.text for r in state.requirements})
