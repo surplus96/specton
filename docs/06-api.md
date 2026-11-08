@@ -153,7 +153,7 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 ## 오류 형식
 
 ```json
-{"code": "RUN_REVISION_CONFLICT", "message": "다른 revision입니다.", "run_id": "…", "retryable": false}
+{"code": "RUN_REVISION_CONFLICT", "message": "다른 revision입니다.", "detail": null, "run_id": "…", "retryable": false}
 ```
 
 - `code`/`message`/`detail`/`run_id`/`retryable`로 통일한다. 코드 값은 `ErrorCode`(ADR-0009)다.
@@ -180,7 +180,7 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 | `INTERNAL` | 그 밖의 서버 오류 | 500 / 실행 상태 | 경우에 따라 |
 
 - "실행 상태"는 HTTP 오류가 아니라 실패한 실행의 `GET /runs/{id}` 응답 `error` 필드와 SSE `error` 이벤트로 전달된다는 뜻이다.
-- `EXTRACTION_FAILED`의 `message`는 파서·추출 확인이 만든 짧은 안내(`notice`)다. 「자세히 보기」 문장은 SSE `error` 이벤트 `payload.detail`에 있다. 다른 실행 실패는 내부 내용을 숨기고 코드별 고정 문구를 쓴다.
+- `EXTRACTION_FAILED`의 `message`는 파서·추출 확인이 만든 짧은 안내(`notice`)다. 「자세히 보기」 문장은 실행 상태 조회 `error.detail`과 SSE `error` 이벤트 `payload.detail` 둘 다에 담는다(실행기가 채움, #19·#204). 다른 실행 실패는 내부 내용을 숨기고 코드별 고정 문구를 쓴다.
 - 비동기 실행 중 오류는 `GET /runs/{id}`와 SSE `error` 이벤트로 전달한다.
 
 ## 산출물 형식
