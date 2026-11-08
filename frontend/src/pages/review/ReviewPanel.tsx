@@ -1,17 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Flex, Input, Popconfirm, Radio, Spin, Table, Tag, Typography } from 'antd'
-import type { TableColumnsType } from 'antd'
+import { Alert, Button, Flex, Input, Popconfirm, Radio, Spin, Typography } from 'antd'
 import { getView } from '../../api/client.ts'
 import { errorMessage } from '../../api/errors.ts'
 import type { RunStatus, SseEvent } from '../../api/types.ts'
-import type { DesignItem, Finding, Severity } from '../../api/viewItems.ts'
+import type { DesignItem, Finding } from '../../api/viewItems.ts'
 import PageCard from '../../layout/PageCard.tsx'
 import { useResume } from '../run/useResume.ts'
 import DesignTables from './DesignTables.tsx'
+import FindingsTable from './FindingsTable.tsx'
 import {
   HITL_REASON_TEXT,
-  SEVERITY_LABEL,
-  STAGE_LABEL,
   branchText,
   buildResponse,
   canApprove,
@@ -19,9 +17,6 @@ import {
   nameIndex,
   problems,
   reviewNotices,
-  sortFindings,
-  sourceText,
-  targetText,
   type Decision,
 } from './rules.ts'
 
@@ -32,8 +27,6 @@ type Props = {
   events: SseEvent[]
   onChanged: () => Promise<void>
 }
-
-const SEVERITY_COLOR: Record<Severity, string> = { critical: 'red', major: 'orange', minor: 'default' }
 
 const SUBMIT_LABEL: Record<Decision, string> = {
   approve: '승인하고 내보내기',
@@ -70,7 +63,6 @@ function ReviewPanel({ run, events, onChanged }: Props) {
   }, [run.run_id, run.revision, interruptId, reloadKey])
 
   const names = useMemo(() => nameIndex(design), [design])
-  const sorted = useMemo(() => sortFindings(findings ?? []), [findings])
   const counts = countBySeverity(findings ?? [])
   const approvable = canApprove(findings ?? [])
   const { failedBranches, hitlReason } = reviewNotices(events, interruptId)
@@ -82,53 +74,6 @@ function ReviewPanel({ run, events, onChanged }: Props) {
     const sent = await send(buildResponse(decision, feedback))
     if (sent && decision === 'hold') setHeld(true) // 보류는 같은 확인 요청으로 계속 기다린다
   }
-
-  const columns: TableColumnsType<Finding> = [
-    {
-      title: '심각도',
-      dataIndex: 'severity',
-      width: 84,
-      render: (s: Severity) => <Tag color={SEVERITY_COLOR[s]}>{SEVERITY_LABEL[s]}</Tag>,
-    },
-    {
-      title: '대상',
-      key: 'targets',
-      width: 170,
-      render: (_, f) => (
-        <Flex vertical>
-          {f.targets.map((t) => (
-            <span key={`${t.kind}:${t.id}`}>{targetText(t, names)}</span>
-          ))}
-        </Flex>
-      ),
-    },
-    {
-      title: '근거',
-      key: 'evidence',
-      width: 240,
-      render: (_, f) => (
-        <Flex vertical gap={4}>
-          {f.evidence.map((e, i) => (
-            <span key={i}>
-              {e.req_id && <Typography.Text type="secondary">{e.req_id} </Typography.Text>}「{e.quote}」
-            </span>
-          ))}
-        </Flex>
-      ),
-    },
-    { title: '제안', dataIndex: 'suggestion' },
-    {
-      title: '출처 · 돌아갈 단계',
-      key: 'source',
-      width: 170,
-      render: (_, f) => (
-        <Flex vertical>
-          <span>{sourceText(f)}</span>
-          <Typography.Text type="secondary">{f.target_stage ? STAGE_LABEL[f.target_stage] : '판단 필요'}</Typography.Text>
-        </Flex>
-      ),
-    },
-  ]
 
   return (
     <PageCard title="최종 검토" subtitle={`revision ${run.revision} 설계를 확인하고 승인하거나 수정을 요청합니다.`}>
@@ -166,11 +111,7 @@ function ReviewPanel({ run, events, onChanged }: Props) {
 
           <section aria-label="검토 지적">
             <Typography.Title level={5}>검토 지적 {findings.length}건</Typography.Title>
-            {findings.length === 0 ? (
-              <Typography.Text type="secondary">지적이 없습니다.</Typography.Text>
-            ) : (
-              <Table rowKey="id" size="small" pagination={false} columns={columns} dataSource={sorted} scroll={{ x: 960 }} />
-            )}
+            <FindingsTable findings={findings} names={names} />
           </section>
 
           <section aria-label="설계 결과">

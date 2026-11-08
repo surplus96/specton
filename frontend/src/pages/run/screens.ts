@@ -77,6 +77,18 @@ export function displayStage(stage: string | null | undefined, events: readonly 
   return last?.data.stage ?? stage ?? null
 }
 
+/**
+ * 실패·취소한 실행에서 실제로 거치지 않은 확인 화면. 위쪽 단계 표시에서 완료(✓)로 보이지 않게 한다.
+ * 문서 읽기에서 멈췄으면 추출 확인·분석 확인, 분석에서 멈췄으면 분석 확인을 거치지 않았다.
+ */
+export function unreachedScreens(status: RunState, stage: string | null): ScreenId[] {
+  if (status !== 'failed' && status !== 'cancelled') return []
+  const at = progressIndex(stage)
+  if (at <= 0) return ['UI-02', 'UI-03']
+  if (at === 1) return ['UI-03']
+  return []
+}
+
 /** 분석 확인을 건너뛰었을 때 서버가 남기는 문구 (docs/06 「SSE」, ADR-0015) */
 export const SKIPPED_REQUIREMENTS_MESSAGE = '확인할 항목이 없어 분석 확인을 생략했습니다'
 

@@ -36,6 +36,7 @@ import type {
 import {
   ARTIFACT_FORMATS,
   designItems,
+  DDL_SAMPLE,
   ERD_SAMPLE,
   extractionItems,
   CRITICAL_FINDING,
@@ -517,7 +518,12 @@ export function createMockBackend(options: MockOptions = {}) {
       )
     }
     const fileName = `specton-${kind}-r${revision}${approved ? '' : '-draft'}.${fileFormat}`
-    const text = kind === 'erd' && fileFormat === 'mmd' ? ERD_SAMPLE : `mock ${kind} r${revision} (${fileFormat})\n`
+    const text =
+      kind === 'erd' && fileFormat === 'mmd'
+        ? ERD_SAMPLE
+        : kind === 'ddl'
+          ? DDL_SAMPLE
+          : `mock ${kind} r${revision} (${fileFormat})\n`
     return new HttpResponse(text, {
       headers: {
         'Content-Type': 'application/octet-stream',

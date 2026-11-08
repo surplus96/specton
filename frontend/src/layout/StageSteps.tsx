@@ -15,15 +15,21 @@ export type ScreenId = (typeof SCREENS)[number]['id']
 
 type Props = {
   current: ScreenId
+  /** 현재 화면보다 앞이지만 실제로 거치지 않은 화면 (실패·취소). 완료(✓) 대신 대기로 보인다. */
+  unreached?: readonly ScreenId[]
 }
 
-function StageSteps({ current }: Props) {
+function StageSteps({ current, unreached = [] }: Props) {
   const index = SCREENS.findIndex((s) => s.id === current)
   return (
     <Steps
       size="small"
       current={index}
-      items={SCREENS.map((s) => ({ title: s.title, content: s.id }))}
+      items={SCREENS.map((s) => ({
+        title: s.title,
+        content: s.id,
+        ...(unreached.includes(s.id) ? { status: 'wait' as const } : {}),
+      }))}
     />
   )
 }

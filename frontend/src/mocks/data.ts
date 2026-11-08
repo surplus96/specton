@@ -323,7 +323,72 @@ export const ARTIFACT_FORMATS = {
   review: ['md'],
 } as const
 
+/** ERD 원문 예시: 실제 ERD 생성 코드(specton/codegen/erd.py, #177)가 시험 모델로 낸 그대로 (A안 표기) */
 export const ERD_SAMPLE = `erDiagram
-    창고 ||--o{ 입고 : "보관"
-    품목 ||--o{ 입고 : "입고 품목"
+    %% Specton ERD · inventory 0.1.7
+    item_clsf["품목분류"] {
+        varchar(20) 분류코드 PK "clsf_cd"
+        varchar(20) 상위분류코드 FK "up_clsf_cd"
+    }
+    item["품목"] {
+        varchar(20) 품목코드 PK "item_cd"
+        numeric 단가 "untprc · numeric(12,2)"
+        char(1) 입_출고구분 "io_se · 입·출고구분"
+        integer _1차_단가 "frst_untprc · 1차 단가"
+        varchar(20) 바코드 UK "brcd"
+    }
+    item_phto["품목사진"] {
+        varchar(20) 사진번호 PK "phto_no"
+        varchar(20) 품목코드 FK,UK "item_cd"
+    }
+    wrhsg["입고"] {
+        varchar(20) 입고번호 PK "wrhsg_no"
+        timestamp(3) 입고일시 "wrhsg_dt"
+        varchar(20) 창고코드 FK "wrhus_cd"
+    }
+    wrhsg_dtl["입고내역"] {
+        varchar(20) 입고번호 PK,FK "wrhsg_no"
+        integer 순번 PK "sn"
+    }
+    bzpt["거래처"] {
+        varchar(20) 거래처코드 PK "bzpt_cd"
+    }
+    wrhus["창고"] {
+        varchar(20) 창고코드 PK "wrhus_cd"
+    }
+    item_bzpt["품목거래처"] {
+        varchar(20) 품목코드 PK,FK "item_cd"
+        varchar(20) 거래처코드 PK,FK "bzpt_cd"
+    }
+    wrhus ||..o{ wrhsg : "REL-01"
+    wrhsg ||--o{ wrhsg_dtl : "REL-02"
+    item_clsf |o..o{ item_clsf : "REL-03"
+    item ||--o{ item_bzpt : "REL-04"
+    bzpt ||--o{ item_bzpt : "REL-04"
+    item |o..o| item_phto : "REL-05"
+`
+
+/** DDL 예시: 실제 DDL 생성 코드(#165·#173)가 재고 팩 설계로 낸 결과의 앞부분 */
+export const DDL_SAMPLE = `-- postgresql 18 / pack inventory 0.1.14 / rules normalize-v0 / lexicon f1eae74da934ede1a46f467fba5fabdd1b000d8330262f71b9ce40a3855d2e20 / generator ddl-v0 / validation unverified
+
+CREATE TABLE "mvmn_drctn" (
+  "mvmn_drctn_no" varchar(20) NOT NULL,
+  "drctn_dt" timestamp,
+  "altmnt_no" varchar(20) NOT NULL,
+  PRIMARY KEY ("mvmn_drctn_no")
+);
+
+CREATE TABLE "dlvrpl" (
+  "dlvrpl_cd" varchar(10) NOT NULL,
+  PRIMARY KEY ("dlvrpl_cd")
+);
+
+CREATE TABLE "cnpt" (
+  "cnpt_cd" varchar(10) NOT NULL,
+  "cnpt_nm" varchar(100),
+  "brno" char(10),
+  PRIMARY KEY ("cnpt_cd")
+);
+
+ALTER TABLE "invt_acinsp" ADD FOREIGN KEY ("wrhus_cd") REFERENCES "wrhus" ("wrhus_cd");
 `
