@@ -188,7 +188,7 @@ def test_a02_raises_refusal() -> None:
 | `prompt_version` | 예 | 프롬프트를 바꿀 때마다 올린다 (예: `a05-v2`). 호출 기록에 남는다 |
 | `instructions` | 예 | 관점의 역할과 할 일 |
 | `checklist` | 예 | 점검 항목 목록 (1개 이상) |
-| `inputs` | 예 | 보여 줄 입력: `requirements`·`functions`·`entities`·`relationships` 중 선택 |
+| `inputs` | 예 | 보여 줄 입력: `requirements`·`functions`·`entities`·`relationships`·`normalized` 중 선택. `normalized`는 모델 정리 결과 요약(테이블·컬럼 ID, 원래 엔티티·속성·관계 출처 ID, PK·UNIQUE, FK의 자식·부모 컬럼 짝. 물리명·타입은 뺌)이다. 고른 관점은 정리 결과가 없으면 LLM을 부르기 전에 멈춘다 (#12) |
 | `false_positive_guards` | 예 | 지적하지 않는 경우 (오탐 기준, 1개 이상) |
 
 - 항목 안에 `: `(콜론+공백)가 있으면 YAML이 키로 읽으므로 작은따옴표로 감싼다. 예: `- '방향이 맞는가 (예: 문서가 부모)'`
@@ -199,7 +199,7 @@ def test_a02_raises_refusal() -> None:
 
 관점마다 `domain_packs/<pack>/examples/<reviewer_id>.yaml`에 예시를 둔다 (#69). 형식은 설계 노드 예시와 같다.
 
-- `input`: 그 관점의 `inputs`에 적은 부분만 담은 매핑. 예: `{requirements: [...], functions: [...], entities: [...]}`
+- `input`: 그 관점의 `inputs`에 적은 부분만 담은 매핑. 예: `{requirements: [...], functions: [...], entities: [...]}`. `normalized`를 고른 관점의 예시는 그 예시 설계를 실제로 정리한 결과 요약을 넣고, 테스트가 정리 코드 결과와 같은지 확인한다(A08)
 - `output`: `ReviewOutput` 모양 `{findings: [...]}`. 지적이 없는 예시는 `findings: []`. 지적의 `severity`는 `major`·`minor`만 쓴다 (ADR-0010)
 - 리뷰어는 `pack`을 받으면 예시를 넣는다. `parallel`은 대화 쌍으로, `combined`는 관점 블록 안에 "예시 n 입력 / 지적"으로 넣는다. 예시 수만큼 입력 토큰이 늘어나므로 관점당 1~2건을 권장한다.
 - 예시 원문 사용 기준은 [07 테스트·평가](07-testing-eval.md#평가-데이터)를 따른다.

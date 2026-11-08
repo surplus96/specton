@@ -11,6 +11,7 @@ from langgraph.types import Command
 from specton.agent_nodes import review_nodes, router_node
 from specton.config import Settings
 from specton.contracts import DesignState, FindingDraft, Requirement
+from specton.contracts.normalized import NormalizedModel
 from specton.contracts.requirements import QualityIssue
 from specton.contracts.state import VersionInfo
 from specton.graph import REVIEWERS, GraphState, Node, build_graph, initial_state
@@ -38,8 +39,29 @@ def _settings(mode: str = "parallel") -> Settings:
     return Settings(_env_file=None, review_mode=mode)
 
 
+# A08은 정리 결과를 입력으로 고른다(#12). 검토 노드만 보는 이 시험에서는 빈 정리 결과로 둔다.
+NORMALIZED = NormalizedModel(
+    pack=PACK,
+    pack_version="test",
+    rules_version="test",
+    lexicon_digest="test",
+    tables=(),
+    foreign_keys=(),
+)
+
+
 def _design() -> DesignState:
-    return DesignState(run_id="run-1", requirements=[REQ], versions=VersionInfo(pack_id=PACK))
+    return DesignState(
+        run_id="run-1",
+        requirements=[REQ],
+        versions=VersionInfo(pack_id=PACK),
+        normalized=NORMALIZED,
+    )
+
+
+def _normalize(state: GraphState) -> Mapping[str, Any]:
+    """정리 노드 대신 정리 결과를 다시 채운다. 재작업은 정리 결과를 비운다(graph.py)."""
+    return {"design": state["design"].evolve(normalized=NORMALIZED)}
 
 
 def _draft(stage: str | None = None) -> FindingDraft:
@@ -172,6 +194,7 @@ def test_unrouted_finding_goes_through_the_router_to_rework_and_records_versions
         **review_nodes(lambda: client, _settings()),
         "a09": router_node(lambda: client, _settings()),
         "a02": a02,
+        "normalize": _normalize,
     }
     graph = build_graph(nodes, checkpointer=InMemorySaver(), max_rework=3)
     config = {"configurable": {"thread_id": "run-1"}}
