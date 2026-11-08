@@ -14,13 +14,13 @@ const PROJECT_INTRO =
   'Specton은 고객의 요구사항 정의서를 읽어 기능 명세 · ERD · DDL · RTM을 만드는 AI 설계 도우미입니다. ' +
   'AI는 판단만 하고 ID · SQL · 도면은 코드가 만들며, 사람이 확인하고 승인한 결과만 내보냅니다.'
 
-// 팀원 (역할: docs/08-roles.md)
+// 팀원 (역할: docs/08-roles.md). 작업 흐름 순서: 입력·분석 → 기능 → 데이터 모델 → 관계·시각화
 const LEADER = { name: '최태영', role: '팀장 · 실행 제어 · 통합' }
 const MEMBERS = [
-  { name: '김유경', role: '데이터 모델 · 검증' },
-  { name: '김순재', role: '관계 · 시각화 · 웹' },
   { name: '김희영', role: '입력 · 분석 · 평가' },
   { name: '박성진', role: '기능 · API · 저장' },
+  { name: '김유경', role: '데이터 모델 · 검증' },
+  { name: '김순재', role: '관계 · 시각화 · 웹' },
 ]
 
 // 무엇을 하는 도구인지 세 단계로 (docs/09-ui-flow.md: 업로드 → 확인·승인 → 결과 보기)
