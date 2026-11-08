@@ -10,6 +10,7 @@
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
@@ -129,7 +130,7 @@ def review_perspective(
         prompt_version=perspective.prompt_version,
         system=f"{REVIEW_RULES}\n\n{_perspective_block(perspective)}",
         data=_review_data(state, perspective.inputs),
-        examples=_examples(pack, perspective),
+        examples=_examples(pack, perspective, root=settings.pack_root),
     )
 
     try:
@@ -165,7 +166,10 @@ def review_combined(
         system="\n\n".join(
             [
                 f"{REVIEW_RULES}\n{COMBINED_RULE}",
-                *(_perspective_block(p, _examples(pack, p)) for p in perspectives),
+                *(
+                    _perspective_block(p, _examples(pack, p, root=settings.pack_root))
+                    for p in perspectives
+                ),
             ]
         ),
         data=_review_data(state, tuple(s for p in perspectives for s in p.inputs)),
@@ -194,11 +198,13 @@ def _group_by_reviewer(
     return grouped
 
 
-def _examples(pack: str | None, perspective: Perspective) -> tuple[FewShot[ReviewOutput], ...]:
+def _examples(
+    pack: str | None, perspective: Perspective, *, root: Path
+) -> tuple[FewShot[ReviewOutput], ...]:
     """팩의 관점 예시(`examples/<reviewer_id>.yaml`). pack이 없으면 예시 없이 검토한다."""
     if pack is None:
         return ()
-    return load_examples(pack, perspective.reviewer_id, ReviewOutput)
+    return load_examples(pack, perspective.reviewer_id, ReviewOutput, root=root)
 
 
 def _perspective_block(
