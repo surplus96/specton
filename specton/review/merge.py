@@ -142,7 +142,9 @@ def _ground_evidence(
     quote = _normalize(e.quote)
     if any(quote in text for text in pool):
         return None
-    return "quote_not_found", f"{e.req_id}: {e.quote}" if e.req_id else e.quote
+    # 인용문은 원문 일부일 수 있어 로그에 남기지 않는다(REQ-23, #21). 길이만 남긴다
+    where = f"{e.req_id}: " if e.req_id else ""
+    return "quote_not_found", f"{where}인용 {len(e.quote)}자"
 
 
 def _normalize(text: str) -> str:
