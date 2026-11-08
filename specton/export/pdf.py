@@ -25,6 +25,7 @@ import되므로 PDF로 바꿀 때만 불러온다.
 import base64
 import html
 import json
+import logging
 import re
 import subprocess
 import tempfile
@@ -423,8 +424,28 @@ def _esc(text: str) -> str:
 # ── PDF 변환 (WeasyPrint) ─────────────────────────────────
 
 
+class _MissingGlyphs(logging.Handler):
+    """WeasyPrint가 폰트에 없는 글자를 □(.notdef)로 그렸다는 경고를 모은다."""
+
+    _PATTERN = re.compile(
+        r"\.notdef glyph rendered for Unicode string unsupported by fonts: " r'"(.*)"'
+    )
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.WARNING)
+        self.chars: set[str] = set()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        match = self._PATTERN.search(record.getMessage())
+        if match:
+            self.chars.update(match.group(1))
+
+
 def html_to_pdf(document: str) -> PdfResult:
-    """HTML → PDF. `data:` 외의 주소는 가져오지 않고 막은 주소를 돌려준다."""
+    """HTML → PDF. `data:` 외의 주소는 가져오지 않고 막은 주소를 돌려준다.
+
+    폰트에 없는 글자가 있으면(한글 폰트 미설치 등) 깨진 PDF를 내지 않고 `PdfError`로 멈춘다.
+    """
     try:
         from weasyprint import HTML  # type: ignore[import-untyped]
         from weasyprint.urls import URLFetcher  # type: ignore[import-untyped]
@@ -442,11 +463,23 @@ def html_to_pdf(document: str) -> PdfResult:
                 raise ValueError(f"외부 리소스를 가져오지 않습니다: {url}")
             return super().fetch(url, headers)
 
+    missing = _MissingGlyphs()
+    logger = logging.getLogger("weasyprint")
+    logger.addHandler(missing)
     try:
         rendered = HTML(string=document, url_fetcher=_DataOnly(allowed_protocols={"data"})).render()
         pdf = rendered.write_pdf()
     except Exception as exc:  # WeasyPrint 내부 오류를 PDF 오류 하나로
         raise PdfError(f"PDF로 바꾸지 못했습니다: {exc}") from exc
+    finally:
+        logger.removeHandler(missing)
+    if missing.chars:
+        # 폰트에 없는 글자는 □로 깨진 채 PDF가 나온다. 조용히 넘기지 않는다 (실행 이미지 #25 점검).
+        sample = "".join(sorted(missing.chars)[:10])
+        raise PdfError(
+            f"폰트에 없는 글자가 있어 PDF 글자가 깨집니다: {sample} "
+            "(한글 폰트 fonts-noto-cjk가 설치돼 있는지 확인하세요)"
+        )
     if not isinstance(pdf, bytes):
         raise PdfError("PDF 바이트를 받지 못했습니다")
     pages = tuple((float(p.width), float(p.height)) for p in rendered.pages)

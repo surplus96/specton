@@ -298,12 +298,32 @@ def test_mermaid_cli_failure_is_a_pdf_error(monkeypatch: pytest.MonkeyPatch) -> 
 # ── PDF 변환 (WeasyPrint 필요) ─────────────────────────────
 
 
-def _weasyprint() -> Any:
+def _weasyprint(*, korean: bool = False) -> Any:
+    """WeasyPrint를 불러온다. 없으면 건너뛴다. `korean`이면 한글 폰트도 있어야 한다.
+
+    GitHub CI(ubuntu)에는 Pango는 있지만 한글 폰트(fonts-noto-cjk)가 없다. 한글이 필요한 시험은
+    실행 이미지·Docker에서 돌고, 폰트가 없을 때 멈추는지는 CI에서도 시험한다.
+    """
     try:
         import weasyprint
     except (ImportError, OSError):  # Windows에서 GTK가 없으면 OSError
         pytest.skip("WeasyPrint를 불러올 수 없는 환경 (Docker·CI 리눅스에서 실행)")
+    if korean and not _has_korean_font():
+        pytest.skip("한글 폰트(fonts-noto-cjk)가 없는 환경 (실행 이미지·Docker에서 실행)")
     return weasyprint
+
+
+_KOREAN_FONT: list[bool] = []
+
+
+def _has_korean_font() -> bool:
+    if not _KOREAN_FONT:
+        try:
+            pdf.html_to_pdf("<p>한글 확인</p>")
+            _KOREAN_FONT.append(True)
+        except PdfError:
+            _KOREAN_FONT.append(False)
+    return _KOREAN_FONT[0]
 
 
 def _inflated(data: bytes) -> bytes:
@@ -319,7 +339,7 @@ def _inflated(data: bytes) -> bytes:
 
 def _page_texts(document: str) -> list[str]:
     """쪽마다 배치된 글자 (머리글 반복·초안 표식 확인용)."""
-    weasyprint = _weasyprint()
+    weasyprint = _weasyprint(korean=True)
     rendered = weasyprint.HTML(string=document).render()
     texts = []
     for page in rendered.pages:
@@ -329,7 +349,7 @@ def _page_texts(document: str) -> list[str]:
 
 
 def test_pdf_pages_cover_portrait_figures_landscape_and_korean_font() -> None:
-    _weasyprint()
+    _weasyprint(korean=True)
     result = pdf.html_to_pdf(_doc().html)
     assert result.pdf.startswith(b"%PDF")
     width, height = result.pages[0]
@@ -338,6 +358,14 @@ def test_pdf_pages_cover_portrait_figures_landscape_and_korean_font() -> None:
     assert all(w > h for w, h in result.pages[1 : 1 + figures])  # 그림 쪽은 가로
     assert b"Noto" in _inflated(result.pdf)  # 한글 폰트가 PDF에 들어감
     assert result.blocked_urls == ()
+
+
+def test_missing_glyphs_stop_instead_of_making_a_broken_pdf() -> None:
+    """폰트에 없는 글자는 □로 깨진다. 조용히 PDF를 내지 않고 멈춘다 (한글 폰트 미설치 대비)."""
+    _weasyprint()
+    with pytest.raises(PdfError, match="폰트에 없는 글자") as err:
+        pdf.html_to_pdf("<p>\U0010fffd</p>")  # 어떤 폰트에도 없는 사설 영역 글자
+    assert "fonts-noto-cjk" in str(err.value)
 
 
 def test_pdf_blocks_every_url_except_data() -> None:
