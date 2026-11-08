@@ -59,7 +59,7 @@ def test_schema_can_be_applied_twice(pool: Pool) -> None:
         }
     assert tables == {
         "run", "document", "source_block", "model_snapshot", "finding",
-        "approval", "artifact", "artifact_validation", "run_event", "job_lease",
+        "approval", "approval_basis", "artifact", "artifact_validation", "run_event", "job_lease",
     }  # fmt: skip
 
 

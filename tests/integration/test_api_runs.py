@@ -15,9 +15,16 @@ from psycopg.types.json import Jsonb
 from specton.api.main import create_app
 from specton.api.session import SESSION_COOKIE
 from specton.config import Settings
-from specton.contracts import ArtifactRef, DesignState, Interrupt, ResumeRequest, SseEventType
+from specton.contracts import (
+    VALIDATION_STEPS,
+    ArtifactRef,
+    DesignState,
+    Interrupt,
+    ResumeRequest,
+    SseEventType,
+)
 from specton.contracts import RunState as S
-from specton.persistence import lease, runs
+from specton.persistence import lease, runs, validations
 from specton.persistence.db import Pool
 from specton.persistence.runs import NewEvent, answer_interrupt, events_after, record_progress
 from specton.persistence.snapshots import add_artifact, save_model
@@ -565,6 +572,189 @@ def test_review_hold_keeps_waiting_and_approve_is_blocked_by_critical(
     assert hold.json()["status"] == "awaiting_review"
     assert _error(approve) == (422, "INVALID_RESPONSE")
     assert revise.json()["status"] == "designing"
+
+
+# 최종 승인의 SQL 검증 확인·승인 근거 (#195, #167)
+
+SQL_HASH = "a" * 64
+OLD_VERSIONS = {**validations.REQUIRED_VERSIONS, "validator_version": "sql-validator-v0"}
+APPROVE = {"kind": "review", "decision": "approve", "feedback": ""}
+
+
+def _steps(status: str) -> list[dict[str, Any]]:
+    """전체 상태가 `status`가 되는 다섯 단계 (실패·장애는 execute, 미검증은 뒤 세 단계 미실행)."""
+    names = [n.value for n in VALIDATION_STEPS]
+    if status == "passed":
+        return [{"name": n, "status": "passed", "issues": []} for n in names]
+    if status == "unverified":
+        return [
+            {"name": n, "status": "passed" if i < 2 else "not_run", "issues": []}
+            for i, n in enumerate(names)
+        ]
+    issue = [{"code": "x", "message": None, "statement_index": None, "sqlstate": None}]
+    return [
+        {"name": n, "status": status if n == "execute" else "passed",
+         "issues": issue if n == "execute" else []}
+        for n in names
+    ]  # fmt: skip
+
+
+def _review_with_sql(
+    pool: Pool, run_id: str, attempts: list[tuple[str, dict[str, str]]], *, sql: bool = True
+) -> dict[str, UUID]:
+    """revision 0 스냅샷에 ERD와 (선택) SQL 산출물, 검증 시도들을 넣는다.
+
+    시도는 넣은 순서대로 검증 시각이 1분씩 늦다.
+    """
+    ids: dict[str, UUID] = {}
+    with pool.connection() as conn:
+        snapshot = uuid4()
+        conn.execute(
+            "INSERT INTO model_snapshot (snapshot_id, run_id, revision, normalized_model, "
+            "model_hash) VALUES (%s, %s, 0, '{}', 'm')",
+            (snapshot, run_id),
+        )
+        kinds = [("erd", "mmd", "e" * 64)] + ([("ddl", "sql", SQL_HASH)] if sql else [])
+        for kind, file_format, digest in kinds:
+            ids[kind] = uuid4()
+            conn.execute(
+                "INSERT INTO artifact (artifact_id, snapshot_id, kind, file_format, hash, "
+                "storage_ref) VALUES (%s, %s, %s, %s, %s, 'x')",
+                (ids[kind], snapshot, kind, file_format, digest),
+            )
+        for i, (status, versions) in enumerate(attempts):
+            ids[f"attempt-{i}"] = uuid4()
+            conn.execute(
+                "INSERT INTO artifact_validation (validation_id, artifact_id, artifact_hash, "
+                "model_hash, status, steps, validator_version, policy_version, postgres_version, "
+                "validated_at) VALUES (%s, %s, %s, 'm', %s, %s, %s, %s, %s, "
+                "'2026-11-08T09:00:00Z'::timestamptz + %s * interval '1 minute')",
+                (
+                    ids[f"attempt-{i}"], ids["ddl"], SQL_HASH, status, Jsonb(_steps(status)),
+                    versions["validator_version"], versions["policy_version"],
+                    versions["postgres_version"], i,
+                ),
+            )  # fmt: skip
+    return ids
+
+
+@pytest.fixture
+def checked_client(settings: Settings, pool: Pool) -> Iterator[TestClient]:
+    """최종 승인 때 SQL 검증 통과를 요구하는 앱."""
+    with TestClient(
+        create_app(settings.model_copy(update={"require_sql_validation": True}), pool)
+    ) as c:
+        yield c
+
+
+def _basis(pool: Pool, run_id: str) -> dict[UUID, UUID | None]:
+    with pool.connection() as conn:
+        rows = conn.execute(
+            "SELECT b.artifact_id, b.validation_id FROM approval_basis b JOIN approval a "
+            "USING (approval_id) WHERE a.run_id = %s",
+            (run_id,),
+        ).fetchall()
+    return {r["artifact_id"]: r["validation_id"] for r in rows}
+
+
+def test_approve_with_a_passed_sql_records_the_basis(
+    checked_client: TestClient, pool: Pool
+) -> None:
+    run_id = _create(checked_client).json()["run_id"]
+    interrupt_id = _wait(pool, run_id, "review", S.AWAITING_REVIEW)
+    ids = _review_with_sql(pool, run_id, [("passed", validations.REQUIRED_VERSIONS)])
+
+    response = _resume(checked_client, run_id, interrupt_id, APPROVE)
+
+    assert response.status_code == 202
+    assert _basis(pool, run_id) == {ids["erd"]: None, ids["ddl"]: ids["attempt-0"]}
+
+
+@pytest.mark.parametrize(
+    ("attempts", "sql", "message"),
+    [
+        ([], False, "승인할 SQL 산출물이 없습니다."),
+        ([], True, "검증을 통과하지 않은 SQL"),  # 기록 없음 = unverified
+        ([("unverified", validations.REQUIRED_VERSIONS)], True, "검증을 통과하지 않은 SQL"),
+        ([("failed", validations.REQUIRED_VERSIONS)], True, "검증을 통과하지 않은 SQL"),
+        ([("error", validations.REQUIRED_VERSIONS)], True, "검증을 통과하지 않은 SQL"),
+        # 새 시도가 실패면 이전 통과로 돌아가지 않는다
+        (
+            [("passed", validations.REQUIRED_VERSIONS), ("failed", validations.REQUIRED_VERSIONS)],
+            True,
+            "검증을 통과하지 않은 SQL",
+        ),
+        # 지금 요구하는 버전의 시도가 없으면 이전 버전 통과를 쓰지 않는다
+        ([("passed", OLD_VERSIONS)], True, "검증을 통과하지 않은 SQL"),
+    ],
+)
+def test_approve_is_rejected_without_a_current_passed_sql(
+    checked_client: TestClient,
+    pool: Pool,
+    attempts: list[tuple[str, dict[str, str]]],
+    sql: bool,
+    message: str,
+) -> None:
+    run_id = _create(checked_client).json()["run_id"]
+    interrupt_id = _wait(pool, run_id, "review", S.AWAITING_REVIEW)
+    _review_with_sql(pool, run_id, attempts, sql=sql)
+
+    response = _resume(checked_client, run_id, interrupt_id, APPROVE)
+
+    assert _error(response) == (422, "INVALID_RESPONSE")
+    assert message in response.json()["message"]
+    status = checked_client.get(f"/runs/{run_id}").json()
+    assert (status["status"], status["interrupt"]["interrupt_id"]) == (
+        "awaiting_review",
+        interrupt_id,
+    )
+    assert _basis(pool, run_id) == {}
+    with pool.connection() as conn:
+        assert (
+            conn.execute("SELECT 1 FROM approval WHERE run_id = %s", (run_id,)).fetchone() is None
+        )
+
+
+def test_without_the_setting_approve_skips_the_check_but_keeps_the_basis(
+    client: TestClient, pool: Pool
+) -> None:
+    """연결 전(기본값)에는 지금처럼 승인하고, SQL 근거에 검증 시도를 붙이지 않는다."""
+    run_id = _create(client).json()["run_id"]
+    interrupt_id = _wait(pool, run_id, "review", S.AWAITING_REVIEW)
+    ids = _review_with_sql(pool, run_id, [("failed", validations.REQUIRED_VERSIONS)])
+
+    response = _resume(client, run_id, interrupt_id, APPROVE)
+
+    assert response.status_code == 202
+    assert _basis(pool, run_id) == {ids["erd"]: None, ids["ddl"]: None}
+
+
+def test_view_shows_the_current_sql_validation(client: TestClient, pool: Pool) -> None:
+    run_id = _create(client).json()["run_id"]
+    _wait(pool, run_id, "review", S.AWAITING_REVIEW)
+    _review_with_sql(
+        pool, run_id, [("passed", OLD_VERSIONS), ("failed", validations.REQUIRED_VERSIONS)]
+    )
+
+    artifacts = client.get(f"/runs/{run_id}/view", params={"section": "design"}).json()["artifacts"]
+
+    by_kind = {a["kind"]: a for a in artifacts}
+    assert "validation" not in by_kind["erd"]
+    assert by_kind["ddl"]["validation"] == {
+        "status": "failed",
+        "validated_at": "2026-11-08T09:01:00+00:00",
+    }
+
+
+def test_view_shows_unverified_when_no_record_matches(client: TestClient, pool: Pool) -> None:
+    run_id = _create(client).json()["run_id"]
+    _wait(pool, run_id, "review", S.AWAITING_REVIEW)
+    _review_with_sql(pool, run_id, [("passed", OLD_VERSIONS)])
+
+    artifacts = client.get(f"/runs/{run_id}/view", params={"section": "design"}).json()["artifacts"]
+
+    sql = next(a for a in artifacts if a["kind"] == "ddl")
+    assert sql["validation"] == {"status": "unverified", "validated_at": None}
 
 
 # SSE (GET /runs/{id}/events)
