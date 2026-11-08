@@ -585,7 +585,8 @@ class TestRegressionOnRealFiles:
 
         2026-11-07 실제 실행 결과: 두 원문 모두 같았다(KITECH 41건·경남 64건).
         """
-        import rhwp  # 시험에서 엔진을 직접 쓰는 것은 허용(원본을 hwpx로 내보내려는 용도)
+        rhwp = pytest.importorskip("rhwp", exc_type=ImportError)  # 엔진을 못 불러오면 건너뜀
+        # (시험에서 엔진을 직접 쓰는 것은 허용: 원본을 hwpx로 내보내려는 용도)
 
         for name in (_KITECH, _GYEONGNAM):
             exported = tmp_path / (Path(name).stem + ".hwpx")
@@ -669,6 +670,8 @@ def test_engine_block_names_still_exist_in_rhwp() -> None:
     """
     import re
 
+    # 엔진을 못 불러오는 환경(리눅스 휠 문제)이면 건너뜀
+    pytest.importorskip("rhwp", exc_type=ImportError)
     from rhwp.ir import nodes  # 시험에서 엔진 직접 사용 허용(위 이유)
 
     source = (

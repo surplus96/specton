@@ -5,6 +5,10 @@ rhwp-python의 성숙도 위험(11/1 조회):
     활발. 그래서 버전을 고정하고 이 모듈 뒤에 숨기며, 연결부가 깨질 때를 위해 `rhwp dump`
     명령줄 예비 경로를 둔다.
 
+`import rhwp`는 `read_blocks`가 불릴 때 불러온다(지연 import). 리눅스에서 rhwp-python 0.8.1
+휠이 `import`부터 실패하는 환경(시스템 FreeType 선로드 없음)이 있어, 맨 위 import로 두면
+앱 전체가 못 뜬다.
+
 이유(왜 한 파일에 가두는가): 엔진이 바뀌거나 깨져도 고칠 곳이 여기 한 곳이다. 나머지 코드
 (`hangul.py`)는 아래 엔진 독립 자료형만 본다. 시험도 이 자료형으로 가짜 문서를 만들어
 엔진 없이 돈다.
@@ -18,8 +22,6 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-import rhwp
 
 
 class HangulFormatError(ValueError):
@@ -113,6 +115,12 @@ def read_blocks(path: Path) -> HangulDocument:
     - 그 밖의 엔진·연결부 오류는 `EngineError`
     - 파일 접근 오류(OSError 계열: 없음·권한·폴더 등)는 엔진 문제가 아니므로 그대로 올린다
     """
+    # 엔진은 쓰는 순간 불러온다. 맨 위에서 불러오면 리눅스 휠이 깨진 환경에서 이 파일을 쓰는
+    # 모든 모듈(parse 노드·API)까지 불러오지 못해 앱이 뜨지 않는다(rhwp-python 0.8.1, 상류 #31).
+    try:
+        import rhwp
+    except ImportError as exc:
+        raise EngineError(f"한글 읽기 엔진(rhwp)을 불러오지 못했어요: {exc}") from exc
     try:
         doc = rhwp.parse(str(path))
         ir = doc.to_ir()
