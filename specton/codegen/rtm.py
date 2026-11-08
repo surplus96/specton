@@ -14,6 +14,7 @@ import io
 import re
 import zipfile
 from dataclasses import astuple, dataclass
+from typing import Any
 
 from openpyxl import Workbook  # type: ignore[import-untyped]
 from openpyxl.styles import Alignment, Font  # type: ignore[import-untyped]
@@ -27,6 +28,9 @@ COLUMNS = (
     "원문 ID", "원문 위치", "요구사항 ID", "상위 요구사항", "요구사항", "유형",
     "기능", "엔티티", "관계", "상태", "비고",
 )  # fmt: skip
+_FORMULA_STARTS = ("=", "+", "-", "@", "\t", "\r")  # 스프레드시트가 수식으로 읽는 첫 글자
+_CELL_LIMIT = 32_767  # 엑셀 한 칸의 최대 글자 수
+_LONG_SHEET = "긴 글"
 _FIXED_TIME = (2000, 1, 1, 0, 0, 0)  # xlsx zip 항목 시각 (같은 입력 → 같은 바이트)
 _CORE_TIME = re.compile(rb"(<dcterms:(?:created|modified)[^>]*>)[^<]*(</dcterms:)")
 
@@ -69,23 +73,44 @@ def counts(rows: tuple[RtmRow, ...]) -> dict[str, int]:
 
 
 def render_rtm_csv(design: DesignState) -> bytes:
-    """UTF-8(BOM) CSV. 엑셀에서 한글이 깨지지 않게 BOM을 붙인다. 줄 끝은 CRLF(RFC 4180)."""
+    """UTF-8(BOM) CSV. 엑셀에서 한글이 깨지지 않게 BOM을 붙인다. 줄 끝은 CRLF(RFC 4180).
+
+    수식으로 읽힐 수 있는 칸(`=`·`+`·`-`·`@`·탭·CR로 시작)은 앞에 `'`를 붙인다 (#215 리뷰).
+    """
     buffer = io.StringIO()
     writer = csv.writer(buffer, lineterminator="\r\n")
     writer.writerow(COLUMNS)
-    writer.writerows(astuple(r) for r in build_rtm(design))
+    writer.writerows([_csv_safe(v) for v in astuple(r)] for r in build_rtm(design))
     return ("﻿" + buffer.getvalue()).encode("utf-8")
 
 
 def render_rtm_xlsx(design: DesignState) -> bytes:
-    """시트 「RTM」(행)과 「문서 정보」(기능 명세서와 같은 문서 정보 + 상태별 건수)."""
+    """시트 「RTM」(행)과 「문서 정보」(기능 명세서와 같은 문서 정보 + 상태별 건수).
+
+    모든 글 칸은 수식이 아닌 문자열로 쓴다. 엑셀 한 칸 한도(32,767자)를 넘는 글은 자르지 않고
+    「긴 글」 시트에 조각으로 나눠 모두 남기며, RTM 칸에는 그 위치를 적는다 (#215 리뷰).
+    """
     rows = build_rtm(design)
     book = Workbook()
     sheet = book.active
     sheet.title = "RTM"
     sheet.append(COLUMNS)
-    for row in rows:
-        sheet.append(astuple(row))
+    long_texts: list[tuple[str, int, str, int, str]] = []
+    for line, row in enumerate(rows, start=2):
+        for column, (name, value) in enumerate(zip(COLUMNS, astuple(row), strict=True), 1):
+            if len(value) > _CELL_LIMIT:
+                key = f"긴 글 {len(long_texts) + 1}"
+                pieces = [value[i : i + _CELL_LIMIT] for i in range(0, len(value), _CELL_LIMIT)]
+                long_texts += [(key, line, name, n, p) for n, p in enumerate(pieces, 1)]
+                value = f"[「{_LONG_SHEET}」 시트 {key}, {len(value)}자]"
+            _text_cell(sheet, line, column, value)
+    if long_texts:
+        extra = book.create_sheet(_LONG_SHEET)
+        extra.append(("번호", "RTM 행", "칸", "조각", "내용"))
+        for line, (key, at, name, n, piece) in enumerate(long_texts, start=2):
+            for column, value in enumerate((key, at, name, n), 1):
+                extra.cell(row=line, column=column, value=value)
+            _text_cell(extra, line, 5, piece)
     for cell in sheet[1]:
         cell.font = Font(bold=True)
     for line in sheet.iter_rows(min_row=2):
@@ -103,6 +128,16 @@ def render_rtm_xlsx(design: DesignState) -> bytes:
     buffer = io.BytesIO()
     book.save(buffer)
     return _fixed(buffer.getvalue())
+
+
+def _text_cell(sheet: Any, row: int, column: int, value: str) -> None:
+    """수식(`=`로 시작)으로 해석하지 않도록 문자열 형식을 명시한다."""
+    cell = sheet.cell(row=row, column=column, value=value)
+    cell.data_type = "s"
+
+
+def _csv_safe(value: str) -> str:
+    return f"'{value}" if value.startswith(_FORMULA_STARTS) else value
 
 
 def _from(req: Requirement, source: SourceRequirement) -> bool:

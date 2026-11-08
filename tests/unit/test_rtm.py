@@ -232,3 +232,47 @@ def test_manifest_does_not_mix_revisions_models_or_drafts(tmp_path: Path) -> Non
         build_manifest(design, [approved, draft[1]])  # type: ignore[list-item]
     with pytest.raises(ValueError, match="산출물이 없습니다"):
         build_manifest(design, [])
+
+
+def _with_texts(req_text: str, excluded_text: str, note: str) -> DesignState:
+    design = _design()
+    first = design.requirements[0].evolve(text=req_text)
+    excluded = design.source_requirements[1].evolve(source_text=excluded_text, excluded_reason=note)
+    sources = (design.source_requirements[0], excluded, *design.source_requirements[2:])
+    return design.evolve(
+        requirements=(first, *design.requirements[1:]), source_requirements=sources
+    )
+
+
+def test_free_text_is_never_a_formula() -> None:
+    """원문·문장·비고가 `=`·`+`·`@`로 시작해도 수식으로 내보내지 않는다 (#215 리뷰)."""
+    design = _with_texts("=1+1", "@SUM(A1)", "+cmd|' /C calc'!A0")
+
+    sheet = load_workbook(io.BytesIO(render_rtm_xlsx(design)))["RTM"]
+    cells = [c for row in sheet.iter_rows(min_row=2) for c in row if c.value]
+    assert all(c.data_type == "s" for c in cells)
+    values = {c.value for c in cells}
+    assert {"=1+1", "@SUM(A1)", "+cmd|' /C calc'!A0"} <= values
+    rows = list(csv.reader(io.StringIO(render_rtm_csv(design).decode("utf-8-sig"), newline="")))
+    text, note = COLUMNS.index("요구사항"), COLUMNS.index("비고")
+    assert rows[1][text] == "'=1+1"
+    assert (rows[3][text], rows[3][note]) == ("'@SUM(A1)", "'+cmd|' /C calc'!A0")
+    assert design.requirements[0].text == "=1+1"  # 저장 모델의 문장은 바꾸지 않는다
+
+
+def test_long_text_is_kept_whole_in_the_long_text_sheet() -> None:
+    """엑셀 한 칸 한도(32,767자)를 넘는 원문을 조용히 자르지 않는다 (#215 리뷰)."""
+    long_text = "가" * 40_000
+    design = _with_texts("입고를 등록한다", long_text, "긴 안내 문단")
+
+    book = load_workbook(io.BytesIO(render_rtm_xlsx(design)))
+    excluded = book["RTM"].cell(row=4, column=COLUMNS.index("요구사항") + 1).value
+    assert excluded == "[「긴 글」 시트 긴 글 1, 40000자]"
+    pieces = list(book["긴 글"].iter_rows(min_row=2, values_only=True))
+    assert [(p[0], p[1], p[2], p[3]) for p in pieces] == [
+        ("긴 글 1", 4, "요구사항", 1), ("긴 글 1", 4, "요구사항", 2),
+    ]  # fmt: skip
+    assert "".join(p[4] for p in pieces) == long_text
+    assert all(len(str(c.value or "")) <= 32_767 for ws in book for r in ws.iter_rows() for c in r)
+    csv_text = render_rtm_csv(design).decode("utf-8-sig")
+    assert long_text in csv_text  # CSV는 한도가 없어 그대로 둔다
