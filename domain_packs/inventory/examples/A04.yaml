@@ -44,3 +44,145 @@ examples:
       identifying: false
       rationale: '"각 내역은 한 품목과 수량을 가지며" 내역마다 품목이 반드시 하나 있다.'
       req_ids: [REQ-02]
+# A04.yaml의 examples: 목록 맨 끝(기존 첫 예시 INV-005 뒤)에 그대로 붙인다.
+# 입력 requirements는 실제 A01이 나눈 결과의 text·type를 고치지 않고 옮겼고, id만 REQ-01부터 다시 매겼다.
+# 입력 entities는 A04 input_data 모양(name·description·attributes의 name·data_type·is_key·nullable)이다.
+# 엔티티·속성 이름은 공통표준 단어로 물리명이 만들어지는 이름만 쓴다(specton/codegen/naming.py로 확인).
+# SFR-202 앞부분(상세 설명 1–5줄, 「○ 집하 배차 관리」 앞까지): 실행 id REQ-08∼10 → REQ-01∼03.
+#   「출하자」「집하」는 공통표준 단어가 없어 엔티티 이름을 출하업체·수거지시로 두고 description에 원문 말을 남긴다.
+#   구매자가 지정한 배송 도착지는 팩의 「창고」(자사 보관 창고)와 다른 대상이라 배송지로 둔다.
+#   운송유형은 집하 방식을 고르는 정보일 뿐, 집하 지시와 이어진다는 문장이 원문에 없어 관계를 만들지 않는다.
+# SFR-202 앞부분(상세 설명 1–5줄)만 사용 — source_id에는 원문 ID만 적는다(파일 머리 주석 규칙).
+- source_id: SFR-202
+  input:
+    entities:
+    - name: 출하업체
+      description: 센터 관할 권역 안에서 상품을 내보내는 출하자
+      attributes:
+      - {name: 출하업체코드, data_type: varchar, is_key: true, nullable: false}
+    - name: 운송유형
+      description: 집하 방식을 고를 수 있는 운송 유형 정보
+      attributes:
+      - {name: 운송유형코드, data_type: varchar, is_key: true, nullable: false}
+      - {name: 수거방식코드, data_type: varchar, is_key: false, nullable: true}
+    - name: 수거지시
+      description: 출하자가 직접 요청해 생성한 집하 지시
+      attributes:
+      - {name: 수거지시번호, data_type: varchar, is_key: true, nullable: false}
+      - {name: 수거요청일시, data_type: timestamp, is_key: false, nullable: true}
+    - name: 구매자
+      description: 관할 권역 안에서 상품을 배송받는 구매자
+      attributes:
+      - {name: 구매자코드, data_type: varchar, is_key: true, nullable: false}
+    - name: 배송지
+      description: 구매자가 지정한 배송 도착 장소(구매자의 창고)
+      attributes:
+      - {name: 배송지코드, data_type: varchar, is_key: true, nullable: false}
+    - name: 배송
+      description: 센터에서 구매자가 지정한 창고까지 상품을 보내는 배송
+      attributes:
+      - {name: 배송번호, data_type: varchar, is_key: true, nullable: false}
+    requirements:
+    - id: REQ-01
+      text: 출하자가 직접 집하를 요청하는 방식을 고르면 집하 지시를 생성해야 한다.
+      type: FR
+    - id: REQ-02
+      text: 운송 정보 관리 기능에서 운송 유형의 집하 방식을 고를 수 있어야 한다.
+      type: FR
+    - id: REQ-03
+      text: 센터에서 관할 권역 안 구매자가 지정한 창고까지 상품을 배송할 수 있어야 한다.
+      type: FR
+  output:
+    relationships:
+    - parent_name: 출하업체
+      child_name: 수거지시
+      cardinality: 1:N
+      optional: false
+      identifying: false
+      rationale: '"출하자가 직접 집하를 요청하는 방식을 고르면 집하 지시를 생성해야 한다." 집하 지시마다 요청한 출하자가 하나 있다.'
+      req_ids: [REQ-01]
+    - parent_name: 구매자
+      child_name: 배송
+      cardinality: 1:N
+      optional: false
+      identifying: false
+      rationale: '"관할 권역 안 구매자가 지정한 창고까지 상품을 배송할 수 있어야 한다." 배송마다 받는 구매자가 하나 있다.'
+      req_ids: [REQ-03]
+    - parent_name: 배송지
+      child_name: 배송
+      cardinality: 1:N
+      optional: false
+      identifying: false
+      rationale: '"구매자가 지정한 창고까지 상품을 배송할 수 있어야 한다." 배송마다 도착 장소가 하나 있다.'
+      req_ids: [REQ-03]
+# SFR-205 + TER-201: 실행 id SFR-205 REQ-27∼31 → REQ-01∼05, TER-201 REQ-53 → REQ-06.
+#   TER-201(테스트 계획)은 사업 수행 계획에 대한 비기능 요구라 저장할 엔티티의 근거가 아니다.
+#   입력에는 함께 있지만 관계를 만들지 않는다(근거 없는 관계 금지).
+- source_id: SFR-205,TER-201
+  input:
+    entities:
+    - name: 실습시나리오
+      description: 수주에서 생산, 품질, 납품까지 이어지는 교육 실습 시나리오
+      attributes:
+      - {name: 실습시나리오번호, data_type: varchar, is_key: true, nullable: false}
+      - {name: 실습시나리오명, data_type: varchar, is_key: false, nullable: true}
+    - name: 시나리오단계
+      description: 실습 시나리오의 단계별 입력과 처리 흐름
+      attributes:
+      - {name: 단계번호, data_type: integer, is_key: true, nullable: false}
+      - {name: 단계명, data_type: varchar, is_key: false, nullable: true}
+    - name: 강사
+      description: 실습 시나리오를 관리하는 강사
+      attributes:
+      - {name: 강사번호, data_type: varchar, is_key: true, nullable: false}
+    - name: 교육차수
+      description: 실습 데이터를 나누는 교육 차수
+      attributes:
+      - {name: 교육차수번호, data_type: varchar, is_key: true, nullable: false}
+    - name: 실습자료
+      description: 교육용 샘플 데이터와 예제 데이터
+      attributes:
+      - {name: 실습자료번호, data_type: varchar, is_key: true, nullable: false}
+      - {name: 자료구분코드, data_type: varchar, is_key: false, nullable: true}
+    requirements:
+    - id: REQ-01
+      text: ERP/MES 교육 실습을 위해 수주에서 생산, 품질, 납품까지 이어지는 실습 시나리오를 제공해야 한다.
+      type: FR
+    - id: REQ-02
+      text: 실습 단계별 입력과 처리 흐름을 확인할 수 있어야 한다.
+      type: FR
+    - id: REQ-03
+      text: 교육용 샘플 데이터와 예제 데이터를 제공해야 한다.
+      type: FR
+    - id: REQ-04
+      text: 교육 차수별로 데이터를 분리할 수 있어야 한다.
+      type: FR
+    - id: REQ-05
+      text: 강사가 실습 시나리오를 관리할 수 있어야 한다.
+      type: FR
+    - id: REQ-06
+      text: 단위 테스트·통합 테스트·시범 운영 계획에 테스트 데이터·절차·일정을 포함하고 실제 운영 상황과 교육 시나리오에 맞춘 테스트 방안을 제시하는 작업이다. 개발 단계마다 테스트를 수행하고 결과를 반영하는 작업도 포함한다.
+      type: NFR
+  output:
+    relationships:
+    - parent_name: 실습시나리오
+      child_name: 시나리오단계
+      cardinality: 1:N
+      optional: false
+      identifying: true
+      rationale: '"실습 단계별 입력과 처리 흐름을 확인할 수 있어야 한다." 단계는 시나리오 안의 단계번호로만 식별된다.'
+      req_ids: [REQ-02]
+    - parent_name: 강사
+      child_name: 실습시나리오
+      cardinality: 1:N
+      optional: true
+      identifying: false
+      rationale: '"강사가 실습 시나리오를 관리할 수 있어야 한다." 한 강사가 여러 시나리오를 관리한다.'
+      req_ids: [REQ-05]
+    - parent_name: 교육차수
+      child_name: 실습자료
+      cardinality: 1:N
+      optional: false
+      identifying: false
+      rationale: '"교육 차수별로 데이터를 분리할 수 있어야 한다." 실습 자료는 한 교육 차수에 속한다.'
+      req_ids: [REQ-04]

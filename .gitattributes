@@ -5,3 +5,6 @@ domain_packs/*/terms.yaml             linguist-generated=true
 domain_packs/sources/*.csv            linguist-generated=true -diff
 uv.lock                               linguist-generated=true
 frontend/package-lock.json            linguist-generated=true
+
+# 컨테이너 안에서 실행하는 셸 스크립트는 Windows 체크아웃에서도 LF로 둔다 (CRLF면 bash가 실패한다).
+*.sh text eol=lf

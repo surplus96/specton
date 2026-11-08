@@ -715,3 +715,23 @@ def test_download_rejects_bad_combinations_and_missing_files(
     assert _error(
         _other(settings, pool).get(f"{url}/ddl", params={"file_format": "sql", "revision": 0})
     ) == (404, "RUN_NOT_FOUND")
+
+
+@pytest.mark.parametrize("absolute", [False, True])
+def test_download_rejects_a_record_pointing_outside_storage(
+    client: TestClient, settings: Settings, pool: Pool, sample_state: StateFactory, absolute: bool
+) -> None:
+    run_id = _saved(client, pool, sample_state)
+    _artifact(
+        settings, pool, run_id,
+        ArtifactRef(kind="ddl", file_format="sql", revision=0, hash="fixture"), b"fixture",
+    )  # fmt: skip
+    outside = settings.storage_dir.parent / "storage-other" / "private.sql"
+    outside.parent.mkdir()
+    outside.write_bytes(b"must not be downloaded")
+    storage_ref = str(outside) if absolute else "../storage-other/private.sql"
+    with pool.connection() as conn:
+        conn.execute("UPDATE artifact SET storage_ref = %s", (storage_ref,))
+
+    with pytest.raises(RuntimeError, match="산출물 기록은 있으나 파일이 없습니다"):
+        client.get(f"/runs/{run_id}/artifacts/ddl", params={"file_format": "sql", "revision": 0})

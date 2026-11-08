@@ -79,7 +79,7 @@
 | 공식 용어 약어 변경 금지 | official | 고시 제13조④ |
 | DDL은 소문자 snake_case | project | PostgreSQL은 따옴표 없는 식별자를 소문자로 접는다 ([PostgreSQL 18](https://www.postgresql.org/docs/18/sql-syntax-lexical.html)) |
 | 식별자 63바이트 초과 거부 | official (PostgreSQL) | 초과분은 오류 없이 잘려 `<table>_<col>_fkey` 같은 제약명이 충돌할 수 있다 |
-| 용어당 최대 단어 수, 접두어, PK·FK 명명 | project | 국가 규칙 없음. 점검 도구 설정값(5단어)은 참고만 한다 |
+| 용어당 최대 단어 수(제한 없음), 테이블 접두어(없음)·형태(사전 그대로)·교차테이블명(부모+자식), PK·FK 명명, 자기참조 접두어(상위) | project | 국가 규칙 없음. R4 초안(#11, 2026-11-05)으로 값 확정 |
 
 ## 표준 준수 진단
 

@@ -19,7 +19,7 @@ from specton.api.deps import ConnDep, PoolDep, SettingsDep
 from specton.api.errors import ApiError
 from specton.api.session import OwnerRef
 from specton.api.uploads import discard_upload, save_upload
-from specton.artifacts import ARTIFACT_FORMATS
+from specton.artifacts import ARTIFACT_FORMATS, is_within_storage
 from specton.config import Settings
 from specton.contracts import (
     ErrorCode,
@@ -197,7 +197,7 @@ def download_artifact(
     stored = snapshots.find_artifact(conn, run_id, owner, kind, file_format, revision)
     root = settings.storage_dir.resolve()
     path = (root / stored.storage_ref).resolve()
-    if not path.is_relative_to(root) or not path.is_file():
+    if not is_within_storage(path, root) or not path.is_file():
         raise RuntimeError("산출물 기록은 있으나 파일이 없습니다")  # 경로는 응답에 넣지 않는다
     draft = "" if stored.ref.approved else "-draft"
     return FileResponse(
