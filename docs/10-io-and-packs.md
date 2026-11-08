@@ -81,6 +81,7 @@
 | 검토 보고서 | Markdown (중간) | source별 지적·근거·수정 이력·검증/승인 상태 |
 
 - PDF는 승인 시점에 최종 Markdown·Mermaid를 변환해 1회 만든다 (확정).
+- 기능 명세서 Markdown(`specton/codegen/function_spec.py`, #14)은 문서 정보(`run_id`·`revision`·`model_hash`·`pack`·`pack_version`, ERD PDF 표지와 같은 이름) → 기능 목록 → 기능 상세 → CRUD 매트릭스(면제 근거 포함) 순서다. 제목·문단·글머리표·굵게·인라인 코드·파이프 표만 쓰고(글 안의 `\`·`*`·`` ` ``는 역슬래시로, 표 칸의 `|`는 그 뒤에 이스케이프), 초안 표시는 넣지 않는다(승인본이 같은 바이트라 초안 구분은 파일 이름·PDF가 한다).
 - PDF 엔진: WeasyPrint(HTML/CSS → PDF) + `mermaid-cli`(SVG), Mermaid 11.15.0. 기능 명세서와 ERD가 같은 엔진을 쓴다. ERD가 깨지면 Playwright 인쇄로 전환 (ADR-0004 승인).
 - 한글 폰트(Noto Sans CJK KR)·긴 표 페이지 분할·머리글 반복·ERD 배율은 실측으로 확인했다. ERD는 개요 + 영역별 상세도(키 속성만) + 테이블 정의서로 나누고, 넓은 표는 가로 쪽에 두되 넘치면 열을 나눈다 (ADR-0004 「PDF 출력 실측」).
 - 렌더러가 외부 경로·URL 리소스를 가져오지 못하게 제한한다.
