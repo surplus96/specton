@@ -27,6 +27,7 @@ from specton.codegen.naming import (
 from specton.codegen.normalize import PackRef, normalize
 from specton.contracts import DesignState, Entity, Relationship, Requirement
 from specton.packs.build import read_yaml
+from specton.packs.loader import load_common
 
 LEXICON_FILES = (
     "common/naming.yaml",
@@ -207,6 +208,26 @@ def test_empty_naming_value_is_unset(tmp_path: Path, value: str | None) -> None:
     _set_naming(root, {k: value for k in AGREED_NAMING})
     rules = load_naming_rules(root)
     assert (rules.self_reference_prefix, rules.junction_name) == (None, None)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("상위", "상위"), (" 상위 ", "상위"), ("", None), ("   ", None), (" \t ", None), (None, None)],
+)
+def test_self_reference_prefix_is_read_the_same_way_as_the_pack_loader(
+    tmp_path: Path, value: str | None, expected: str | None
+) -> None:
+    """팩 로더(앞뒤 공백 지움, 빈 문자열·null은 미정)와 같은 뜻으로 접두어를 읽는다 (#166 리뷰).
+
+    정리 경로는 팩 로더를 거치지 않고 naming.yaml을 직접 읽으므로 따로 맞춘다. draft 기준이다.
+    반환값이 글자 그대로 같은지가 아니라 뜻이 같은지를 본다: draft에서 로더는 미정을 빈 문자열로
+    돌려주고 정리 코드는 None으로 돌려주므로, 로더 쪽 빈 문자열을 None으로 바꿔 비교한다.
+    """
+    shutil.copytree(DEFAULT_PACK_ROOT / "common", tmp_path / "common")
+    _set_naming(tmp_path, {("column", "self_reference_prefix"): value})
+    loaded = load_common(root=tmp_path).naming.column.self_reference_prefix
+    assert (loaded or None) == expected
+    assert load_naming_rules(tmp_path).self_reference_prefix == expected
 
 
 # ── 사전 ──────────────────────────────────────────────────────────────
@@ -415,10 +436,16 @@ MNT_002 = DesignState(  # maintenance A04 MNT-002: 설비 → 상위 설비 (선
 )
 
 
-def test_maintenance_self_reference_reads_prefix_from_naming_yaml(tmp_path: Path) -> None:
-    """접두어를 코드로 넘기지 않고 naming.yaml column.self_reference_prefix(상위 → UP)로 읽는다."""
+@pytest.mark.parametrize("prefix", ["상위", " 상위 "])
+def test_maintenance_self_reference_reads_prefix_from_naming_yaml(
+    tmp_path: Path, prefix: str
+) -> None:
+    """접두어를 코드로 넘기지 않고 naming.yaml column.self_reference_prefix(상위 → UP)로 읽는다.
+
+    앞뒤 공백은 팩 로더처럼 지운다.
+    """
     root = _copy_pack(tmp_path, "maintenance")
-    _set_naming(root, {("column", "self_reference_prefix"): "상위"})
+    _set_naming(root, {("column", "self_reference_prefix"): prefix})
     lexicon = load_pack_lexicon("maintenance", root)
     rules = load_naming_rules(root)
     result = normalize(MNT_002, pack=_pack("maintenance"), lexicon=lexicon, rules=rules)
@@ -453,10 +480,16 @@ def test_agreed_naming_values_do_not_change_names(tmp_path: Path) -> None:
     assert tables[0] == tables[1]
 
 
-def test_maintenance_self_reference_is_blocked_when_prefix_is_unset(tmp_path: Path) -> None:
-    """column.self_reference_prefix가 빈칸(미정)이면 막힌다. 실제 팩 값과 상관없이 빈칸으로 본다."""
+@pytest.mark.parametrize("prefix", [None, "", "   ", " \t "])
+def test_maintenance_self_reference_is_blocked_when_prefix_is_unset(
+    tmp_path: Path, prefix: str | None
+) -> None:
+    """column.self_reference_prefix가 빈칸(미정)이면 막힌다. 실제 팩 값과 상관없이 빈칸으로 본다.
+
+    공백만 있는 값도 팩 로더처럼 미정이다. 사전 단어로 찾다가 이름 없음(D5)으로 멈추지 않는다.
+    """
     root = _copy_pack(tmp_path, "maintenance")
-    _set_naming(root, {("column", "self_reference_prefix"): None})
+    _set_naming(root, {("column", "self_reference_prefix"): prefix})
     result = normalize(
         MNT_002,
         pack=_pack("maintenance"),
