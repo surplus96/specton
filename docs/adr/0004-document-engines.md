@@ -1,8 +1,8 @@
 # ADR-0004: 문서 엔진
 
-- 날짜: 2026-10-23
-- 상태: 제안
-- 결정자: 팀 설계로 (회의에서 승인·수정·보류)
+- 날짜: 2026-10-23 (HWP·HWPX 엔진 채택 2026-11-08)
+- 상태: HWP 5.0·HWPX 읽기·위치 추출 엔진 채택(2026-11-08), PDF 추출·출력·OCR 제안
+- 결정자: 팀 설계로 (회의에서 승인·수정·보류). HWP·HWPX 엔진 채택은 R1(통합 담당)이 #188 댓글에서 결정(2026-11-08 15:27 KST)
 
 ## 배경
 
@@ -12,9 +12,9 @@ PDF 입력·추출, 최종 PDF 출력, HWPX/HWP 추출에 쓸 라이브러리가
 
 - PDF 추출: Docling(표 구조 인식·OCR 내장). 텍스트형이 느리면 pdfplumber로 보조.
 - PDF 출력: WeasyPrint(HTML/CSS → PDF) + `mermaid-cli`로 ERD를 SVG 렌더링해 삽입. ERD가 깨지면 Playwright 인쇄로 전환.
-- HWPX: `python-hwpx`(Apache-2.0). HWP 5.0: `hwp-hwpx-parser`와 `hwpkit`를 표 추출로 비교, 시간이 없으면 "HWPX로 변환해 업로드" 안내.
-- HWP 5.0·HWPX 위치 추출: `rhwp-python`(MIT) 추가 후보. .hwp를 HWPX로 바꾸지 않고 바로 읽고, 문단마다 구역·문단 번호, 표 칸마다 행·열·병합 범위를 준다. 같은 문서의 .hwp와 .hwpx에서 구역·문단 번호가 같았다(공공 과업지시서 1건에서 확인).
-  - 쪽 번호는 렌더링으로 계산한 값이라 긴 문서에서 한글 프로그램과 달라진다. 사람용 위치 표기에는 원문 고유번호와 표 위치를 쓰고 쪽 번호는 쓰지 않는다.
+- HWP 5.0·HWPX 읽기·위치 추출: `rhwp-python==0.8.1`(MIT)로 채택한다(2026-11-08). .hwp를 HWPX로 바꾸지 않고 바로 읽고, 문단마다 구역·문단 번호, 표 칸마다 행·열·병합 범위를 준다. 같은 문서의 .hwp와 .hwpx에서 구역·문단 번호가 같았다(공공 과업지시서 1건에서 확인).
+  - 쪽 번호는 렌더링으로 계산한 값이라 긴 문서에서 한글 프로그램과 달라진다. 원문 위치는 구역·문단·표·셀로 적고, 렌더링 쪽 번호를 원문 쪽 번호로 쓰지 않는다. 사람용 위치 표기에는 원문 고유번호와 표 위치를 쓴다.
+  - 처음 제안한 `python-hwpx`(HWPX만)와 `hwp-hwpx-parser`·`hwpkit`(HWP 5.0 표 비교)는 이번 채택 대상이 아니다. 이유는 「HWP·HWPX 채택」.
 - 스캔 PDF OCR 포함 여부는 회의에서 정한다.
 - 채택 전 대표 문서 2~3건으로 1시간 실측한다.
 
@@ -38,7 +38,7 @@ PDF 입력·추출, 최종 PDF 출력, HWPX/HWP 추출에 쓸 라이브러리가
 | hwp-hwpx-parser | HWP·HWPX | Apache-2.0 (README) | 텍스트·표 추출. 저장소 LICENSE 재확인 필요 |
 | jakal-hwpx | HWP·HWPX | MIT | Python 3.11+, 매우 신생, 표 추출 미확인 |
 | pyhwpxlib | HWPX 생성·편집 | 상업 유료(BSL 혼합) | 추출용이 아니라 제외 |
-| rhwp-python | HWP·HWPX | MIT | 매우 신생: PyPI 0.8.1 `Development Status :: 3 - Alpha`, GitHub 스타 16개(2026-11-01 확인). Rust 엔진 rhwp의 파이썬 바인딩, Java 불필요. 문단 `section_idx`·`para_idx`, 표 칸 `row`·`col`·`row_span`·`col_span`. 쪽 수는 렌더링 계산 |
+| rhwp-python | HWP·HWPX | MIT | 매우 신생: PyPI 0.8.1 `Development Status :: 3 - Alpha`, GitHub 스타 16개(2026-11-01 확인). Rust 엔진 rhwp의 파이썬 바인딩, Java 불필요. 문단 `section_idx`·`para_idx`, 표 칸 `row`·`col`·`row_span`·`col_span`. 쪽 수는 렌더링 계산. 2026-11-08 재조회: GitHub 스타 16·포크 6·마지막 푸시 2026-09-24·릴리스 13개, PyPI 배포 12개(0.8.1 Alpha). 엔진 rhwp는 GitHub 스타 4,081·최신 v0.8.7 |
 
 **PDF 추출**
 
@@ -70,6 +70,16 @@ PDF 입력·추출, 최종 PDF 출력, HWPX/HWP 추출에 쓸 라이브러리가
 출처:
 - HWP: [python-hwpx](https://github.com/airmang/python-hwpx) · [hwpkit](https://github.com/psychofict/hwpkit) · [hwp-hwpx-parser](https://libraries.io/pypi/hwp-hwpx-parser) · [jakal-hwpx](https://pypi.org/project/jakal-hwpx/1.0/) · [pyhwpxlib](https://pypi.org/project/pyhwpxlib/0.18.0/) · [rhwp-python](https://github.com/DanMeon/rhwp-python) · [rhwp](https://github.com/edwardkim/rhwp)
 - PDF: [PyTorch KR 레이아웃 벤치마크](https://discuss.pytorch.kr/t/llm-1-gpu-pdf-10/9808) · [docling vs pdfplumber](https://www.file2markdown.ai/blog/docling-vs-pdfplumber) · [pdfplumber vs pymupdf](https://www.file2markdown.ai/blog/pdfplumber-vs-pymupdf) · [Docling 지원 형식](https://docling-project.github.io/docling/usage/supported_formats/) · [WeasyPrint](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html)
+
+## HWP·HWPX 채택 (2026-11-08)
+
+- 결정: HWP 5.0·HWPX의 읽기·위치 추출 엔진으로 `rhwp-python==0.8.1`을 쓴다. 의존성은 #188, 파서는 #24에서 연결한다.
+- 근거:
+  - 한 엔진으로 .hwp와 .hwpx를 모두 읽고, 원문 위치(구역·문단·표·칸 행·열·병합 범위)를 준다. 위치 추출까지 실측한 후보는 rhwp-python뿐이다. `hwp-hwpx-parser`는 위치를 주지 않았고, `hwpkit`은 표 안 문단까지 이어 세어 문단 번호가 달라졌다(위 「HWP 실측」). `python-hwpx`는 HWP 5.0을 읽지 못하고 위치 제공은 실측하지 않았다.
+  - 요구사항 상세표 양식의 공공 RFP 3건에서 요구사항 건수가 원문과 같았고(141·41·64건), 글자는 원문 XML(1건, 전수)과 다른 엔진(pyhwp)으로 변환한 사본(2건, 포함 대조라 줄 순서·중복은 보증하지 않음)으로 대조해 일치했다. 고유 .hwp 152개 중 151개가 열렸고(못 연 1개는 PDF를 이름만 .hwp로 바꾼 파일), 열린 151개는 HWPX로 내보낸 뒤 읽은 표와 같았다.
+- 위험과 대응: PyPI `Development Status :: 3 - Alpha`인 신생 바인딩이다(성숙도는 위 「HWPX·HWP 추출」 표). 버전을 0.8.1로 고정하고, 엔진 호출은 `specton/ingest/hangul_engine.py` 한 곳에만 두며, 엔진 블록 클래스 이름·필드가 바뀌면 CI 시험이 실패하게 했다.
+- 범위 밖: 서술형(표가 아닌 문단) 요구사항과 상세표가 아닌 양식은 읽지 않는다. 상세표가 하나도 없는 파일과 암호 걸린 .hwpx는 안내로 멈추지만(.hwp 암호는 시험하지 않았다), 상세표와 서술형이 섞인 파일의 서술형 부분은 안내 없이 빠질 수 있다. 배포용 문서와 HWP 5.0 이전 버전은 시험하지 않았다.
+- PDF 추출·출력·스캔 OCR은 위 결정대로 제안 상태다.
 
 ## 결과
 
