@@ -128,13 +128,14 @@ class _World:
         def review(name: str) -> Callable[[GraphState], Mapping[str, Any]]:
             def node(state: GraphState) -> Mapping[str, Any]:
                 return {
+                    "branch_versions": {name: ("fixture-review-v1", "fixture-model")},
                     "branches": {
                         name: BranchResult(
                             branch=name,
                             revision=state["design"].revision,
                             ok=True,
                         )
-                    }
+                    },
                 }
 
             return node
@@ -318,9 +319,12 @@ def test_documents_trace_sources_and_are_approved_as_identical_bytes(
     meta = dict(book["문서 정보"].iter_rows(min_row=2, values_only=True))
     assert meta["모델 해시 (model_hash)"] == digest
     assert (meta["제외 건수"], meta["확인(원문 없음) 건수"]) == (1, 1)
-    assert len(first.artifacts(run_id)) == 5
+    assert len(first.artifacts(run_id)) == 6
+    assert first.download(run_id, "manifest", "json").status_code == 409
+    (manifest_ref,) = [a for a in first.artifacts(run_id) if a["kind"] == "manifest"]
+    assert manifest_ref["approved"] is False
     with TestClient(main.create_app(first.settings, first.pool)) as other:
-        for kind, fmt in DOCUMENTS:
+        for kind, fmt in (*DOCUMENTS, ("manifest", "json")):
             assert (
                 other.get(
                     f"/runs/{run_id}/artifacts/{kind}",
@@ -350,7 +354,12 @@ def test_documents_trace_sources_and_are_approved_as_identical_bytes(
             "WHERE p.run_id=%s",
             (UUID(run_id),),
         ).fetchall()
-    assert len(basis) == 5
+    manifest = restarted.download(run_id, "manifest", "json")
+    assert manifest.status_code == 200 and manifest.headers["content-type"] == "application/json"
+    assert hashlib.sha256(manifest.content).hexdigest() == manifest_ref["hash"]
+    assert manifest.json()["approved"] is True
+    assert len(manifest.json()["files"]) == 5
+    assert len(basis) == 6
     for row in basis:
         key = (row["kind"], row["file_format"])
         if key in content:
@@ -386,6 +395,7 @@ def test_existing_review_checkpoint_does_not_generate_new_documents_retroactivel
 ) -> None:
     with monkeypatch.context() as old_version:
         old_version.setattr(main, "document_node", lambda root: lambda state: {})
+        old_version.setattr(main, "manifest_node", lambda root: lambda state: {})
         first = world()
     run_id = first.create()
     first.prepare(run_id)
@@ -487,13 +497,13 @@ def test_checkpoint_replay_does_not_regenerate_or_duplicate_document_events(
     restarted = world(previous=first)
     restarted.runner.run_pending()
     assert restarted.status(run_id)["status"] == "awaiting_review" and restarted.generated == []
-    assert len(restarted.artifacts(run_id)) == 5
+    assert len(restarted.artifacts(run_id)) == 6
     with restarted.pool.connection() as conn:
         events = runs.events_after(conn, UUID(run_id), restarted.client.cookies[SESSION_COOKIE], 0)
-    assert sum(e.event == "artifact" for e in events) == 5
+    assert sum(e.event == "artifact" for e in events) == 6
 
 
-@pytest.mark.parametrize("key", DOCUMENTS)
+@pytest.mark.parametrize("key", (*DOCUMENTS, ("manifest", "json")))
 def test_modified_document_cannot_be_promoted_after_approval(
     world: Callable[..., _World], key: tuple[str, str]
 ) -> None:
@@ -573,6 +583,7 @@ def test_native_all_outputs_match_manifest_and_rule07_blocks_failed_sql(
     assert json.loads(render_manifest(draft)) == draft
     assert render_manifest(build_manifest(design, reversed(items))) == render_manifest(draft)
     assert w.download(run_id, "erd", "pdf", design.revision).status_code == 409
+    assert w.download(run_id, "manifest", "json", design.revision).status_code == 409
 
     # 보류·재시작 후에도 같은 후보와 manifest 입력을 사용한다.
     assert w.review(run_id, "hold").status_code == 202
@@ -587,6 +598,11 @@ def test_native_all_outputs_match_manifest_and_rule07_blocks_failed_sql(
         [a for a in state["generated_artifacts"].values() if a["ref"].revision == design.revision],
     )
     assert approved == {**draft, "approved": True}
+    manifest_response = restarted.download(run_id, "manifest", "json", design.revision)
+    assert manifest_response.status_code == 200
+    assert manifest_response.content == render_manifest(approved)
+    if broken:
+        assert restarted.download(run_id, "manifest", "json", 0).status_code == 409
     for item in approved["files"]:
         response = restarted.download(run_id, item["kind"], item["file_format"], design.revision)
         assert response.status_code == 200
@@ -599,8 +615,72 @@ def test_native_all_outputs_match_manifest_and_rule07_blocks_failed_sql(
             "WHERE p.run_id=%s",
             (UUID(run_id),),
         ).fetchall()
-    assert len(rows) == 6
+    assert len(rows) == 7
     assert {(r["kind"], r["file_format"], r["artifact_hash"]) for r in rows} == {
         (f["kind"], f["file_format"], f["hash"]) for f in approved["files"]
-    }
+    } | {("manifest", "json", hashlib.sha256(manifest_response.content).hexdigest())}
     assert all((r["validation_id"] is not None) == (r["kind"] == "ddl") for r in rows)
+
+
+def test_manifest_constraint_upgrade_preserves_old_approved_artifacts(
+    world: Callable[..., _World], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from specton.persistence.db import apply_schema
+
+    with monkeypatch.context() as old:
+        old.setattr(main, "manifest_node", lambda root: lambda state: {})
+        first = world()
+    run_id = first.create()
+    first.prepare(run_id)
+    assert first.review(run_id, "approve").status_code == 202
+    first.runner.run_pending()
+    with first.pool.connection() as conn:
+        before = conn.execute("SELECT * FROM artifact ORDER BY artifact_id").fetchall()
+        assert len(before) == 5 and all(r["approval_status"] == "approved" for r in before)
+        conn.execute("ALTER TABLE artifact DROP CONSTRAINT artifact_kind_check")
+        conn.execute(
+            "ALTER TABLE artifact ADD CONSTRAINT artifact_kind_check CHECK "
+            "(kind IN ('requirements','functions','erd','ddl','rtm','review'))"
+        )
+        conn.execute("ALTER TABLE artifact DROP CONSTRAINT artifact_file_format_check")
+        conn.execute(
+            "ALTER TABLE artifact ADD CONSTRAINT artifact_file_format_check CHECK "
+            "(file_format IN ('md','pdf','mmd','sql','xlsx','csv'))"
+        )
+    apply_schema(first.pool)
+    apply_schema(first.pool)
+    with first.pool.connection() as conn:
+        assert conn.execute("SELECT * FROM artifact ORDER BY artifact_id").fetchall() == before
+    upgraded = world(previous=first)
+    upgraded.prepare(upgraded.create())
+    assert upgraded.download(run_id, "manifest", "json").status_code == 409
+
+
+def test_manifest_lists_final_reviewer_versions_and_rejects_a_stale_file_list(
+    world: Callable[..., _World],
+) -> None:
+    from specton.artifacts import write_artifact
+    from specton.export_node import export_node
+
+    w = world()
+    run_id = w.create()
+    w.prepare(run_id)
+    state = w.graph.get_state({"configurable": {"thread_id": run_id}}).values
+    manifest = next(a for a in state["generated_artifacts"].values() if a["ref"].kind == "manifest")
+    path = w.settings.storage_dir / manifest["storage_ref"]
+    content = json.loads(path.read_bytes())
+    assert content["prompt_versions"] == {name: "fixture-review-v1" for name in REVIEWERS}
+    assert content["model_names"] == {name: "fixture-model" for name in REVIEWERS}
+    content["files"] = content["files"][1:]
+    bad = write_artifact(
+        w.settings.storage_dir, state["design"], "manifest", "json", render_manifest(content)
+    )
+    state = {
+        **state,
+        "generated_artifacts": {
+            **state["generated_artifacts"],
+            "0:manifest:json": bad,
+        },
+    }
+    with pytest.raises(ValueError, match="manifest"):
+        export_node(w.settings.storage_dir)(state)

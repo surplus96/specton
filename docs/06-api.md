@@ -192,12 +192,17 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 | `ddl` | sql | |
 | `rtm` | xlsx, csv | |
 | `review` | md | |
+| `manifest` | json | 승인 후에만 다운로드 |
 
 - 다른 조합은 422.
 - 승인 전 파일은 초안 파일명(`-draft`)·메타데이터(`approved=false`)로 구분한다.
 - 기능 명세 Markdown과 RTM Excel·CSV는 생성 단계에서 같은 모델·revision으로 저장한다.
   승인 때 각 파일 해시를 `approval_basis`에 기록하고, 내보내기는 재생성 없이 같은 바이트를
-  승인본으로 게시한다. 원문 제외·원문 없음 행도 RTM에 남는다. 기능 명세 PDF와 manifest JSON의 연결은 후속 범위다.
+  승인본으로 게시한다. 원문 제외·원문 없음 행도 RTM에 남는다. 기능 명세 PDF의 연결은 후속 범위다.
+- manifest JSON도 최종본 바이트를 승인 전 비공개 후보(`approved=false`)로 저장한다.
+  JSON의 `approved=true`는 공개할 최종본의 내용이며, 실제 승인은 DB 메타데이터와 승인 기록으로 판단한다.
+  승인 전 다운로드는 409다. 승인 시 manifest 자신의 해시도 근거에 고정하고, 승인 후 재생성하지 않는다.
+  `files`에는 같은 모델·revision의 출력 해시만 있고 manifest 자신의 해시는 제외한다.
 - ERD PDF 기능을 켜면
   승인본용 PDF 바이트를 미리 비공개 후보로 저장하되 `approved=false`이며, 승인 전 PDF
   다운로드는 계속 409다. 승인 근거가 기록한 후보 해시와 같은 바이트만 승인 후 공개한다.

@@ -538,7 +538,8 @@
               "erd",
               "ddl",
               "rtm",
-              "review"
+              "review",
+              "manifest"
             ]
           }
         }
@@ -560,7 +561,8 @@
                 "mmd",
                 "sql",
                 "xlsx",
-                "csv"
+                "csv",
+                "json"
               ]
             }
           },
