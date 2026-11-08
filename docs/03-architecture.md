@@ -101,7 +101,22 @@ flowchart TD
 
 API의 `create_graph`는 실제 정리 노드와 #15 실패 변환기를 등록한다. 둘 다 `settings.pack_root`를 사용하며 규칙 심각도는 그래프를 만들 때 공통 팩에서 읽는다. #168의 `unsupported_relationship` 구분에 따라 설계 규칙 위반(D8)은 자동 재작업하고, 자기참조 N:M의 지원 부족(D4)은 바로 사람 확인으로 보낸다. 실제 API 경로에서 성공 모델 저장·재작업·재시작·승인 차단을 검증한다.
 
-ERD 가지는 `specton.erd_node`를 등록한다. 저장된 `DesignState.normalized`와 같은 설계의 관계로 상세 Mermaid 원문을 만들고, UTF-8 바이트를 `write_artifact()`로 초안 `.mmd` 파일에 저장한다. 노드는 파일·모델 해시와 현재 revision을 담은 `GeneratedArtifact`만 기존 채널로 반환하며, 실행기가 모델·진행·산출물·이벤트를 같은 트랜잭션으로 게시한다. 정리 실패 시 ERD도 건너뛰며, 생성·저장 오류는 실행 오류로 전달한다. PDF·업무 영역별 출력과 RTM·후속 규칙의 실제 노드 등록은 후속 범위다.
+ERD 가지는 `specton.erd_node`를 등록한다. 저장된 `DesignState.normalized`와 같은 설계의 관계로 상세 Mermaid 원문을 만들고, UTF-8 바이트를 `write_artifact()`로 초안 `.mmd` 파일에 저장한다. 노드는 파일·모델 해시와 현재 revision을 담은 `GeneratedArtifact`를 기존 채널로 반환하며, 실행기가 모델·진행·산출물·이벤트를 같은 트랜잭션으로 게시한다. 정리 실패 시 ERD도 건너뛰며, 생성·저장 오류는 실행 오류로 전달한다. RTM·후속 규칙의 실제 노드 등록은 후속 범위다.
+
+`SPECTON_ENABLE_ERD_PDF=true`이면 같은 ERD 가지에 `specton.pdf_adapter`를 연결한다.
+실행에 기록된 팩·버전과 `settings.pack_root`의 팩을 대조하고, 그 팩의 업무 영역과 #209 엔진으로
+표지·전체 개요·영역별 상세도·테이블 정의서 PDF를 만든다. 승인 전에 최종 문서용 바이트를
+한 번 준비하되 `ArtifactRef.approved=false`로 저장하여 다운로드를 차단한다. 렌더러의
+`draft=false`는 문서 표식만 정하고 사용자 승인 여부를 바꾸지 않는다. HITL 2에서 다른
+산출물과 함께 이 PDF 해시를 승인 근거에 기록하고, 내보내기는 재렌더링 없이 같은 바이트를
+승인본으로 승격한다. 재시작은 저장된 후보를 재사용하며, 설계 수정은 새 revision의 후보를 만든다.
+6pt 경고는 기존 상태 이벤트에 남기고, 외부 리소스 차단·잘못된 PDF·엔진 오류는 실행 실패로
+처리한다. PDF를 켠 상태에서 생성에 실패해도 PDF 없이 성공한 것으로 우회하지 않는다.
+
+PDF 설정의 기본값은 비활성이다. #209 인계와 #25 실행 이미지의 Pango·Noto CJK 폰트·
+mermaid-cli 11.15.0·Chromium 준비 뒤 활성화한다. CLI 명령은
+`SPECTON_MERMAID_CLI_COMMAND`의 JSON 배열, 브라우저 설정은
+`SPECTON_MERMAID_PUPPETEER_CONFIG`의 JSON 파일 경로로 전달한다.
 
 ### SQL 검증 시도의 체크포인트 (#17·#167)
 
@@ -146,9 +161,9 @@ DDL 노드의 pending writes에 현재 revision·SQL·모델과 맞는 검증 �
 실제 생성·검증·저장 연결에 맞춰 SQL 승인 검사 기본값을 켠다
 (`SPECTON_REQUIRE_SQL_VALIDATION=true`). 기존 승인에 검증 근거를 소급 생성하지 않는다.
 
-API의 `export_node()`는 현재 revision의 승인한 SQL·Mermaid 바이트를 그대로 승인본으로
+API의 `export_node()`는 현재 revision의 승인한 SQL·Mermaid·PDF 후보 바이트를 그대로 승인본으로
 인계한다. 실행기는 `approval_basis.artifact_hash`와 비교해 승인 이후 변경된 바이트나
-승인 근거에 없는 새 산출물의 게시를 거절한다. PDF 등 새 형식의 생성·승인 흐름은 별도 범위다.
+승인 근거에 없는 새 산출물의 게시를 거절한다.
 
 ### 재작업 복귀 단계
 
