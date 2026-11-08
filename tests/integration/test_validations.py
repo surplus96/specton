@@ -131,6 +131,28 @@ def test_a_newer_attempt_replaces_an_older_pass(pool: Pool, sample_state: Factor
     assert (stored.validation_id, stored.result.status) == (second, "failed")
 
 
+@pytest.mark.parametrize(
+    ("earlier", "later"),
+    [
+        (UUID(int=2**128 - 1), UUID(int=1)),  # 이전 시도의 ID가 더 큼
+        (UUID(int=1), UUID(int=2**128 - 1)),
+    ],
+)
+def test_same_time_attempts_pick_the_later_save(
+    pool: Pool, sample_state: Factory, earlier: UUID, later: UUID
+) -> None:
+    """검증 시각이 같으면 나중에 저장한 시도다. ID 크기로 정하지 않는다 (#196 리뷰)."""
+    run_id, digest = _with_sql(pool, sample_state)
+    _save(pool, run_id, digest, _result(), validation_id=earlier)
+    _save(pool, run_id, digest, _result(failed="execute"), validation_id=later)
+
+    _save(pool, run_id, digest, _result(), validation_id=earlier)  # 재저장은 순서를 바꾸지 않는다
+    stored = _latest(pool, run_id)
+
+    assert stored is not None
+    assert (stored.validation_id, stored.result.status) == (later, "failed")
+
+
 def test_records_for_other_versions_are_not_used(pool: Pool, sample_state: Factory) -> None:
     run_id, digest = _with_sql(pool, sample_state)
     _save(pool, run_id, digest, _result(validator_version="sql-validator-v0"))

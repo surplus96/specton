@@ -6,6 +6,8 @@
 - 시도마다 한 행이고 지우지 않는다. 같은 SQL·버전이어도 새로 검증하면 새 행이다.
 - 같은 시도의 체크포인트 재저장(같은 ID)은 결과가 같으면 아무것도 바꾸지 않고, 다르면 거절한다.
   재저장으로 검증 시각이나 최근 순서를 바꾸지 않는다.
+- 가장 최근 시도는 검증 시각으로 고르고, 시각이 같으면 먼저 저장된 순서(`saved_order`)로 나중 것을
+  고른다. 시도 ID(UUID)의 크기로 정하지 않는다 (#196 리뷰).
 - SQL이 다시 생성되면 artifact 행의 해시가 바뀌므로, 이전 시도는 해시가 달라 조회되지 않는다.
 """
 
@@ -112,7 +114,7 @@ def latest_validation(
         WHERE s.run_id = %s AND s.revision = %s AND a.kind = %s AND a.file_format = %s
             AND v.artifact_hash = a.hash AND v.model_hash = s.model_hash
             AND v.validator_version = %s AND v.policy_version = %s AND v.postgres_version = %s
-        ORDER BY v.validated_at DESC, v.validation_id DESC
+        ORDER BY v.validated_at DESC, v.saved_order DESC
         LIMIT 1
         """,
         (run_id, revision, _KIND, _FORMAT, validator_version, policy_version, postgres_version),

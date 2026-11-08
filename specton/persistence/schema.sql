@@ -114,11 +114,14 @@ CREATE TABLE IF NOT EXISTS artifact_validation (
     validator_version text NOT NULL,
     policy_version    text NOT NULL,
     postgres_version  text NOT NULL,
-    validated_at      timestamptz NOT NULL  -- 검증 시각. 재저장으로 바꾸지 않는다
+    validated_at      timestamptz NOT NULL,  -- 검증 시각. 재저장으로 바꾸지 않는다
+    -- 처음 저장한 순서. 검증 시각이 같을 때 나중 시도를 고른다. 같은 run의 저장은 run 잠금으로
+    -- 차례로 일어나고, 재저장은 행을 새로 넣지 않아 바뀌지 않는다
+    saved_order       bigint GENERATED ALWAYS AS IDENTITY
 );
 CREATE INDEX IF NOT EXISTS artifact_validation_latest ON artifact_validation (
     artifact_id, artifact_hash, model_hash, validator_version, policy_version, postgres_version,
-    validated_at DESC
+    validated_at DESC, saved_order DESC
 );
 
 CREATE TABLE IF NOT EXISTS run_event (
