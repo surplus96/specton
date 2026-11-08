@@ -39,7 +39,7 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 |---|---|---|
 | `extraction` | `confirmed`, `excluded_blocks`(`block_id`, `reason` 선택) | 문장은 고치지 않고 확인 또는 제외만 한다 (ADR-0015). `confirmed=false`는 중단(`cancelled`). 제외 결정은 `source_block`과 `SourceRequirement.user_decision`에, 확인한 사람·시각은 approval에 남긴다. 제외 후 남은 블록이 0건이면 `EXTRACTION_FAILED` |
 | `requirements` | `req_id`별 `keep`/`edit`/`split`, `texts` | 답이 없는 요구사항은 `keep`. `edit`은 문장 1개로 `text`를 바꾸고 `draft_text`는 둔다. `split`은 문장 2개 이상이며 첫 조각은 원래 ID, 나머지는 서버가 이어지는 새 ID를 부여한다. 조각은 원문 연결·분류를 부모와 같게 둔다 |
-| `review` | `approve`/`revise`/`hold`, `feedback` | approve는 현재 revision과 차단 오류 유무 확인. hold는 SSE `status` 이벤트만 남기고 같은 확인 요청으로 계속 기다린다 (approval을 저장하지 않고 실행을 재개하지 않음) |
+| `review` | `approve`/`revise`/`hold`, `feedback` | approve는 현재 revision과 차단 오류 유무 확인. 설정 `SPECTON_REQUIRE_SQL_VALIDATION`을 켜면 SQL 검증 통과도 확인한다(아래). hold는 SSE `status` 이벤트만 남기고 같은 확인 요청으로 계속 기다린다 (approval을 저장하지 않고 실행을 재개하지 않음) |
 
 ```json
 {
@@ -68,6 +68,8 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 - 분석 확인에서 현재 revision의 `model_snapshot` 행이나 그 안의 `requirements` 필드가 없거나 null이면 500 `INTERNAL`이다. 빈 답변도 같으며, approval·실행 상태·이벤트는 바꾸지 않고 같은 확인 요청으로 계속 기다린다. 모델을 복구하면 같은 답변을 다시 보낼 수 있다. `requirements: []`가 저장된 경우는 모델 누락과 구분하여 빈 답변을 수락한다 (#144·#146).
 - 동시에 보낸 같은 응답은 하나만 적용한다. 중복·오래된 응답은 409를 돌려주며 두 번째 실행을 만들지 않는다. 클라이언트는 상태를 다시 조회한다.
 - approve가 아니면 산출물을 완료본으로 승격하지 않는다.
+- **SQL 검증 확인 (#167, #195):** 설정 `SPECTON_REQUIRE_SQL_VALIDATION`(기본 끔)을 켜면 approve 때 현재 revision에 DDL/SQL 산출물이 있고, 그 SQL 해시·스냅샷 `model_hash`·지금 요구하는 검증기·정책·PostgreSQL 버전이 맞는 **가장 최근 검증 시도**가 `passed`여야 한다. 아니면 422 `INVALID_RESPONSE`(「승인할 SQL 산출물이 없습니다.」 또는 「검증을 통과하지 않은 SQL이 있어 승인할 수 없습니다.」)이고 승인·상태·승인 근거는 바뀌지 않는다. 새 시도가 `failed`·`error`·`unverified`면 이전 `passed`로 돌아가지 않고, 지금 버전의 시도가 없으면 이전 버전 성공도 쓰지 않는다. 요구 버전은 검증기 상수(`specton/validate/allowed_sql.py`)를 따른다. 실제 DDL 생성·검증·저장 연결(#17)이 준비되면 켠다.
+- approve는 그 revision의 산출물마다 승인한 파일 해시를 `approval_basis`에 남긴다. 검사를 켠 경우 SQL 근거에는 통과한 검증 시도가 연결된다.
 
 ## 화면용 조회
 
@@ -81,7 +83,7 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 | `review` | `Finding` | 그 revision 모델의 `finding` |
 
 - `revision`을 생략하면 현재 revision이다. 현재보다 크면 409 `RUN_REVISION_CONFLICT`.
-- 그 단계 결과가 아직 없으면 `items`는 빈 목록이다. `artifacts`는 그 revision의 `ArtifactRef` 목록이다.
+- 그 단계 결과가 아직 없으면 `items`는 빈 목록이다. `artifacts`는 그 revision의 `ArtifactRef` 목록이다. DDL/SQL 항목에는 `validation: {status, validated_at}`을 더한다: 지금 요구하는 버전 기준의 가장 최근 검증 시도의 상태(`passed`·`failed`·`error`·`unverified`)와 시각이고, 맞는 기록이 없으면 `{"status": "unverified", "validated_at": null}`이다. 단계별 내부 메시지는 넣지 않는다 (#195).
 
 ## SSE
 
@@ -168,7 +170,7 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 | `UPLOAD_TOO_LARGE` | 파일 크기 한도 초과 | 413 | 아니오 |
 | `UNSUPPORTED_MEDIA_TYPE` | 지원하지 않는 파일 형식 | 415 | 아니오 |
 | `PACK_UNSUPPORTED` | 없는 도메인 팩 선택 | 422 | 아니오 |
-| `INVALID_RESPONSE` | resume 답변 형식이 틀림, 확인 요청과 응답 종류가 다름, 차단 오류가 남은 채 approve | 422 | 아니오 |
+| `INVALID_RESPONSE` | resume 답변 형식이 틀림, 확인 요청과 응답 종류가 다름, 차단 오류가 남은 채 approve, SQL 검증을 통과하지 않은 채 approve(설정을 켠 경우) | 422 | 아니오 |
 | `INVALID_REQUEST` | 그 밖의 요청 형식이 틀림 (조회 조건·취소 본문 등). 없는 경로는 404, 허용하지 않는 메서드는 405 | 422 / 404 / 405 | 아니오 |
 | `LLM_REFUSED` | 실행 실패: 모델이 응답을 거절함 (`LLMRefusalError`) | 실행 상태 | 아니오, 입력 확인 |
 | `LLM_OUTPUT_INVALID` | 실행 실패: 재요청 후에도 출력 형식 위반 (`LLMContractError`) | 실행 상태 | 예 |
