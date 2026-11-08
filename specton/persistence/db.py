@@ -4,15 +4,22 @@
 LLM 호출 중이나 SSE 스트림이 열려 있는 동안 연결을 잡고 있지 않는다.
 """
 
+import importlib
+import inspect
+import pkgutil
+from enum import Enum
 from importlib.resources import files
 from typing import Any
 
 from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from psycopg import Connection
 from psycopg.rows import DictRow, dict_row
 from psycopg_pool import ConnectionPool
 
+import specton.contracts
 from specton.config import Settings
+from specton.contracts.base import Contract
 
 Pool = ConnectionPool[Connection[DictRow]]
 
@@ -44,8 +51,46 @@ def apply_schema(pool: Pool) -> None:
         conn.execute(sql.encode(), prepare=False)
 
 
+# 그래프 상태에 들어가는, 계약 밖의 타입 (R1 그래프). 상태에 새 타입을 넣으면 여기에 더한다
+GRAPH_STATE_TYPES: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("specton.review.rework", "HitlReason"),
+        ("specton.review.rework", "ReworkAction"),
+    }
+)
+
+
+def _contract_types() -> frozenset[tuple[str, str]]:
+    """`specton/contracts/`에 정의된 계약 모델과 열거형 전부. 모듈·타입이 늘면 따라 는다."""
+    modules = [
+        importlib.import_module(f"specton.contracts.{m.name}")
+        for m in pkgutil.iter_modules(specton.contracts.__path__)
+    ]
+    return frozenset(
+        (module.__name__, name)
+        for module in modules
+        for name, obj in vars(module).items()
+        if inspect.isclass(obj)
+        and obj.__module__ == module.__name__
+        and issubclass(obj, (Contract, Enum))
+    )
+
+
+# 체크포인트에서 다시 읽어도 되는 우리 타입 (#131). 목록에 없는 타입은 LangGraph가 막는다
+CHECKPOINT_TYPES = _contract_types() | GRAPH_STATE_TYPES
+
+
+def checkpoint_serde() -> JsonPlusSerializer:
+    """`CHECKPOINT_TYPES`만 허용하는 체크포인트 직렬화기.
+
+    목록을 직접 넘기면 `LANGGRAPH_STRICT_MSGPACK` 설정과 상관없이 목록 밖 타입은 막힌다.
+    그래프 단위 테스트의 `InMemorySaver`도 이것을 쓰면 같은 규칙으로 시험할 수 있다.
+    """
+    return JsonPlusSerializer(allowed_msgpack_modules=CHECKPOINT_TYPES)
+
+
 def create_checkpointer(pool: Pool) -> PostgresSaver:
     """LangGraph 체크포인트 저장소. `thread_id`는 `run_id`다 (ADR-0012)."""
-    saver = PostgresSaver(pool)
+    saver = PostgresSaver(pool, serde=checkpoint_serde())
     saver.setup()
     return saver

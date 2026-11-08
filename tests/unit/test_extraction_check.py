@@ -26,6 +26,7 @@ def _block(n: int, status: str, text: str | None = "입고를 등록한다") -> 
         source_ref={"file_format": "csv", "row": n},
         source_text=text,
         extraction_status=status,
+        notice=None if status == "pass" else "확인이 필요한 블록",
     )
 
 

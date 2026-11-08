@@ -88,6 +88,21 @@ flowchart TD
 - 검토 관점 4개는 같은 버전 문맥으로 병렬 또는 묶음 실행한다 (ADR-0008, [04 에이전트](04-agents.md)).
 - 파서·API·생성기 장애는 실행 오류로 분리한다. 설계 재작업 루프에 넣지 않는다.
 
+### 모델 정리 실패 경로 (#17·#15)
+
+- `normalize` 노드가 `normalization_failed=true`, `rule_findings`를 반환하면 DDL·ERD·RTM 생성과 LLM 검토를 건너뛴다. #15에서 변환한 현재 규칙 지적을 설계 상태에 담아 기존 재작업 판단으로 보낸다. 실행하지 않은 리뷰 관점은 실패한 리뷰로 표시하지 않는다.
+- `requires_manual_review=true`이면 자동 재작업 가능 지적이 함께 있어도 A09를 호출하지 않고 바로 HITL 2로 간다. 사유는 `manual_review`다. 자동 수정 가능한 실패는 기존 `target_stage`·반복 지적·3회 상한 규칙을 따른다.
+- 정리 실패에는 최소 한 건의 `critical` 규칙 지적이 필요하다. 지적이 없는 실패 반환은 실행 오류로 처리하며, 정리 함수에서 발생한 예외도 실행 오류로 전파한다. 저장된 차단 지적은 resume API의 승인을 막고, 그래프 직접 재개에서도 정리 실패의 내보내기를 막는다.
+- 재작업을 시작하면 이전 정리 실패 표시·사람 조치 표시·규칙 지적을 비워 새 반복에서 다시 판단한다. 사람의 명시적인 수정 요청은 자동 재작업 횟수로 세지 않는다.
+
+`specton/normalization_node.py`의 `normalization_node(map_failure, root=...)`는 실제 `normalize_from_state`를 호출한다. 호출자는 `settings.pack_root`를 넘기고, 명명 규칙과 자기참조 접두어는 그 경로의 YAML에서 읽는다 (#148·#151). 성공 모델은 #143의 `DesignState.normalized`에 담고, 실행기가 기존 `save_model` 경로로 저장·해시한다. 재작업은 설계 노드를 다시 실행하기 전에 이 값을 비운다.
+
+실패의 `Problem.code`·`decision`·`pending`은 변환 콜백으로 그대로 넘긴다. `FK_COLUMN_CONFLICT`는 D4와 D13의 처리 경로가 다르므로 메시지로 구분하지 않는다. 콜백 결과는 규칙 지적(`findings`)과 사람 조치 여부(`requires_manual_review`)이며, R4의 실제 #15 반환형을 감싸는 R1 내부 연결 형식이다. 팩 불일치·출력 추적 오류와 잘못된 명명 설정은 실행 오류로 남긴다.
+
+API의 `create_graph`는 실제 정리 노드와 #15 실패 변환기를 등록한다. 둘 다 `settings.pack_root`를 사용하며 규칙 심각도는 그래프를 만들 때 공통 팩에서 읽는다. #168의 `unsupported_relationship` 구분에 따라 설계 규칙 위반(D8)은 자동 재작업하고, 자기참조 N:M의 지원 부족(D4)은 바로 사람 확인으로 보낸다. 실제 API 경로에서 성공 모델 저장·재작업·재시작·승인 차단을 검증한다.
+
+ERD 가지는 `specton.erd_node`를 등록한다. 저장된 `DesignState.normalized`와 같은 설계의 관계로 상세 Mermaid 원문을 만들고, UTF-8 바이트를 `write_artifact()`로 초안 `.mmd` 파일에 저장한다. 노드는 파일·모델 해시와 현재 revision을 담은 `GeneratedArtifact`만 기존 채널로 반환하며, 실행기가 모델·진행·산출물·이벤트를 같은 트랜잭션으로 게시한다. 정리 실패 시 ERD도 건너뛰며, 생성·저장 오류는 실행 오류로 전달한다. PDF·업무 영역별 출력과 DDL·RTM·후속 규칙·내보내기의 실제 노드 등록은 후속 범위다.
+
 ### 재작업 복귀 단계
 
 | `target_stage` | 복귀 대상 | 다시 실행하는 범위 |
@@ -116,7 +131,7 @@ stateDiagram-v2
     awaiting_requirements --> designing
     designing --> generating
     designing --> analysing: 수정 요청이 요구사항 단계로
-    designing --> awaiting_review: 수정 요청 단계 판단 불가
+    designing --> awaiting_review: 수정 요청 단계 판단 불가·정리 문제 사람 확인
     generating --> reviewing
     reviewing --> designing: 재작업
     reviewing --> analysing: 요구사항 단계 재작업
@@ -163,6 +178,7 @@ stateDiagram-v2
 | `specton/llm/` | 공통 LLM client·재요청·프롬프트 버전 |
 | `specton/nodes/` | 에이전트 노드 A01~A09 (얇은 어댑터) |
 | `specton/codegen/` | ID·명명·N:M·FK, Mermaid·DDL·RTM 생성 (LLM import 금지) |
+| `specton/ids.py` | 내부 ID 계산 `stable_id` (A03 엔티티·속성 ID와 모델 정리 파생 ID가 함께 사용, 다른 specton 모듈 import 없음) |
 | `specton/review/` | 규칙 검사·설정형 리뷰어·근거 병합 |
 | `specton/validate/` | DDL 파싱·격리 DB 실행 (LLM import 금지) |
 | `specton/persistence/` | 플랫폼 저장·checkpointer |

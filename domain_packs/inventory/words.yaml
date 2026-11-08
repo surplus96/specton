@@ -1,3 +1,289 @@
-# 표준단어 사전 (inventory). 공통표준(common/words.yaml)에 없는 재고 전용 단어만 둔다.
+# 표준단어 사전 (inventory). 공통표준에 없는 재고 전용 단어와, 정리(normalize)가 이름을 풀 때
+# 필요한데 어떤 용어의 구성 단어로도 쓰이지 않아 `common/words.yaml`(생성 파일)에 오르지 않는
+# 공통표준 단어를 둔다. 후자는 공통표준 CSV 값(약어·영문명·설명)을 그대로 옮긴 것이다.
+# 장부는 공통표준 단어가 아니다. 공통표준은 장부를 「대장」(LDGR)의 이음동의어로 두었다.
+# 요구사항 문장과 A03 출력이 장부라고 써서 팩에서 별도 낱말(BK, 장부가액 BKVL의 앞부분)로 둔다.
+# 표준과 다른 선택이다. 표준의 방향(대장.synonyms = [장부])과 반대로 읽히지 않게 장부의 synonyms는 비워 둔다.
 # "수불"은 공통표준 단어가 없어 재고+거래(INVT_DLNG)로 표준화하고 terms의 synonyms로만 남긴다.
-words: []
+words:
+- word: 거래처
+  abbreviation: CNPT
+  english: Counterparty
+  definition: 去來處. 돈이나 물건 따위를 계속 거래하는 곳
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 기록
+  abbreviation: RCD
+  english: Record
+  definition: 記錄. 주로 후일에 남길 목적으로 어떤 사실을 적음 또는 그런 글
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 동의어
+  abbreviation: SYNM
+  english: Synonym
+  definition: 同義語. 뜻이 같은 말
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 로트
+  abbreviation: LT
+  english: Lot
+  definition: LOT. 동일한 제조 조건하에서 제조되고 균일한 특성 및 품질을 갖는 완제품, 구성부품 및 원자재의 단위를 말한다
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 보관
+  abbreviation: KPNG
+  english: Keeping
+  definition: 保管. 물건을 맡아서 간직하고 관리함
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 승인
+  abbreviation: APRV
+  english: Approval
+  definition: 承認. 어떤 사실을 마땅하다고 받아들임. 어떤 특정한 행위에 대하여 행하는 승낙이나 동의
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 승인자
+  abbreviation: AUTZR
+  english: Authorizer
+  definition: 承認者. 승인을 하는 권한을 가졌거나 승인을 한 사람이나 조직
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 실사
+  abbreviation: ACINSP
+  english: Actual Inspection
+  definition: 實査. 실제를 조사하거나 검사함
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 안전
+  abbreviation: SFTY
+  english: Safety
+  definition: 安全. 위험이 생기거나 사고가 날 염려가 없음. 또는 그런 상태
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 용어
+  abbreviation: TRM
+  english: Terminology
+  definition: 用語. 일정한 분야에서 주로 사용하는 말
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 이력
+  abbreviation: HSTRY
+  english: History
+  definition: 履歷. 지금까지 거쳐 온 학업, 직업, 경험 등의 내력
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 입고
+  abbreviation: WRHS
+  english: Warehousing
+  definition: 入庫. 물건을 창고에 넣음
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 자재
+  abbreviation: MTRL
+  english: Materials
+  definition: 資材. 무엇을 만들기 위한 기본적인 재료
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 장부
+  abbreviation: BK
+  english: Book
+  definition: 帳簿. 금전이나 물품의 출납을 적는 책 (팩에서 정한 설명, 공통표준에 없음)
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 표준
+  abbreviation: STD
+  english: Standard
+  definition: 標準. 사물의 정도나 성격 등을 알기 위한 근거나 기준
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 배정
+  abbreviation: ALTMNT
+  english: Allotment
+  definition: 配定. 몫을 나누어 정함
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 이동
+  abbreviation: MVMN
+  english: Movement
+  definition: 移動. 움직여 옮김. 또는 움직여 자리를 바꿈
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 지시
+  abbreviation: DRCTN
+  english: Direction
+  definition: 指示. 일러서 시킴 또는 그 내용
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 송장
+  abbreviation: INVC
+  english: Invoice
+  definition: 送狀. 보내는 짐의 내용을 적은 문서
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 라벨
+  abbreviation: LBL
+  english: Label
+  definition: Label. 파일의 관리나 처리의 편의를 위하여 파일에 붙이는 특별한 항목 표시 기록
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 권역
+  abbreviation: SAREA
+  english: Sub-Area
+  definition: 圈域. 어떤 특정한 범위 안의 지역
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 배송지
+  abbreviation: DLVRPL
+  english: Delivery Place
+  definition: 配送地. 물품을 다른 곳으로 보낼 때 그 물품을 받는 장소
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 배송
+  abbreviation: DLVR
+  english: Delivery
+  definition: 配送. 물자를 여러 곳에 나누어 보내 줌
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 구매자
+  abbreviation: PRCHR
+  english: Purchaser
+  definition: 購買者. 물건을 사는 사람이나 단체
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 운송
+  abbreviation: TRNS
+  english: Transportation
+  definition: 運送. 사람을 태워 보내거나 물건 따위를 실어 보냄
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 수거
+  abbreviation: CLT
+  english: Collect
+  definition: 收去. 거두어 감
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 방식
+  abbreviation: MTH
+  english: Method
+  definition: 方式. 일정한 방법이나 형식
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 업체
+  abbreviation: BZENTY
+  english: Business Entity
+  definition: 業體. 사업이나 기업의 주체
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 출하
+  abbreviation: SHPM
+  english: Shipment
+  definition: 出荷. 짐이나 상품 따위를 내어보냄
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 교육
+  abbreviation: EDU
+  english: Education
+  definition: 敎育. 지식과 기술 따위를 가르치며 인격을 길러 줌
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 실습
+  abbreviation: PRCTC
+  english: Practice
+  definition: 實習. 이미 배운 이론을 토대로 하여 실지로 해 보고 익히는 일
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 시나리오
+  abbreviation: SCNR
+  english: Scenario
+  definition: Scenario. 어떤 사건에서 일어날 수 있는 여러 가지 가상적인 결과나 그 구체적인 과정
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 강사
+  abbreviation: INSTR
+  english: Instructor
+  definition: 講師. 학교나 학원 따위에서 위촉을 받아 강의를 하는 사람
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 자료
+  abbreviation: DATA
+  english: Data
+  definition: 資料. 연구나 조사 따위의 바탕이 되는 재료
+  is_classifier: false
+  domain_group: null
+  synonyms:
+  - 데이터
+  forbidden_synonyms: []
+- word: 단계
+  abbreviation: STP
+  english: Step
+  definition: 段階. 일의 차례를 따라 나아가는 과정
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
