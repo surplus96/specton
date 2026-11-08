@@ -2,7 +2,8 @@
 
 새 검증 호출은 새 ID를 받는다. 저장된 시도를 재전달할 때는 이 함수를 다시 호출하지 않고
 체크포인트의 값을 그대로 쓴다. 실행기는 산출물을 게시한 뒤 같은 트랜잭션에 검증 이력을
-저장한다. 최종 승인 검사와 실제 API DDL 노드 등록은 별도 연결 범위다.
+저장한다. 실제 API DDL 노드는 다섯 단계 검증기를 호출하고, 승인 API는 현재 SQL의 통과
+기록을 검사한다.
 """
 
 import hashlib
@@ -15,6 +16,10 @@ from uuid import UUID, uuid4
 from specton.artifacts import GeneratedArtifact, storage_ref
 from specton.contracts import DesignState, SqlValidation
 from specton.model_hash import model_hash
+
+
+class SqlValidationExecutionError(RuntimeError):
+    """저장한 검증 결과가 error다. 내부 검증 메시지는 실행 오류 응답에 노출하지 않는다."""
 
 
 class ValidationAttempt(TypedDict):

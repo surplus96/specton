@@ -60,6 +60,25 @@ def publish_artifacts(
                 ).fetchone()
                 if approved is None:
                     raise InvalidTransitionError("승인 기록 없이 승인본을 게시할 수 없습니다")
+                basis = conn.execute(
+                    "SELECT b.artifact_hash FROM approval_basis b "
+                    "JOIN approval p USING (approval_id) JOIN artifact a USING (artifact_id) "
+                    "JOIN model_snapshot s ON s.snapshot_id = p.snapshot_id "
+                    "WHERE p.run_id = %s AND s.revision = %s AND p.decision = 'approve' "
+                    "AND a.kind = %s AND a.file_format = %s",
+                    (run_id, ref.revision, ref.kind, ref.file_format),
+                ).fetchone()
+                if basis is not None and basis["artifact_hash"] != ref.hash:
+                    raise InvalidTransitionError("승인본이 승인 근거의 파일 해시와 다릅니다")
+                if basis is None:
+                    has_basis = conn.execute(
+                        "SELECT 1 FROM approval_basis b JOIN approval p USING (approval_id) "
+                        "JOIN model_snapshot s USING (snapshot_id) "
+                        "WHERE p.run_id = %s AND s.revision = %s AND p.decision = 'approve'",
+                        (run_id, ref.revision),
+                    ).fetchone()
+                    if has_basis is not None:
+                        raise InvalidTransitionError("승인 근거에 없는 산출물을 게시할 수 없습니다")
             changed = snapshots.add_artifact(conn, run_id, holder, ref, item["storage_ref"])
             if changed:
                 events.append(NewEvent(
