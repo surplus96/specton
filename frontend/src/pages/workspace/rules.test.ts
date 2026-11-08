@@ -5,18 +5,21 @@ import { createRun, downloadArtifact, getRun, getView, listRuns, resumeRun, setA
 import { ApiError } from '../../api/errors.ts'
 import type { ArtifactRef } from '../../api/viewItems.ts'
 import { createMockBackend } from '../../mocks/backend.ts'
-import { DDL_SAMPLE, ERD_SAMPLE } from '../../mocks/data.ts'
+import { DDL_SAMPLE, ERD_ATTACK_SAMPLE, ERD_SAMPLE } from '../../mocks/data.ts'
 import { unreachedScreens } from '../run/screens.ts'
 import {
   chosenView,
   downloadErrorText,
   downloadRows,
   fileNameOf,
+  isAllowedErdSource,
   isApproved,
+  mermaidConfig,
   missingKinds,
   resultViews,
   revisionOptions,
   shortTime,
+  svgDataUri,
   svgSize,
   toArtifacts,
   zoomSteps,
@@ -185,10 +188,44 @@ describe('서버(mock)와 같은 결과', () => {
     expect(history.find((r) => r.run_id === run.run_id)?.status).toBe('completed')
   })
 
+  it('mock erd-attack 시나리오는 지시문이 든 원문을 돌려준다 (브라우저 시험용)', async () => {
+    const created = await createRun(new File(['내용'], '재고_quick_erd-attack.csv'), 'inventory')
+    const run = await getRun(created.run_id)
+    const erd = await downloadArtifact(run.run_id, 'erd', 'mmd', run.revision)
+    expect(await erd.blob.text()).toBe(ERD_ATTACK_SAMPLE)
+  })
+
   it('형식이 맞지 않으면 422 안내', async () => {
     const run = await atReview()
     const err = await downloadArtifact(run.run_id, 'ddl', 'pdf', run.revision).catch((e: unknown) => e)
     expect((err as ApiError).status).toBe(422)
     expect(downloadErrorText(err)).toBe('이 산출물은 그 형식으로 받을 수 없습니다.')
+  })
+})
+
+describe('웹 ERD 보안 (#190 R1 리뷰, ADR-0004 「Mermaid 설정 보안」)', () => {
+  it('Mermaid에는 정한 설정만, 지시문이 바꾸지 못하는 키를 secure에 둔다', () => {
+    const config = mermaidConfig()
+    expect(config.securityLevel).toBe('strict')
+    expect(config.htmlLabels).toBe(false) // HTML 조각 없이 SVG 글자로
+    expect(config.secure).toEqual(expect.arrayContaining(['themeCSS', 'themeVariables', 'fontFamily', 'altFontFamily', 'securityLevel', 'htmlLabels']))
+    expect(mermaidConfig()).not.toBe(config) // 부를 때마다 새 객체 (mermaid가 고쳐도 상수가 바뀌지 않음)
+  })
+
+  it('서버 ERD 원문만 그리고, 다른 다이어그램·지시문은 그리지 않는다', () => {
+    expect(isAllowedErdSource(ERD_SAMPLE)).toBe(true)
+    expect(isAllowedErdSource('﻿erDiagram\n    a["가"]\n')).toBe(true)
+    expect(isAllowedErdSource(ERD_ATTACK_SAMPLE)).toBe(false)
+    expect(isAllowedErdSource('%%{init: {"theme": "dark"}}%%\nerDiagram\n')).toBe(false)
+    expect(isAllowedErdSource('flowchart LR\n  a --> b\n')).toBe(false)
+    expect(isAllowedErdSource('')).toBe(false)
+  })
+
+  it('SVG는 이미지용 data URI로 넣는다 (그림 안 CSS 격리)', () => {
+    const svg = '<svg viewBox="0 0 10 10"><style>body{display:none}</style><text>가</text></svg>'
+    const uri = svgDataUri(svg)
+    expect(uri.startsWith('data:image/svg+xml;charset=utf-8,')).toBe(true)
+    expect(uri).not.toContain('<')
+    expect(decodeURIComponent(uri.slice(uri.indexOf(',') + 1))).toBe(svg)
   })
 })

@@ -1,5 +1,6 @@
 // UI-05 결과 작업공간·UI-07 다운로드의 규칙. 화면 코드와 분리해 테스트한다.
 // 산출물 종류·형식은 docs/06 「산출물 형식」, 화면 흐름은 docs/09를 따른다.
+import type { MermaidConfig } from 'mermaid'
 import { ApiError } from '../../api/errors.ts'
 import type { RunState } from '../../api/types.ts'
 import type { ArtifactRef } from '../../api/viewItems.ts'
@@ -118,6 +119,56 @@ export function downloadErrorText(err: unknown): string {
 }
 
 // ── ERD 보기 ──────────────────────────────────────────────
+
+/**
+ * 원문 지시문(`%%{init: ...}%%`)으로 바꿀 수 없게 막는 Mermaid 설정 키.
+ * PDF 엔진(specton/export/pdf.py MERMAID_SECURE_KEYS)과 같다 (#190 R1 리뷰, ADR-0004).
+ */
+export const MERMAID_SECURE_KEYS = [
+  'secure',
+  'securityLevel',
+  'startOnLoad',
+  'maxTextSize',
+  'maxEdges',
+  'theme',
+  'themeCSS',
+  'themeVariables',
+  'fontFamily',
+  'altFontFamily',
+  'htmlLabels',
+  'dompurifyConfig',
+] as const
+
+/** Mermaid에 넘기는 설정. 개발자가 정한 값만 쓰고 사용자 입력·원문 값을 섞지 않는다. 부를 때마다 새 객체. */
+export function mermaidConfig(): MermaidConfig {
+  return {
+    startOnLoad: false,
+    securityLevel: 'strict',
+    secure: [...MERMAID_SECURE_KEYS],
+    theme: 'neutral',
+    fontFamily: 'Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif',
+    // HTML 조각(foreignObject) 없이 SVG 글자로 그린다. 이미지로 격리할 때도 글자가 남고 HTML이 끼지 않는다.
+    htmlLabels: false,
+    er: { useMaxWidth: false },
+  }
+}
+
+/**
+ * 그려도 되는 원문인지. ERD 생성 코드(specton/codegen/erd.py)가 만든 `erDiagram`만 그린다.
+ * 다른 다이어그램과 지시문(`%%{`)이 든 원문은 그리지 않는다 (ADR-0004 「Mermaid 설정 보안」).
+ */
+export function isAllowedErdSource(source: string): boolean {
+  const first = source.replace(/^\uFEFF/, '').split(/\r?\n/, 1)[0].trim()
+  return first === 'erDiagram' && !source.includes('%%{')
+}
+
+/**
+ * SVG를 `<img>`에 넣을 data URI. 이미지 안의 CSS·스크립트는 화면의 다른 요소에 닿지 않고
+ * 외부 리소스도 불러오지 않는다 (CSS 주입 격리, #190 R1 리뷰).
+ */
+export function svgDataUri(svg: string): string {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+}
 
 /** mermaid가 만든 SVG의 원래 크기(viewBox). 확대·축소의 기준이다. */
 export function svgSize(svg: string): { width: number; height: number } | null {

@@ -16,6 +16,7 @@
 //   no-questions 추출 확인은 멈추고, 분석 확인은 확인할 것이 없어 건너뜀 (ADR-0015)
 //   critical     최종 검토에 차단 오류(critical)가 있어 승인 불가. 수정 요청 한 번 뒤에 사라진다
 //   partial-review 최종 검토에서 일부 검토 관점이 빠짐(failed_branches)·자동 재작업을 멈춘 이유(hitl_reason)
+//   erd-attack   (다른 낱말과 함께) ERD 원문에 지시문을 넣어 돌려줌. 웹이 그리지 않는지 보는 보안 시험 (#190)
 import { delay, http, HttpResponse } from 'msw'
 import type {
   ApiErrorBody,
@@ -37,6 +38,7 @@ import {
   ARTIFACT_FORMATS,
   designItems,
   DDL_SAMPLE,
+  ERD_ATTACK_SAMPLE,
   ERD_SAMPLE,
   extractionItems,
   CRITICAL_FINDING,
@@ -75,6 +77,7 @@ type MockRun = {
   created_at: string
   scenario: 'normal' | 'quick' | 'slow-queue' | 'fail' | 'unreadable' | 'conflict' | 'no-questions' | 'critical' | 'partial-review'
   conflictPending: boolean // conflict: 다음 답을 409로 돌려준다
+  erdAttack: boolean // erd-attack: ERD 원문에 지시문을 넣어 돌려준다 (웹 보안 시험, #190)
   status: RunState
   revision: number
   stage: string | null
@@ -324,6 +327,7 @@ export function createMockBackend(options: MockOptions = {}) {
       created_at: new Date(now()).toISOString(),
       scenario,
       conflictPending: scenario === 'conflict',
+      erdAttack: name.includes('erd-attack'),
       status: 'queued',
       revision: 0,
       stage: null,
@@ -520,7 +524,9 @@ export function createMockBackend(options: MockOptions = {}) {
     const fileName = `specton-${kind}-r${revision}${approved ? '' : '-draft'}.${fileFormat}`
     const text =
       kind === 'erd' && fileFormat === 'mmd'
-        ? ERD_SAMPLE
+        ? run.erdAttack
+          ? ERD_ATTACK_SAMPLE
+          : ERD_SAMPLE
         : kind === 'ddl'
           ? DDL_SAMPLE
           : `mock ${kind} r${revision} (${fileFormat})\n`

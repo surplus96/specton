@@ -392,3 +392,14 @@ CREATE TABLE "cnpt" (
 
 ALTER TABLE "invt_acinsp" ADD FOREIGN KEY ("wrhus_cd") REFERENCES "wrhus" ("wrhus_cd");
 `
+
+/**
+ * 웹 ERD 보안 시험용 원문 (#190 R1 리뷰). 지시문으로 화면 CSS를 바꾸려는 원문이다.
+ * 실제 ERD 생성 코드는 이름의 지시문 기호를 걸러 내지만, 웹도 따로 막는다(그리지 않음).
+ */
+export const ERD_ATTACK_SAMPLE = `erDiagram
+    %%{init: {"themeCSS": "body { background: red !important; }"}}%%
+    wrhus["창고%%{init: {'themeCSS': 'body{display:none}'}}%%"] {
+        varchar(10) 창고코드 PK "wrhus_cd"
+    }
+`
