@@ -12,13 +12,13 @@ function AppLayout() {
           display: 'flex',
           alignItems: 'center',
           gap: 24,
-          borderBottom: `3px solid ${colors.orange}`,
+          borderBottom: `4px solid ${colors.primary}`,
         }}
       >
-        <Link to="/" style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>
-          Spec<span style={{ color: colors.orange }}>ton</span>
+        <Link to="/" style={{ color: colors.onDark, fontWeight: 700, fontSize: 20 }}>
+          Spec<span style={{ color: colors.onDarkMuted }}>ton</span>
         </Link>
-        <span style={{ color: colors.orange70, fontSize: 12 }}>요구사항 문서 → 설계 산출물</span>
+        <span style={{ color: colors.onDarkMuted, fontSize: 15 }}>요구사항 문서 → 설계 산출물</span>
       </Layout.Header>
       <Layout.Content style={{ padding: '32px 16px 64px' }}>
         <div style={{ maxWidth: 1120, margin: '0 auto' }}>

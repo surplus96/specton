@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Flex, Select, Spin, Tabs, Tag, Typography } from 'antd'
+import StatusTag from '../../layout/StatusTag.tsx'
+import { Alert, Button, Flex, Select, Spin, Tabs, Typography } from 'antd'
 import { getView } from '../../api/client.ts'
 import { errorMessage } from '../../api/errors.ts'
 import type { RunStatus } from '../../api/types.ts'
@@ -78,9 +79,9 @@ function WorkspacePanel({ run }: Props) {
             }))}
           />
           {data && data.artifacts.length > 0 && (
-            <Tag color={isApproved(data.artifacts) ? 'green' : 'orange'}>
+            <StatusTag tone={isApproved(data.artifacts) ? 'success' : 'warning'}>
               {isApproved(data.artifacts) ? '승인본' : '초안 (승인 전)'}
-            </Tag>
+            </StatusTag>
           )}
         </Flex>
 
@@ -177,7 +178,9 @@ function TextArtifact({ runId, artifact, kind }: { runId: string; artifact: Arti
             maxHeight: '60vh',
             overflow: 'auto',
             padding: 16,
-            background: colors.parchment,
+            background: '#f1f5f9',
+            border: `1.5px solid ${colors.line}`,
+            color: colors.ink,
             borderRadius: 12,
             fontSize: 13,
             whiteSpace: 'pre',

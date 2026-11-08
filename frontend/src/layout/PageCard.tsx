@@ -14,7 +14,7 @@ function PageCard({ title, subtitle, children }: Props) {
     <section
       style={{
         background: colors.canvas,
-        border: `1px solid ${colors.hairline}`,
+        border: `1.5px solid ${colors.border}`,
         borderRadius: 18,
         padding: 32,
       }}

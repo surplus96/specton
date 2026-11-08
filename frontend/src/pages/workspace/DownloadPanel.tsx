@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
+import StatusTag from '../../layout/StatusTag.tsx'
 import { useNavigate } from 'react-router'
-import { Alert, Button, Flex, Spin, Table, Tag, Tooltip, Typography } from 'antd'
+import { Alert, Button, Flex, Spin, Table, Tooltip, Typography } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { getView, listRuns } from '../../api/client.ts'
 import { errorMessage } from '../../api/errors.ts'
@@ -81,7 +82,7 @@ function DownloadPanel({ run }: Props) {
       title: '상태',
       dataIndex: 'status',
       width: 140,
-      render: (s: RunSummary['status']) => <Tag color={s === 'completed' ? 'green' : s === 'failed' ? 'red' : 'default'}>{STATUS_LABEL[s]}</Tag>,
+      render: (s: RunSummary['status']) => <StatusTag tone={s === 'completed' ? 'success' : s === 'failed' ? 'danger' : 'neutral'}>{STATUS_LABEL[s]}</StatusTag>,
     },
     { title: 'revision', dataIndex: 'revision', width: 90 },
     {
@@ -128,7 +129,7 @@ function DownloadPanel({ run }: Props) {
               <Typography.Title level={5} style={{ margin: 0 }}>
                 산출물
               </Typography.Title>
-              <Tag color={approved ? 'green' : 'orange'}>{approved ? '승인본' : '초안 (승인 전)'}</Tag>
+              <StatusTag tone={approved ? 'success' : 'warning'}>{approved ? '승인본' : '초안 (승인 전)'}</StatusTag>
             </Flex>
             {!approved && (
               <Alert

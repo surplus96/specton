@@ -87,7 +87,7 @@ function ProgressPanel({ run, events, connection, onChanged }: Props) {
         {messages.length > 0 && (
           <section aria-label="진행 기록">
             <Typography.Title level={5}>진행 기록</Typography.Title>
-            <Timeline items={messages.map((m, i) => ({ content: m, color: i === messages.length - 1 ? 'orange' : 'gray' }))} />
+            <Timeline items={messages.map((m, i) => ({ content: m, color: i === messages.length - 1 ? 'blue' : 'gray' }))} />
           </section>
         )}
 

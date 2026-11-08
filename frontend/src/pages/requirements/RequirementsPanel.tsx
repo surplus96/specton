@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Collapse, Flex, Input, Radio, Spin, Table, Tag, Typography } from 'antd'
+import StatusTag from '../../layout/StatusTag.tsx'
+import { Alert, Button, Collapse, Flex, Input, Radio, Spin, Table, Typography } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { getView } from '../../api/client.ts'
 import { errorMessage } from '../../api/errors.ts'
@@ -94,7 +95,7 @@ function RequirementsPanel({ run, onChanged }: Props) {
           <Flex vertical gap={6}>
             {r.quality_issues.map((issue, i) => (
               <div key={i}>
-                <Tag color="orange">경고</Tag>
+                <StatusTag tone="warning">경고</StatusTag>
                 {issue.message}
                 {issue.question && <div>질문: {issue.question}</div>}
               </div>

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Checkbox, Collapse, Flex, Input, Popconfirm, Radio, Spin, Table, Tag, Typography } from 'antd'
+import StatusTag from '../../layout/StatusTag.tsx'
+import type { Tone } from '../../theme.ts'
+import { Alert, Button, Checkbox, Collapse, Flex, Input, Popconfirm, Radio, Spin, Table, Typography } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { getView } from '../../api/client.ts'
 import { errorMessage } from '../../api/errors.ts'
@@ -29,10 +31,10 @@ type Props = {
   onChanged: () => Promise<void>
 }
 
-const STATUS_COLOR: Record<ExtractionBlock['extraction_status'], string> = {
-  fail: 'red',
-  review: 'orange',
-  pass: 'default',
+const STATUS_TONE: Record<ExtractionBlock['extraction_status'], Tone> = {
+  fail: 'danger',
+  review: 'warning',
+  pass: 'neutral',
 }
 
 function ExtractionPanel({ run, events, onChanged }: Props) {
@@ -75,7 +77,7 @@ function ExtractionPanel({ run, events, onChanged }: Props) {
       title: '판정',
       dataIndex: 'extraction_status',
       width: 96,
-      render: (status: ExtractionBlock['extraction_status']) => <Tag color={STATUS_COLOR[status]}>{STATUS_LABEL[status]}</Tag>,
+      render: (status: ExtractionBlock['extraction_status']) => <StatusTag tone={STATUS_TONE[status]}>{STATUS_LABEL[status]}</StatusTag>,
     },
     { title: '블록', dataIndex: 'block_id', width: 72 },
     { title: '위치', key: 'ref', width: 140, render: (_, b) => locationText(b.source_ref) },

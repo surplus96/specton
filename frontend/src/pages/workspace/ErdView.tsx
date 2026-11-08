@@ -128,7 +128,7 @@ function ErdView({ runId, artifact }: Props) {
           style={{
             overflow: 'auto',
             maxHeight: '70vh',
-            border: `1px solid ${colors.hairline}`,
+            border: `1.5px solid ${colors.border}`,
             borderRadius: 12,
             padding: 12,
             background: '#fff',

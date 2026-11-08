@@ -1,4 +1,6 @@
-import { Flex, Table, Tag, Typography } from 'antd'
+import { Flex, Table, Typography } from 'antd'
+import StatusTag from '../../layout/StatusTag.tsx'
+import type { Tone } from '../../theme.ts'
 import type { TableColumnsType } from 'antd'
 import type { Finding, Severity } from '../../api/viewItems.ts'
 import { SEVERITY_LABEL, STAGE_LABEL, sortFindings, sourceText, targetText } from './rules.ts'
@@ -10,7 +12,7 @@ type Props = {
   names: Map<string, string>
 }
 
-const SEVERITY_COLOR: Record<Severity, string> = { critical: 'red', major: 'orange', minor: 'default' }
+const SEVERITY_TONE: Record<Severity, Tone> = { critical: 'danger', major: 'warning', minor: 'neutral' }
 
 function FindingsTable({ findings, names }: Props) {
   if (findings.length === 0) return <Typography.Text type="secondary">지적이 없습니다.</Typography.Text>
@@ -20,7 +22,7 @@ function FindingsTable({ findings, names }: Props) {
       title: '심각도',
       dataIndex: 'severity',
       width: 84,
-      render: (s: Severity) => <Tag color={SEVERITY_COLOR[s]}>{SEVERITY_LABEL[s]}</Tag>,
+      render: (s: Severity) => <StatusTag tone={SEVERITY_TONE[s]}>{SEVERITY_LABEL[s]}</StatusTag>,
     },
     {
       title: '대상',

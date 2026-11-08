@@ -1,8 +1,10 @@
+import type { CSSProperties } from 'react'
 import { Button, Flex } from 'antd'
 import { useNavigate } from 'react-router'
 import { colors } from '../theme.ts'
 
 // 첫 화면: 팀·프로젝트 소개 (/). "시작하기"를 누르면 UI-01(업로드, /start)로 간다.
+// 대형 강의장 프로젝터 기준(theme.ts): 남색 면 + 흰 글자, 흰 카드 + 진한 테두리, 큰 글자.
 const TEAM_NAME = '설계로'
 const PROJECT_NAME = 'Specton'
 const PARTNERS = ['한화내일아카데미', '한화시스템', '고용노동부']
@@ -21,37 +23,57 @@ const MEMBERS = [
   { name: '박성진', role: '기능 · API · 저장' },
 ]
 
-// 무엇을 하는 도구인지 세 줄로 (docs/09-ui-flow.md의 화면 묶음: 업로드 → 확인·승인 → 결과 보기)
-// 카드 바탕은 한화 오렌지 100% → 70% → 50%
+// 무엇을 하는 도구인지 세 단계로 (docs/09-ui-flow.md: 업로드 → 확인·승인 → 결과 보기)
+// 카드 바탕은 파랑 → 진한 파랑 → 남색. 모두 흰 글자와 6.7:1 이상
 const FLOW = [
-  { title: '올리기', text: '요구사항 정의서(.xlsx · .csv)를 올립니다.', bg: colors.orange },
-  { title: '확인하기', text: '추출·분석 결과를 사람이 확인하고 승인합니다.', bg: colors.orange70 },
-  { title: '받기', text: '기능 명세 · ERD · DDL · RTM을 내려받습니다.', bg: colors.orange50 },
+  { title: '올리기', text: '요구사항 정의서(.xlsx · .csv)를 올립니다.', bg: colors.primary },
+  { title: '확인하기', text: '추출·분석 결과를 사람이 확인하고 승인합니다.', bg: colors.primaryStrong },
+  { title: '받기', text: '기능 명세 · ERD · DDL · RTM을 내려받습니다.', bg: colors.navy },
 ]
+
+const card: CSSProperties = {
+  background: colors.canvas,
+  border: `1.5px solid ${colors.border}`,
+  borderRadius: 16,
+}
+
+const label: CSSProperties = {
+  fontSize: 15,
+  fontWeight: 700,
+  letterSpacing: '0.08em',
+  color: colors.primary,
+  marginBottom: 8,
+}
+
+const heading: CSSProperties = {
+  fontSize: 'clamp(26px, 3.4vw, 34px)',
+  fontWeight: 700,
+  margin: '0 0 16px',
+  color: colors.ink,
+}
 
 function HomePage() {
   const navigate = useNavigate()
 
   return (
-    <Flex vertical gap={24}>
-      {/* 소개 */}
+    <Flex vertical gap={28}>
+      {/* 소개: 남색 면 + 흰 글자 */}
       <section
         style={{
           textAlign: 'center',
           padding: 'clamp(48px, 8vw, 88px) 16px',
-          background: colors.orangeTint,
-          border: `1px solid ${colors.orange50}`,
-          borderRadius: 18,
+          background: colors.navy,
+          borderRadius: 16,
         }}
       >
         <span
           style={{
             display: 'inline-block',
-            background: colors.orange,
-            color: colors.black,
-            fontSize: 15,
+            background: colors.primary,
+            color: colors.onDark,
+            fontSize: 18,
             fontWeight: 700,
-            padding: '4px 16px',
+            padding: '6px 20px',
             borderRadius: 980,
           }}
         >
@@ -59,83 +81,65 @@ function HomePage() {
         </span>
         <h1
           style={{
-            fontSize: 'clamp(44px, 9vw, 80px)',
-            fontWeight: 700,
+            fontSize: 'clamp(56px, 10vw, 96px)',
+            fontWeight: 800,
             letterSpacing: '-0.03em',
             lineHeight: 1.05,
-            margin: '20px 0 0',
-            color: colors.black,
+            margin: '24px 0 0',
+            color: colors.onDark,
           }}
         >
-          Spec<span style={{ color: colors.orange }}>ton</span>
+          Spec<span style={{ color: colors.onDarkMuted }}>ton</span>
         </h1>
-        <div
-          style={{ width: 64, height: 4, background: colors.orange, borderRadius: 2, margin: '20px auto' }}
-        />
-        <p style={{ fontSize: 'clamp(19px, 3vw, 26px)', fontWeight: 600, color: colors.ink, margin: 0 }}>
+        <div style={{ width: 72, height: 5, background: colors.primary, borderRadius: 3, margin: '24px auto' }} />
+        <p style={{ fontSize: 'clamp(22px, 3.2vw, 30px)', fontWeight: 700, color: colors.onDark, margin: 0 }}>
           요구사항 정의서에서 설계 산출물까지
         </p>
-        <p style={{ fontSize: 17, color: colors.inkMuted, margin: '8px 0 32px' }}>
+        <p style={{ fontSize: 20, color: colors.onDarkMuted, margin: '12px 0 36px', wordBreak: 'keep-all' }}>
           문서를 올리면 기능 명세와 데이터베이스 설계를 만들고, 사람이 확인한 결과만 내보냅니다.
         </p>
-        <Button type="primary" size="large" onClick={() => navigate('/start')}>
+        <Button type="primary" size="large" onClick={() => navigate('/start')} style={{ fontSize: 20, height: 52, padding: '0 36px' }}>
           시작하기
         </Button>
       </section>
 
       {/* 프로젝트 소개 */}
-      <section
-        aria-label="프로젝트 소개"
-        style={{
-          background: colors.canvas,
-          border: `1px solid ${colors.hairline}`,
-          borderRadius: 18,
-          padding: 'clamp(24px, 4vw, 36px)',
-        }}
-      >
-        <div style={{ fontSize: 13, fontWeight: 700, color: colors.orangeText, marginBottom: 8 }}>
-          PROJECT
-        </div>
-        <h2 style={{ fontSize: 'clamp(22px, 3vw, 28px)', fontWeight: 700, margin: '0 0 12px', color: colors.ink }}>
-          {PROJECT_NAME}이란?
-        </h2>
-        <p style={{ fontSize: 17, lineHeight: 1.7, color: colors.ink, margin: 0, wordBreak: 'keep-all' }}>
+      <section aria-label="프로젝트 소개" style={{ ...card, padding: 'clamp(24px, 4vw, 40px)' }}>
+        <div style={label}>PROJECT</div>
+        <h2 style={heading}>{PROJECT_NAME}이란?</h2>
+        <p style={{ fontSize: 20, lineHeight: 1.7, color: colors.ink, margin: 0, wordBreak: 'keep-all' }}>
           {PROJECT_INTRO}
         </p>
       </section>
 
-      {/* 흐름 세 단계: 오렌지 100 → 70 → 50 */}
+      {/* 흐름 세 단계: 파랑 → 진한 파랑 → 남색, 흰 글자 */}
       <section
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
           gap: 16,
         }}
       >
         {FLOW.map((step, i) => (
-          <div key={step.title} style={{ background: step.bg, borderRadius: 18, padding: 28 }}>
-            <div style={{ fontSize: 40, fontWeight: 700, lineHeight: 1, color: colors.black }}>
-              {i + 1}
-            </div>
-            <div style={{ fontSize: 24, fontWeight: 700, margin: '12px 0 8px', color: colors.black }}>
+          <div key={step.title} style={{ background: step.bg, borderRadius: 16, padding: 32 }}>
+            <div style={{ fontSize: 48, fontWeight: 800, lineHeight: 1, color: colors.onDarkMuted }}>{i + 1}</div>
+            <div style={{ fontSize: 28, fontWeight: 700, margin: '14px 0 10px', color: colors.onDark }}>
               {step.title}
             </div>
-            <div style={{ fontSize: 15, lineHeight: 1.6, color: colors.black }}>{step.text}</div>
+            <div style={{ fontSize: 19, lineHeight: 1.6, color: colors.onDark, wordBreak: 'keep-all' }}>{step.text}</div>
           </div>
         ))}
       </section>
 
-      {/* 팀 소개: 팀장은 오렌지 카드, 팀원은 흰 카드 */}
+      {/* 팀 소개: 팀장은 파랑 카드, 팀원은 흰 카드 + 진한 테두리 */}
       <section aria-label="팀 소개">
-        <div style={{ fontSize: 13, fontWeight: 700, color: colors.orangeText, marginBottom: 8 }}>TEAM</div>
-        <h2 style={{ fontSize: 'clamp(22px, 3vw, 28px)', fontWeight: 700, margin: '0 0 16px', color: colors.ink }}>
-          팀 {TEAM_NAME}
-        </h2>
+        <div style={label}>TEAM</div>
+        <h2 style={heading}>팀 {TEAM_NAME}</h2>
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-            gap: 12,
+            gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+            gap: 14,
           }}
         >
           {[LEADER, ...MEMBERS].map((person) => {
@@ -144,18 +148,21 @@ function HomePage() {
               <div
                 key={person.name}
                 style={{
-                  background: leader ? colors.orange : colors.canvas,
-                  border: `1px solid ${leader ? colors.orange : colors.hairline}`,
-                  borderRadius: 18,
-                  padding: '22px 20px',
+                  ...card,
+                  background: leader ? colors.primary : colors.canvas,
+                  border: `1.5px solid ${leader ? colors.primary : colors.border}`,
+                  padding: '26px 22px',
                 }}
               >
-                <div style={{ fontSize: 22, fontWeight: 700, color: colors.black }}>{person.name}</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: leader ? colors.onDark : colors.ink }}>
+                  {person.name}
+                </div>
                 <div
                   style={{
-                    fontSize: 14,
-                    marginTop: 6,
-                    color: leader ? colors.black : colors.inkMuted,
+                    fontSize: 17,
+                    fontWeight: 600,
+                    marginTop: 8,
+                    color: leader ? colors.onDark : colors.inkMuted,
                     wordBreak: 'keep-all',
                   }}
                 >
@@ -167,25 +174,25 @@ function HomePage() {
         </div>
       </section>
 
-      {/* 함께한 곳: 한화 블랙 띠 */}
+      {/* 함께한 곳: 남색 띠 */}
       <footer
         style={{
           textAlign: 'center',
-          background: colors.black,
-          borderRadius: 18,
-          borderTop: `4px solid ${colors.orange}`,
-          padding: '32px 16px',
+          background: colors.navy,
+          borderRadius: 16,
+          borderTop: `5px solid ${colors.primary}`,
+          padding: '36px 16px',
         }}
       >
-        <Flex justify="center" align="center" wrap gap="8px 20px">
+        <Flex justify="center" align="center" wrap gap="10px 24px">
           {PARTNERS.map((name, i) => (
-            <Flex key={name} align="center" gap={20}>
-              {i > 0 && <span style={{ color: colors.orange }}>●</span>}
-              <span style={{ fontSize: 16, fontWeight: 600, color: '#fff' }}>{name}</span>
+            <Flex key={name} align="center" gap={24}>
+              {i > 0 && <span style={{ color: colors.onDarkMuted }}>●</span>}
+              <span style={{ fontSize: 20, fontWeight: 700, color: colors.onDark }}>{name}</span>
             </Flex>
           ))}
         </Flex>
-        <p style={{ fontSize: 12, color: colors.orange70, margin: '16px 0 0' }}>
+        <p style={{ fontSize: 16, color: colors.onDarkMuted, margin: '18px 0 0' }}>
           © 2026 팀 {TEAM_NAME} · {PROJECT_NAME}
         </p>
       </footer>
