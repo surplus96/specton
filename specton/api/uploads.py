@@ -1,13 +1,21 @@
 """업로드 원문 저장: 확장자·크기 확인, 해시 계산, run별 저장 (06·11 문서).
 
 사용자가 준 파일명은 경로로 쓰지 않는다. 저장 이름은 `document_id`와 형식으로 만든다.
-MIME 내용 검사·페이지 한도는 #21에서 더한다.
+
+내용 검사 (#21): 확장자만 맞춘 다른 파일과 압축 폭탄을 파서에 넘기기 전에 막는다.
+- xlsx·hwpx는 zip이어야 하고, 압축을 푼 크기 합이 한도(`max_unzipped_mb`) 안이어야 한다.
+- csv는 텍스트여야 한다(NUL 바이트가 없어야 한다). BOM 있는 UTF-16은 해독되면 통과한다.
+  인코딩·표 모양은 파서가 판정한다.
 """
 
 import hashlib
+import struct
+import zipfile
+import zlib
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path, PurePath
+from typing import BinaryIO
 from uuid import UUID
 
 from fastapi import UploadFile
@@ -17,6 +25,9 @@ from specton.contracts import ErrorCode
 
 # 이번 범위의 입력 형식 (10/29 결정 2: PDF 제외, R2 합의: HWP는 HWPX로 변환해 올림)
 ACCEPTED_FORMATS = ("xlsx", "csv", "hwpx")
+_ZIP_FORMATS = frozenset({"xlsx", "hwpx"})
+_LOCAL_HEADER = struct.Struct("<4s5H3L2H")  # zip 로컬 파일 헤더 (30바이트)
+_UTF16_BOMS = (b"\xff\xfe", b"\xfe\xff")  # 파서(_decode)가 받는 UTF-16 표시
 _CHUNK = 1024 * 1024
 
 
@@ -44,9 +55,14 @@ def file_format_of(file_name: str) -> str:
 
 
 def save_upload(
-    upload: UploadFile, storage_dir: Path, run_id: UUID, document_id: UUID, max_bytes: int
+    upload: UploadFile,
+    storage_dir: Path,
+    run_id: UUID,
+    document_id: UUID,
+    max_bytes: int,
+    max_unzipped_bytes: int,
 ) -> StoredFile:
-    """업로드를 저장하고 해시를 계산한다. 한도를 넘으면 지우고 413."""
+    """업로드를 저장하고 해시를 계산한다. 한도를 넘으면 지우고 413, 내용이 형식과 다르면 415."""
     file_name = PurePath(upload.filename or "").name
     file_format = file_format_of(file_name)
     relative = Path(str(run_id)) / f"{document_id}.{file_format}"
@@ -71,7 +87,105 @@ def save_upload(
     if size == 0:
         _discard(target)
         raise ApiError(422, ErrorCode.INVALID_REQUEST, "빈 파일입니다.")
+    try:
+        _check_content(target, file_format, max_unzipped_bytes)
+    except BaseException:
+        _discard(target)
+        raise
     return StoredFile(file_name, file_format, digest.hexdigest(), relative.as_posix())
+
+
+def _check_content(path: Path, file_format: str, max_unzipped_bytes: int) -> None:
+    if file_format in _ZIP_FORMATS:
+        _check_zip(path, file_format, max_unzipped_bytes)
+    else:
+        _check_text(path)
+
+
+def _check_zip(path: Path, file_format: str, max_unzipped_bytes: int) -> None:
+    """zip 항목을 실제로 풀어 보며 크기를 센다. 선언 크기는 믿지 않는다 (#216 리뷰).
+
+    한도를 넘는 순간 멈춰 413, 구조가 깨졌거나 선언 크기·압축 방식이 실제와 다르면 415다.
+    """
+    try:
+        with zipfile.ZipFile(path) as archive, path.open("rb") as raw:
+            total = 0
+            for info in archive.infolist():
+                total += _inflated_size(raw, info, max_unzipped_bytes - total)
+                if total > max_unzipped_bytes:
+                    raise ApiError(
+                        413, ErrorCode.UPLOAD_TOO_LARGE,
+                        f"압축을 푼 크기가 {max_unzipped_bytes // (1024 * 1024)}MB를 넘습니다.",
+                    )  # fmt: skip
+    # zip 구조·인코딩·지원 범위 문제만 입력 오류로 본다. 그 밖의 예외는 코드 오류로 그대로 둔다
+    except (
+        zipfile.BadZipFile, zlib.error, struct.error, EOFError, OSError,
+        UnicodeDecodeError,  # UTF-8 표시를 켠 잘못된 파일명 바이트
+        NotImplementedError,  # zipfile이 지원하지 않는 해제 버전
+    ) as exc:  # fmt: skip
+        raise ApiError(
+            415, ErrorCode.UNSUPPORTED_MEDIA_TYPE,
+            f"파일 내용이 .{file_format} 형식이 아닙니다. "
+            "원래 프로그램에서 다시 저장해 올려 주세요.",
+        ) from exc  # fmt: skip
+
+
+def _inflated_size(raw: BinaryIO, info: zipfile.ZipInfo, budget: int) -> int:
+    """항목 하나를 풀어 실제 크기를 돌려준다. `budget`을 넘으면 그 즉시 넘은 값을 돌려준다.
+
+    `ZipExtFile`은 선언 크기에서 결과를 잘라 버리므로 쓰지 않고, 로컬 헤더 뒤의 압축 바이트를
+    직접 푼다. 다 풀었는데 선언 크기와 다르면 BadZipFile.
+    """
+    raw.seek(info.header_offset)
+    header = raw.read(_LOCAL_HEADER.size)
+    signature, *_, name_length, extra_length = _LOCAL_HEADER.unpack(header)
+    if signature != b"PK\x03\x04":
+        raise zipfile.BadZipFile("로컬 헤더가 없습니다")
+    raw.seek(name_length + extra_length, 1)
+    if info.compress_type == zipfile.ZIP_STORED:
+        inflate = None
+    elif info.compress_type == zipfile.ZIP_DEFLATED:
+        inflate = zlib.decompressobj(-zlib.MAX_WBITS)
+    else:
+        raise zipfile.BadZipFile("xlsx·hwpx가 쓰지 않는 압축 방식입니다")
+    size, remaining = 0, info.compress_size
+    while remaining > 0:
+        chunk = raw.read(min(_CHUNK, remaining))
+        if not chunk:
+            raise zipfile.BadZipFile("압축 바이트가 잘렸습니다")
+        remaining -= len(chunk)
+        while chunk:
+            if inflate is None:
+                size, chunk = size + len(chunk), b""
+            else:
+                size += len(inflate.decompress(chunk, budget - size + 1))
+                chunk = inflate.unconsumed_tail
+            if size > budget:
+                return size
+    if inflate is not None:
+        size += len(inflate.flush())
+    if size != info.file_size:
+        raise zipfile.BadZipFile("선언한 크기와 실제 크기가 다릅니다")
+    return size
+
+
+def _check_text(path: Path) -> None:
+    """CSV가 텍스트인지 본다. BOM 있는 UTF-16(엑셀 「유니코드 텍스트」)은 실제로 해독해 본다."""
+    not_text = ApiError(
+        415, ErrorCode.UNSUPPORTED_MEDIA_TYPE,
+        "CSV 내용이 텍스트가 아닙니다. 엑셀에서 CSV로 다시 저장해 올려 주세요.",
+    )  # fmt: skip
+    with path.open("rb") as stream:
+        if stream.read(2) in _UTF16_BOMS:
+            try:
+                path.read_bytes().decode("utf-16")  # 크기는 업로드 한도 안이다
+            except UnicodeDecodeError as exc:
+                raise not_text from exc
+            return
+        stream.seek(0)
+        while chunk := stream.read(_CHUNK):
+            if b"\x00" in chunk:
+                raise not_text
 
 
 def discard_upload(storage_dir: Path, stored: StoredFile) -> None:

@@ -4,10 +4,12 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from specton.api.session import SESSION_COOKIE, SESSION_MAX_AGE, OwnerRef
+from specton.config import Settings
 
 
 def _client() -> TestClient:
     app = FastAPI()
+    app.state.settings = Settings(_env_file=None)  # 쿠키 Secure 여부를 읽는다 (#21)
 
     @app.get("/whoami")
     def whoami(owner: OwnerRef) -> dict[str, int]:

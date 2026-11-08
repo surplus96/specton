@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     sse_poll_seconds: float = Field(default=1.0, gt=0)
 
     max_upload_mb: int = Field(default=20, gt=0)
+    # xlsx·hwpx 압축을 푼 크기 합의 한도. 압축 폭탄을 파서 전에 막는다 (#21)
+    max_unzipped_mb: int = Field(default=200, gt=0)
+    # HTTPS로 배포하면 켠다. 세션 쿠키에 Secure를 붙여 HTTP로 보내지 않는다 (#21, PR #108 리뷰)
+    session_cookie_secure: bool = False
     max_structured_retries: int = Field(default=2, ge=0)
     max_rework_iterations: int = Field(default=3, ge=0)
 
