@@ -20,9 +20,12 @@ from specton.contracts.design import Relationship
 from specton.contracts.normalized import Column, NormalizedModel, Table
 
 # Mermaid 11.15.0 erDiagram이 받는 속성 이름·타입 글자 (실측, #13 댓글).
-# 글자·숫자·`_`·`-`·괄호·대괄호만 받고, 숫자로 시작하면 안 된다. 공백·`·`·`/`·`.`·`,`는 파싱 오류다.
+# 글자·숫자·`_`·`-`·괄호·대괄호를 받되 숫자·`-`·괄호·대괄호로 시작하면 안 된다.
+# 공백·`·`·`/`·`.`·`,`는 파싱 오류다.
 _NAME_BAD = re.compile(r"[^\w\-()\[\]]")
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# Mermaid 11.15.0 ER 문법의 단독 키워드. PostgreSQL 예약어와 별개이며 대소문자를 구분하지 않는다.
+_MERMAID_KEYWORDS = frozenset({"erdiagram", "style", "classdef", "class", "one", "many", "to"})
 
 
 @dataclass(frozen=True)
@@ -96,13 +99,29 @@ def render_erd(
 
 
 def _identifiers(tables: Sequence[Table]) -> dict[str, str]:
-    """엔티티 식별자: 물리명(영문 소문자). Mermaid가 받지 못하는 이름이면 순번으로 대신한다."""
+    """엔티티 식별자: 물리명(영문 소문자). 테이블마다 서로 다르다 (#177 리뷰).
+
+    Mermaid가 받지 못하거나 앞 테이블과 겹치는 물리명은 순번 `t002`로 대신한다.
+    쓸 수 있는 물리명을 먼저 모두 잡아 두고 대체 ID를 고르므로, 대체 ID가 다른 테이블의
+    물리명(앞이든 뒤든)이나 다른 대체 ID와 겹치지 않는다. 겹치면 `t002_2`처럼 뒤에 번호를 붙인다.
+    """
     idents: dict[str, str] = {}
-    for index, table in enumerate(tables, 1):
+    used: set[str] = set()
+    for table in tables:  # 1차: 쓸 수 있는 물리명. 같은 이름이면 먼저 나온 테이블이 갖는다
         name = table.physical_name
-        idents[table.id] = (
-            name if _IDENT.match(name) and name not in idents.values() else f"t{index:03d}"
-        )
+        if _IDENT.match(name) and name.lower() not in _MERMAID_KEYWORDS and name not in used:
+            idents[table.id] = name
+            used.add(name)
+    for index, table in enumerate(tables, 1):  # 2차: 남은 테이블에 겹치지 않는 대체 ID
+        if table.id in idents:
+            continue
+        base = candidate = f"t{index:03d}"
+        suffix = 2
+        while candidate in used:
+            candidate = f"{base}_{suffix}"
+            suffix += 1
+        idents[table.id] = candidate
+        used.add(candidate)
     return idents
 
 
@@ -149,6 +168,8 @@ def _data_type(col: Column) -> tuple[str, str | None]:
 
 
 def _attribute_name(name: str) -> str:
-    """Mermaid가 받는 속성 이름. 못 쓰는 글자는 `_`로, 숫자로 시작하면 앞에 `_`를 붙인다."""
+    """Mermaid가 받는 속성 이름. 못 쓰는 글자는 `_`로, 첫 글자가 부적합하면 `_`를 붙인다."""
     cleaned = _NAME_BAD.sub("_", name)
-    return f"_{cleaned}" if cleaned[:1].isdigit() else cleaned
+    if not cleaned or cleaned[0].isdigit() or cleaned[0] in "-()[]":
+        return f"_{cleaned}"
+    return cleaned

@@ -322,6 +322,95 @@ def test_names_mermaid_cannot_parse_are_replaced_and_the_original_is_kept() -> N
     assert '        integer _1차_단가 "frst_untprc · 1차 단가"' in text  # 숫자로 시작·공백
 
 
+def _two_tables(first: str, second: str) -> NormalizedModel:
+    """물리명만 바꿔 쓰는 테이블 둘: 둘째가 첫째를 부모로 가리킨다 (REL-01)."""
+    return NormalizedModel.model_validate(
+        {
+            "pack": "inventory",
+            "pack_version": "0.1.7",
+            "rules_version": "normalize-v0",
+            "lexicon_digest": "x",
+            "tables": [
+                _table("TBL-1", "첫째", first, [_col("C-1", "첫째코드", "frst_cd")], ["C-1"]),
+                _table(
+                    "TBL-2",
+                    "둘째",
+                    second,
+                    [
+                        _col("C-2", "둘째코드", "scnd_cd"),
+                        _fk_col("C-2-1", "첫째코드", "frst_cd", "REL-01", "C-1"),
+                    ],
+                    ["C-2"],
+                ),
+            ],
+            "foreign_keys": [_fk("FK-01", "REL-01", "TBL-2", ["C-2-1"], "TBL-1", ["C-1"])],
+        }
+    )
+
+
+def _declared(text: str) -> dict[str, str]:
+    """선언된 엔티티: 별칭 → 식별자."""
+    return {alias: ident for ident, alias in re.findall(r'^    (\w+)\["([^"]*)"\]', text, re.M)}
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        ("t002", "1table"),  # 둘째의 대체 ID t002가 앞 테이블 물리명과 겹침 (#177 리뷰 재현)
+        ("1table", "t001"),  # 첫째의 대체 ID t001이 뒤 테이블 물리명과 겹침
+        ("item", "item"),  # 같은 물리명: 둘째는 대체 ID
+        ("t002", "t002"),  # 같은 물리명이면서 대체 ID까지 겹침
+    ],
+)
+def test_every_table_gets_its_own_identifier_and_edges_keep_their_tables(
+    first: str, second: str
+) -> None:
+    rels = (_rel("REL-01", "ENT-1", "ENT-2"),)
+    text = render_erd(_two_tables(first, second), rels)
+    declared = _declared(text)
+    assert len(set(declared.values())) == 2, text
+    assert _edge_lines(text) == [(declared["첫째"], "||", "..", "o{", declared["둘째"], "REL-01")]
+
+
+def test_a_usable_physical_name_is_kept_even_when_an_earlier_table_needs_a_replacement() -> None:
+    """대체 ID 때문에 쓸 수 있는 물리명을 잃지 않는다."""
+    rels = (_rel("REL-01", "ENT-1", "ENT-2"),)
+    assert _declared(render_erd(_two_tables("1table", "t001"), rels))["둘째"] == "t001"
+
+
+@pytest.mark.parametrize(
+    "physical", ["style", "class", "classdef", "erdiagram", "one", "many", "to"]
+)
+def test_mermaid_keywords_use_unique_replacements_and_edges_keep_their_tables(
+    physical: str,
+) -> None:
+    rels = (_rel("REL-01", "ENT-1", "ENT-2"),)
+    text = render_erd(_two_tables(physical, "t001"), rels)
+    declared = _declared(text)
+    assert declared["첫째"] != physical
+    assert declared["둘째"] == "t001"
+    assert len(set(declared.values())) == 2
+    assert _edge_lines(text) == [(declared["첫째"], "||", "..", "o{", "t001", "REL-01")]
+
+
+@pytest.mark.parametrize("physical", ["style_table", "class_code", "direction"])
+def test_names_that_are_not_mermaid_keywords_keep_their_physical_name(physical: str) -> None:
+    text = render_erd(_two_tables(physical, "child"), (_rel("REL-01", "ENT-1", "ENT-2"),))
+    assert _declared(text)["첫째"] == physical
+
+
+@pytest.mark.parametrize("logical", ["-코드", "(코드)", "[코드]", ")코드", "]코드", "1코드"])
+def test_attribute_names_start_with_a_valid_character_and_keep_the_original(logical: str) -> None:
+    model = _two_tables("parent", "child")
+    table = model.tables[0]
+    column = table.columns[0].model_copy(update={"name": logical})
+    model = model.model_copy(
+        update={"tables": (table.model_copy(update={"columns": (column,)}), model.tables[1])}
+    )
+    text = render_erd(model, (_rel("REL-01", "ENT-1", "ENT-2"),))
+    assert f'        varchar(20) _{logical} PK "frst_cd · {logical}"' in text
+
+
 def test_aliases_and_comments_never_contain_double_quotes() -> None:
     model = MODEL.model_copy(
         update={

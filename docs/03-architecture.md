@@ -99,7 +99,9 @@ flowchart TD
 
 실패의 `Problem.code`·`decision`·`pending`은 변환 콜백으로 그대로 넘긴다. `FK_COLUMN_CONFLICT`는 D4와 D13의 처리 경로가 다르므로 메시지로 구분하지 않는다. 콜백 결과는 규칙 지적(`findings`)과 사람 조치 여부(`requires_manual_review`)이며, R4의 실제 #15 반환형을 감싸는 R1 내부 연결 형식이다. 팩 불일치·출력 추적 오류와 잘못된 명명 설정은 실행 오류로 남긴다.
 
-API의 `create_graph`는 실제 정리 노드와 #15 실패 변환기를 등록한다. 둘 다 `settings.pack_root`를 사용하며 규칙 심각도는 그래프를 만들 때 공통 팩에서 읽는다. #168의 `unsupported_relationship` 구분에 따라 설계 규칙 위반(D8)은 자동 재작업하고, 자기참조 N:M의 지원 부족(D4)은 바로 사람 확인으로 보낸다. 실제 API 경로에서 성공 모델 저장·재작업·재시작·승인 차단을 검증한다. 생성·후속 규칙 검사·내보내기는 아직 stub이며, 생성기 파일·`storage_ref`·`add_artifact` 연결은 별도 후속 범위다.
+API의 `create_graph`는 실제 정리 노드와 #15 실패 변환기를 등록한다. 둘 다 `settings.pack_root`를 사용하며 규칙 심각도는 그래프를 만들 때 공통 팩에서 읽는다. #168의 `unsupported_relationship` 구분에 따라 설계 규칙 위반(D8)은 자동 재작업하고, 자기참조 N:M의 지원 부족(D4)은 바로 사람 확인으로 보낸다. 실제 API 경로에서 성공 모델 저장·재작업·재시작·승인 차단을 검증한다.
+
+ERD 가지는 `specton.erd_node`를 등록한다. 저장된 `DesignState.normalized`와 같은 설계의 관계로 상세 Mermaid 원문을 만들고, UTF-8 바이트를 `write_artifact()`로 초안 `.mmd` 파일에 저장한다. 노드는 파일·모델 해시와 현재 revision을 담은 `GeneratedArtifact`만 기존 채널로 반환하며, 실행기가 모델·진행·산출물·이벤트를 같은 트랜잭션으로 게시한다. 정리 실패 시 ERD도 건너뛰며, 생성·저장 오류는 실행 오류로 전달한다. PDF·업무 영역별 출력과 DDL·RTM·후속 규칙·내보내기의 실제 노드 등록은 후속 범위다.
 
 ### 재작업 복귀 단계
 

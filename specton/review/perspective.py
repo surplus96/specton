@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, Validation
 PERSPECTIVES_DIR = Path(__file__).parent / "perspectives"
 
 # 리뷰어에게 보여 줄 DesignState 부분. 관점마다 필요한 것만 골라 토큰을 아낀다.
-InputSection = Literal["requirements", "functions", "entities", "relationships"]
+InputSection = Literal["requirements", "functions", "entities", "relationships", "normalized"]
 ReviewerId = Annotated[str, StringConstraints(pattern=r"^A\d{2}$")]
 Line = Annotated[str, StringConstraints(min_length=1)]
 
