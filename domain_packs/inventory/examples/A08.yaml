@@ -1,7 +1,7 @@
 # few-shot 예시 (inventory · A08 normalization_review). 사람이 작성하는 입력 파일이다.
 # - 입력은 개발용 세트(비공개, 저장소에 올리지 않음)에서만 가져오고 source_id에 원문 ID를 적는다. 평가용 세트 문서는 넣지 않는다.
 # - output은 해당 노드의 LLM 출력 모델과 같은 모양이어야 한다. load_examples가 그 모델로 검증한다 (docs/04 "노드 작성 규칙").
-# - 요구사항은 실제 A01 실행 결과 SFR-206(REQ-32∼34)을 text·type·nfr_category 그대로 옮기고 예시 안에서 번호만 다시 붙였다.
+# - 요구사항 문장은 합성 퓨샷용 세트(SFR-206)의 것이다. 실제 A01 실행 결과(REQ-32∼34)의 text·type·nfr_category를 그대로 옮기고 예시 안에서 번호만 다시 붙였다.
 #   검토 대상 엔티티·관계는 A03 SFR-206 예시 설계의 일부다(ID는 예시용 ENT·ATTR·REL 번호).
 # - A08 입력은 requirements·entities·relationships·normalized다 (#12). 부모 키는 A03 속성에 넣지 않고
 #   A04 관계로 나타내며, normalized는 그 설계를 모델 정리 코드로 정리한 결과의 요약이다. ID는 정리 코드가 계산한 값이다.
