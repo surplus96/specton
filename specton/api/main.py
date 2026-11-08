@@ -21,6 +21,7 @@ from specton.export_node import export_node
 from specton.graph import GraphState, build_graph
 from specton.normalization_node import normalization_node
 from specton.parse_node import parse_node
+from specton.pdf_adapter import erd_pdf_renderer
 from specton.persistence.db import Pool, apply_schema, create_checkpointer, create_pool
 from specton.review.normalization_findings import failure_mapper, rule_severities
 from specton.runner import Runner
@@ -36,11 +37,16 @@ def create_graph(
 ) -> CompiledStateGraph[GraphState, None, GraphState, GraphState]:
     """문서·에이전트·정리·DDL 검증·ERD·기능 명세·RTM을 연결한다. 후속 규칙은 빈 노드다."""
     mapper = failure_mapper(rule_severities(root=settings.pack_root))
+    erd = (
+        erd_node(settings.storage_dir, pdf=erd_pdf_renderer(settings))
+        if settings.enable_erd_pdf
+        else erd_node(settings.storage_dir)
+    )
     nodes = {
         **openai_agent_nodes(settings),
         "parse": parse_node(settings.storage_dir),
         "normalize": normalization_node(mapper, root=settings.pack_root),
-        "erd": erd_node(settings.storage_dir),
+        "erd": erd,
         "ddl": ddl_node(settings),
         "rtm": document_node(settings.storage_dir),
         "export": export_node(settings.storage_dir),
