@@ -14,6 +14,7 @@ from specton.agent_nodes import openai_agent_nodes
 from specton.api.errors import install_error_handlers
 from specton.api.runs import router as runs_router
 from specton.config import Settings, get_settings
+from specton.erd_node import erd_node
 from specton.graph import GraphState, build_graph
 from specton.normalization_node import normalization_node
 from specton.parse_node import parse_node
@@ -30,12 +31,13 @@ class HealthResponse(BaseModel):
 def create_graph(
     settings: Settings, checkpointer: BaseCheckpointSaver[Any]
 ) -> CompiledStateGraph[GraphState, None, GraphState, GraphState]:
-    """문서·에이전트·모델 정리를 실제 노드로 잇는다. 생성·후속 규칙·내보내기는 빈 노드다."""
+    """문서·에이전트·정리·ERD를 연결한다. DDL·RTM·후속 규칙·내보내기는 빈 노드다."""
     mapper = failure_mapper(rule_severities(root=settings.pack_root))
     nodes = {
         **openai_agent_nodes(settings),
         "parse": parse_node(settings.storage_dir),
         "normalize": normalization_node(mapper, root=settings.pack_root),
+        "erd": erd_node(settings.storage_dir),
     }
     return build_graph(nodes, checkpointer=checkpointer)
 

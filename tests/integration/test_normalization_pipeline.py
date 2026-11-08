@@ -1,6 +1,6 @@
 """#17: 실제 정리 실패를 실행기·Postgres·HTTP 재개까지 연결한다.
 
-설계·검토 응답과 생성기는 고정 응답이다. 서버의 create_graph로 실제 파싱·정리·#15 변환기를
+설계·검토 응답과 DDL·RTM은 고정 응답이다. 서버의 create_graph로 실제 파싱·정리·ERD·#15 변환기를
 연결하고 체크포인트·모델 저장·조회·승인 API를 검증한다. LLM은 호출하지 않는다.
 """
 
@@ -29,6 +29,7 @@ from specton.contracts import (
     RunStatus,
     SseEvent,
 )
+from specton.erd_node import erd_node
 from specton.graph import REVIEWERS, GraphState, Node
 from specton.packs.build import DEFAULT_ROOT, read_yaml
 from specton.persistence.db import Pool, create_checkpointer
@@ -90,8 +91,18 @@ class _Pipeline:
         # 에이전트·생성기 응답만 대체한다. parse·normalize와 변환기 등록은 서버와 같은 경로다.
         with monkeypatch.context() as patch:
             patch.setattr(api_main, "openai_agent_nodes", lambda settings: nodes)
+            patch.setattr(api_main, "erd_node", self._erd_node)
             self.graph = api_main.create_graph(settings, create_checkpointer(pool))
         self.runner = Runner(pool, self.graph, settings)
+
+    def _erd_node(self, storage_dir: Path) -> Node:
+        generate = erd_node(storage_dir)
+
+        def node(state: GraphState) -> Mapping[str, Any]:
+            self.visited.append(("erd", state["design"].revision))
+            return generate(state)
+
+        return node
 
     def _downstream(self, name: str) -> Node:
         def node(state: GraphState) -> Mapping[str, Any]:
@@ -201,6 +212,14 @@ def test_actual_missing_key_is_reworked_and_both_revisions_survive_restart(
     assert finding["targets"] == [{"kind": "entity", "id": "ENT-eq"}]
     current_review = first.client.get(f"/runs/{run_id}/view", params={"section": "review"})
     assert current_review.json()["items"] == []
+    erd_url = f"/runs/{run_id}/artifacts/erd"
+    assert (
+        first.client.get(erd_url, params={"file_format": "mmd", "revision": 0}).status_code == 409
+    )
+    erd = first.client.get(erd_url, params={"file_format": "mmd", "revision": 1})
+    assert erd.status_code == 200
+    assert erd.content.startswith(b"erDiagram\n") and 'eqpm["설비"]' in erd.text
+    assert "-draft.mmd" in erd.headers["content-disposition"]
 
     restarted = pipeline(design, previous=first)
     assert restarted.answer(run_id, "approve").status_code == 202
@@ -209,6 +228,10 @@ def test_actual_missing_key_is_reworked_and_both_revisions_survive_restart(
     assert restarted.status(run_id).status == "completed"
     assert seen == [(0, True), (1, True)]
     assert restarted.visited == [("export", 1)]
+    assert (
+        restarted.client.get(erd_url, params={"file_format": "mmd", "revision": 1}).content
+        == erd.content
+    )
     assert restarted.models(run_id) == [failed, repaired]
     with restarted.pool.connection() as conn:
         approved = conn.execute(
