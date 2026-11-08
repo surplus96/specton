@@ -3,6 +3,9 @@
 import csv
 import hashlib
 import io
+import json
+import os
+import shutil
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import ExitStack
 from pathlib import Path
@@ -16,6 +19,7 @@ from openpyxl import load_workbook
 
 from specton.api import main
 from specton.api.session import SESSION_COOKIE
+from specton.codegen.manifest import build_manifest, render_manifest
 from specton.config import Settings
 from specton.contracts import BranchResult, Entity, Function, Requirement
 from specton.contracts.base import TargetStage
@@ -239,7 +243,13 @@ class _World:
 def world(
     pool: Pool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[Callable[..., _World]]:
-    settings = Settings(_env_file=None, storage_dir=tmp_path, require_sql_validation=True)
+    config = os.environ.get("SPECTON_MMDC_PUPPETEER")
+    settings = Settings(
+        _env_file=None,
+        storage_dir=tmp_path,
+        require_sql_validation=True,
+        mermaid_puppeteer_config=Path(config) if config else None,
+    )
     worlds = []
     with ExitStack() as stack:
 
@@ -249,13 +259,19 @@ def world(
             previous: _World | None = None,
             keyed: bool = True,
             after_documents: Callable[[GraphState], None] | None = None,
+            pdf: bool = False,
         ) -> _World:
-            client = stack.enter_context(TestClient(main.create_app(settings, pool)))
+            current = (
+                previous.settings
+                if previous
+                else settings.model_copy(update={"enable_erd_pdf": pdf})
+            )
+            client = stack.enter_context(TestClient(main.create_app(current, pool)))
             if previous:
                 previous.runner.stop()
                 client.cookies.update(previous.client.cookies)
                 pack = previous.pack
-            item = _World(pool, settings, client, monkeypatch, pack, keyed, after_documents)
+            item = _World(pool, current, client, monkeypatch, pack, keyed, after_documents)
             worlds.append(item)
             return item
 
@@ -496,3 +512,95 @@ def test_modified_document_cannot_be_promoted_after_approval(
     w.runner.run_pending()
     assert w.status(run_id)["status"] == "failed"
     assert all(not item["approved"] for item in w.artifacts(run_id))
+
+
+@pytest.mark.parametrize("pack", DOMAINS)
+@pytest.mark.parametrize("broken", [False, True])
+def test_native_all_outputs_match_manifest_and_rule07_blocks_failed_sql(
+    world: Callable[..., _World], monkeypatch: pytest.MonkeyPatch, pack: str, broken: bool
+) -> None:
+    """실제 6개 출력·SQL 결함·최종 승인과 manifest의 모델/바이트 정합성을 함께 확인한다."""
+    if os.environ.get("SPECTON_TEST_NATIVE_PDF") != "1":
+        pytest.skip("실제 PDF 도구 환경에서 SPECTON_TEST_NATIVE_PDF=1로 실행")
+    assert shutil.which("mmdc") is not None
+    from specton import ddl_adapter
+
+    original = ddl_adapter.generate_ddl
+    calls = 0
+
+    def generate(*args: Any, **kwargs: Any) -> Any:
+        nonlocal calls
+        result = original(*args, **kwargs)
+        calls += 1
+        if broken and calls == 1:
+            # 문법·허용 문장은 통과하고 실제 PostgreSQL 실행에서 실패하는 정밀도다.
+            sql = result.sql.replace("varchar(10)", "numeric(1001)", 1)
+            assert sql != result.sql
+            return result.model_copy(update={"sql": sql})
+        return result
+
+    monkeypatch.setattr(ddl_adapter, "generate_ddl", generate)
+    w = world(pack, pdf=True)
+    run_id = w.create()
+    w.prepare(run_id)
+    if broken:
+        design = w.design(run_id)
+        assert design.revision == 0 and not design.branch_results
+        (finding,) = [f for f in design.findings if f.rule_code == "RULE-07"]
+        assert finding.severity == "critical" and finding.target_stage is None
+        assert [(t.kind, t.id) for t in finding.targets] == [("entity", "ENT-01")]
+        assert w.review(run_id, "approve").status_code == 422
+        assert all(not a["approved"] for a in w.artifacts(run_id))
+        assert w.download(run_id, "erd", "pdf").status_code == 409
+        assert w.review(run_id, "revise").status_code == 202
+        w.runner.run_pending()
+        assert w.status(run_id)["status"] == "awaiting_review"
+
+    config = {"configurable": {"thread_id": run_id}}
+    state = w.graph.get_state(config).values
+    design = state["design"]
+    assert design.revision == int(broken) and not design.findings
+    items = [
+        a for a in state["generated_artifacts"].values() if a["ref"].revision == design.revision
+    ]
+    expected = {("ddl", "sql"), ("erd", "mmd"), ("erd", "pdf"), *DOCUMENTS}
+    draft = build_manifest(design, items)
+    assert draft["approved"] is False
+    assert {(f["kind"], f["file_format"]) for f in draft["files"]} == expected
+    assert draft["model_hash"] == model_hash(design)
+    assert draft["source_hash"] == design.versions.document_hash
+    assert draft["pack_version"] == design.versions.pack_version
+    assert json.loads(render_manifest(draft)) == draft
+    assert render_manifest(build_manifest(design, reversed(items))) == render_manifest(draft)
+    assert w.download(run_id, "erd", "pdf", design.revision).status_code == 409
+
+    # 보류·재시작 후에도 같은 후보와 manifest 입력을 사용한다.
+    assert w.review(run_id, "hold").status_code == 202
+    w.runner.run_pending()
+    restarted = world(previous=w)
+    assert restarted.review(run_id, "approve").status_code == 202
+    restarted.runner.run_pending()
+    assert restarted.status(run_id)["status"] == "completed" and restarted.generated == []
+    state = restarted.graph.get_state(config).values
+    approved = build_manifest(
+        state["design"],
+        [a for a in state["generated_artifacts"].values() if a["ref"].revision == design.revision],
+    )
+    assert approved == {**draft, "approved": True}
+    for item in approved["files"]:
+        response = restarted.download(run_id, item["kind"], item["file_format"], design.revision)
+        assert response.status_code == 200
+        assert hashlib.sha256(response.content).hexdigest() == item["hash"]
+        assert "-draft" not in response.headers["content-disposition"]
+    with w.pool.connection() as conn:
+        rows = conn.execute(
+            "SELECT a.kind,a.file_format,b.artifact_hash,b.validation_id FROM approval_basis b "
+            "JOIN approval p USING(approval_id) JOIN artifact a USING(artifact_id) "
+            "WHERE p.run_id=%s",
+            (UUID(run_id),),
+        ).fetchall()
+    assert len(rows) == 6
+    assert {(r["kind"], r["file_format"], r["artifact_hash"]) for r in rows} == {
+        (f["kind"], f["file_format"], f["hash"]) for f in approved["files"]
+    }
+    assert all((r["validation_id"] is not None) == (r["kind"] == "ddl") for r in rows)

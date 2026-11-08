@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from specton.api import main
 from specton.api.session import SESSION_COOKIE
 from specton.config import Settings
-from specton.contracts import Attribute, DesignState, Entity, Requirement
+from specton.contracts import Attribute, DesignState, Entity, Function, Requirement
 from specton.contracts.base import TargetStage
 from specton.graph import GraphState
 from specton.model_hash import model_hash
@@ -83,6 +83,13 @@ def _a03(state: GraphState) -> dict[str, Any]:
     return {"design": design.evolve(entities=(entity,))}
 
 
+def _a02(state: GraphState) -> dict[str, Any]:
+    function = Function(
+        id="FUNC-01", name="등록", description="대상을 등록한다", req_ids=("REQ-01",)
+    )
+    return {"design": state["design"].evolve(functions=(function,))}
+
+
 class _World:
     def __init__(
         self,
@@ -116,6 +123,7 @@ class _World:
                 "openai_agent_nodes",
                 lambda config: {
                     "a01": _a01,
+                    "a02": _a02,
                     "a03": _a03,
                     "a09": lambda state: {"router_stage": TargetStage.DATA_MODEL},
                 },
