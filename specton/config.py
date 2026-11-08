@@ -40,6 +40,10 @@ class Settings(BaseSettings):
         "postgresql://specton_sandbox:specton_sandbox@localhost:5432/specton_sandbox"
     )
 
+    # 실제 DDL 생성·검증·저장 연결(#17)에 맞춰 최종 SQL 승인 검사를 기본으로 켠다.
+    # 명시적으로 끄는 호환 모드에서도 승인 근거(approval_basis)는 남긴다 (#167, #195)
+    require_sql_validation: bool = True
+
     # 실행기·lease 시작값 (ADR-0012). 연결 풀은 동시 실행 수, lease 갱신, API 요청을 합쳐 잡는다.
     run_concurrency: int = Field(default=2, gt=0)
     lease_seconds: int = Field(default=60, gt=0)

@@ -3,9 +3,10 @@
 import hashlib
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import ExitStack
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,18 +15,32 @@ from langgraph.checkpoint.serde.event_hooks import SerdeEvent, register_serde_ev
 import specton.runner as runner_module
 from specton.api.main import create_app
 from specton.api.session import SESSION_COOKIE
-from specton.artifacts import GeneratedArtifact, artifact_key, write_artifact
+from specton.artifacts import GeneratedArtifact, artifact_key, storage_ref, write_artifact
 from specton.codegen.normalize_step import normalize_design
 from specton.config import Settings
-from specton.contracts import Entity, Normalized, NormalizedModel, Requirement, RunStatus
+from specton.contracts import (
+    VALIDATION_STEPS,
+    Entity,
+    Normalized,
+    NormalizedModel,
+    Requirement,
+    RunStatus,
+    SqlValidation,
+    ValidationIssue,
+    ValidationStep,
+)
 from specton.contracts.base import TargetStage
 from specton.ddl_adapter import DdlArtifact, create_ddl_artifact
 from specton.erd_node import erd_node
+from specton.export_node import export_node
 from specton.graph import GraphState, Node, build_graph
+from specton.persistence import lease
 from specton.persistence.db import Pool, create_checkpointer
 from specton.persistence.runs import events_after, request_cancel
 from specton.persistence.snapshots import add_artifact
+from specton.persistence.validations import latest_validation
 from specton.runner import Runner
+from specton.validation_attempts import ValidationAttempt, run_validation_attempt
 
 pytestmark = pytest.mark.db
 
@@ -75,10 +90,13 @@ class _World:
         *,
         real_ddl: bool = False,
         real_erd: bool = False,
+        validations: tuple[str, ...] = (),
     ) -> None:
         self.pool, self.settings, self.client, self.mutate = pool, settings, client, mutate
         self.real_ddl, self.real_erd = real_ddl, real_erd
         self.ddl_results: list[DdlArtifact] = []
+        self.validation_statuses = validations
+        self.attempts: list[ValidationAttempt] = []
         self.generated: list[tuple[str, int]] = []
         nodes = {name: self._generator(name) for name in OUTPUTS}
         nodes.update(
@@ -114,7 +132,26 @@ class _World:
                 )  # type: ignore[arg-type]
             if name == "ddl" and self.mutate is not None:
                 self.mutate(state, item)
-            return {"generated_artifacts": {artifact_key(item["ref"]): item}}
+            update: dict[str, Any] = {"generated_artifacts": {artifact_key(item["ref"]): item}}
+            if name == "ddl" and self.validation_statuses:
+                content = (self.settings.storage_dir / item["storage_ref"]).read_bytes()
+                attempts = {}
+                for status in self.validation_statuses:
+                    attempt = run_validation_attempt(
+                        state["design"],
+                        item,
+                        content,
+                        lambda payload, status=status, digest=item["ref"].hash: _validation_result(
+                            status, digest
+                        ),
+                    )
+                    # UUID 크기·시각으로 정렬하면 다른 결과가 나오는 고정 시계 상황.
+                    attempt["validated_at"] = datetime(2026, 11, 8, tzinfo=UTC)
+                    attempt["validation_id"] = str(UUID(int=1000 - len(self.attempts)))
+                    self.attempts.append(attempt)
+                    attempts[attempt["validation_id"]] = attempt
+                update["validation_attempts"] = attempts
+            return update
 
         return node
 
@@ -124,27 +161,7 @@ class _World:
         return {}
 
     def _export(self, state: GraphState) -> Mapping[str, Any]:
-        result = {}
-        for name, (file_format, content) in OUTPUTS.items():
-            item = write_artifact(
-                self.settings.storage_dir,
-                state["design"],
-                name,
-                file_format,
-                content,
-                approved=True,
-            )  # type: ignore[arg-type]
-            result[artifact_key(item["ref"])] = item
-        item = write_artifact(
-            self.settings.storage_dir,
-            state["design"],
-            "erd",
-            "pdf",
-            b"%PDF-fixture",
-            approved=True,
-        )
-        result[artifact_key(item["ref"])] = item
-        return {"generated_artifacts": result}
+        return export_node(self.settings.storage_dir)(state)
 
     def create(self) -> str:
         response = self.client.post(
@@ -195,7 +212,9 @@ def world(
     pool: Pool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[Callable[..., _World]]:
     monkeypatch.setenv("LANGGRAPH_STRICT_MSGPACK", "true")
-    settings = Settings(_env_file=None, storage_dir=tmp_path / "storage")
+    settings = Settings(
+        _env_file=None, require_sql_validation=False, storage_dir=tmp_path / "storage"
+    )
     worlds: list[_World] = []
     serde_events: list[SerdeEvent] = []
     unregister = register_serde_event_listener(serde_events.append)
@@ -207,12 +226,21 @@ def world(
             *,
             real_ddl: bool = False,
             real_erd: bool = False,
+            validations: tuple[str, ...] = (),
         ) -> _World:
             client = stack.enter_context(TestClient(create_app(settings, pool)))
             if previous is not None:
                 previous.runner.stop()
                 client.cookies.update(previous.client.cookies)
-            result = _World(pool, settings, client, mutate, real_ddl=real_ddl, real_erd=real_erd)
+            result = _World(
+                pool,
+                settings,
+                client,
+                mutate,
+                real_ddl=real_ddl,
+                real_erd=real_erd,
+                validations=validations,
+            )
             worlds.append(result)
             return result
 
@@ -248,14 +276,14 @@ def test_parallel_drafts_restart_and_approved_downloads(world: Callable[..., _Wo
     assert restarted.status(run_id).status == "completed"
     assert restarted.generated == []
     refs = restarted.artifacts(run_id)
-    assert len(refs) == 4 and all(ref["approved"] for ref in refs)
-    assert len(restarted.events(run_id)) == 7  # 3 초안 + 4 승인본, 후속 체크포인트는 중복 없음
+    assert len(refs) == 3 and all(ref["approved"] for ref in refs)
+    assert len(restarted.events(run_id)) == 6  # 3 초안 + 3 승인본, 후속 체크포인트는 중복 없음
     assert all(path.read_bytes() == content for path, content in before.items())
     for name, (file_format, content) in OUTPUTS.items():
         response = restarted.download(run_id, name, file_format)
-        assert response.content == content
+        assert response.content == b"DRAFT\n" + content
         assert "-draft" not in response.headers["content-disposition"]
-    assert restarted.download(run_id, "erd", "pdf").content == b"%PDF-fixture"
+    assert restarted.download(run_id, "erd", "pdf").status_code == 409
     with TestClient(create_app(restarted.settings, restarted.pool)) as other:
         assert (
             other.get(
@@ -271,7 +299,7 @@ def test_parallel_drafts_restart_and_approved_downloads(world: Callable[..., _Wo
             "GROUP BY s.snapshot_id",
             (UUID(run_id),),
         ).fetchall()
-    assert len(rows) == 1 and rows[0]["total"] == 4
+    assert len(rows) == 1 and rows[0]["total"] == 3
     assert "normalized" in rows[0]["normalized_model"]
     checkpoint = restarted.graph.get_state({"configurable": {"thread_id": run_id}})
     assert {item["model_hash"] for item in checkpoint.values["generated_artifacts"].values()} == {
@@ -376,13 +404,13 @@ def test_real_ddl_handoff_keeps_bytes_hash_and_model_after_restart(
     first.runner.run_pending()
     assert first.status(run_id).status == "awaiting_review"
     (result,) = first.ddl_results
-    assert result.prepared.validation.state == "unverified"
+    assert result.prepared.validation.status == "unverified"
     ref = result.generated["ref"]
     assert ref.approved is False
     assert b'CREATE TABLE "wrhus"' in result.prepared.sql_bytes
     download = first.download(run_id, "ddl", "sql")
     assert download.content == result.prepared.sql_bytes
-    assert download.headers["etag"] == f'"{result.prepared.validation.sql_sha256}"'
+    assert download.headers["etag"] == f'"{result.prepared.validation.artifact_hash}"'
     with first.pool.connection() as conn:
         stored = conn.execute(
             "SELECT a.hash, a.storage_ref, a.approval_status, s.model_hash FROM artifact a "
@@ -391,7 +419,7 @@ def test_real_ddl_handoff_keeps_bytes_hash_and_model_after_restart(
             (UUID(run_id),),
         ).fetchone()
     assert stored is not None
-    assert stored["hash"] == ref.hash == result.prepared.validation.sql_sha256
+    assert stored["hash"] == ref.hash == result.prepared.validation.artifact_hash
     assert stored["model_hash"] == result.generated["model_hash"]
     assert stored["storage_ref"] == result.generated["storage_ref"]
     assert stored["approval_status"] == "draft"
@@ -491,5 +519,232 @@ def test_approved_artifact_replacement_and_downgrade_are_rejected(
     w.runner.run_pending()
     assert w.status(run_id).status == "completed"
     assert checked == [True]
-    assert len(w.events(run_id)) == 7
-    assert w.download(run_id, "ddl", "sql").content == OUTPUTS["ddl"][1]
+    assert len(w.events(run_id)) == 6
+    assert w.download(run_id, "ddl", "sql").content == b"DRAFT\n" + OUTPUTS["ddl"][1]
+
+
+_VALIDATOR_VERSIONS = {
+    "validator_version": "fixture-v1",
+    "policy_version": "fixture-p1",
+    "postgres_version": "postgresql-18",
+}
+
+
+def _validation_result(status: str, digest: str) -> SqlValidation:
+    values = {
+        "passed": ("passed",) * 5,
+        "failed": ("passed", "passed", "failed", "passed", "passed"),
+        "error": ("passed", "passed", "error", "not_run", "not_run"),
+        "unverified": ("passed", "passed", "not_run", "not_run", "not_run"),
+    }[status]
+    return SqlValidation(
+        status=status, artifact_hash=digest, **_VALIDATOR_VERSIONS,
+        steps=tuple(
+            ValidationStep(
+                name=name, status=value,
+                issues=(ValidationIssue(code="fixture_error"),)
+                if value in ("failed", "error") else (),
+            )
+            for name, value in zip(VALIDATION_STEPS, values, strict=True)
+        ),
+    )  # fmt: skip
+
+
+def _validation_rows(w: _World) -> list[dict[str, Any]]:
+    with w.pool.connection() as conn:
+        return list(
+            conn.execute("SELECT * FROM artifact_validation ORDER BY saved_order").fetchall()
+        )
+
+
+@pytest.mark.parametrize("status", ["passed", "failed", "error", "unverified"])
+def test_runner_persists_validation_with_the_published_sql_and_model(
+    world: Callable[..., _World], status: str
+) -> None:
+    w = world(real_ddl=True, validations=(status,))
+    run_id = w.create()
+    w.runner.run_pending()
+    assert w.status(run_id).status == "awaiting_review"
+    (attempt,) = w.attempts
+    (row,) = _validation_rows(w)
+    assert row["validation_id"] == UUID(attempt["validation_id"])
+    assert row["validated_at"] == attempt["validated_at"]
+    assert row["model_hash"] == attempt["artifact"]["model_hash"]
+    assert (
+        row["artifact_hash"] == hashlib.sha256(w.download(run_id, "ddl", "sql").content).hexdigest()
+    )
+    assert row["status"] == status
+    assert row["steps"] == attempt["result"].model_dump(mode="json")["steps"]
+    assert len(w.events(run_id)) == 3
+
+
+@pytest.mark.parametrize("later", ["failed", "error", "unverified"])
+def test_runner_keeps_same_time_insertion_order_and_replay_is_idempotent(
+    world: Callable[..., _World], later: str
+) -> None:
+    first = world(validations=("passed", later))
+    run_id = first.create()
+    first.runner.run_pending()
+    rows = _validation_rows(first)
+    assert [str(row["validation_id"]) for row in rows] == [
+        attempt["validation_id"] for attempt in first.attempts
+    ]
+    assert rows[0]["validation_id"] > rows[1]["validation_id"]
+    assert rows[0]["validated_at"] == rows[1]["validated_at"]
+    with first.pool.connection() as conn:
+        latest = latest_validation(conn, UUID(run_id), 0, **_VALIDATOR_VERSIONS)
+    assert latest is not None and latest.result.status == later
+    # hold로 같은 revision의 새 체크포인트를 저장한다. 검증·게시를 다시 하지 않는다.
+    restarted = world(previous=first, validations=("passed", later))
+    restarted.answer(run_id, "hold")
+    restarted.runner.run_pending()
+    assert restarted.status(run_id).status == "awaiting_review"
+    assert restarted.attempts == []
+    assert _validation_rows(restarted) == rows
+    assert len(restarted.events(run_id)) == 3
+
+
+@pytest.mark.parametrize("after", ["artifacts", "validations"])
+def test_runner_crash_rolls_back_progress_artifacts_and_validation_then_recovers(
+    world: Callable[..., _World], monkeypatch: pytest.MonkeyPatch, after: str
+) -> None:
+    first = world(validations=("passed", "failed"))
+    run_id = first.create()
+    name = "publish_" + ("artifacts" if after == "artifacts" else "validation_attempts")
+    publish = getattr(runner_module, name)
+
+    def crash(*args: Any, **kwargs: Any) -> None:
+        publish(*args, **kwargs)
+        if args[3]:
+            first.runner.request_stop()
+            raise runner_module._Stop  # 저장 후 외부 commit 전 중단
+
+    monkeypatch.setattr(runner_module, name, crash)
+    first.runner.run_pending()
+    assert first.status(run_id).status == "generating"
+    assert first.artifacts(run_id) == first.events(run_id) == _validation_rows(first) == []
+    checkpoint = first.graph.get_state({"configurable": {"thread_id": run_id}})
+    saved = checkpoint.values["validation_attempts"]
+    assert len(saved) == 2
+    monkeypatch.setattr(runner_module, name, publish)
+    restarted = world(previous=first, validations=("passed", "failed"))
+    restarted.runner.run_pending()
+    assert restarted.status(run_id).status == "awaiting_review"
+    assert restarted.generated == restarted.attempts == []
+    assert [str(row["validation_id"]) for row in _validation_rows(restarted)] == list(saved)
+    assert [row["validated_at"] for row in _validation_rows(restarted)] == [
+        attempt["validated_at"] for attempt in saved.values()
+    ]
+    assert len(restarted.events(run_id)) == 3
+
+
+@pytest.mark.parametrize("boundary", ["cancel", "lease"])
+def test_late_validation_results_cannot_publish_after_cancel_or_lease_loss(
+    world: Callable[..., _World], boundary: str
+) -> None:
+    def stop(state: GraphState, item: GeneratedArtifact) -> None:
+        run_id = UUID(state["design"].run_id)
+        with w.pool.connection() as conn:
+            if boundary == "cancel":
+                request_cancel(conn, run_id, w.client.cookies[SESSION_COOKIE], 0)
+            else:
+                conn.execute(
+                    "UPDATE job_lease SET lease_until = now() WHERE run_id = %s", (run_id,)
+                )
+                assert lease.acquire(conn, run_id, "other-worker", 60)
+
+    w = world(mutate=stop, validations=("passed",))
+    run_id = w.create()
+    w.runner.run_pending()
+    assert len(w.attempts) == 1  # 취소·lease 상실 후 검증기가 뒤늦게 반환한 결과
+    assert w.status(run_id).status == ("cancelled" if boundary == "cancel" else "generating")
+    assert w.artifacts(run_id) == w.events(run_id) == _validation_rows(w) == []
+
+
+def test_validation_history_survives_rework_with_a_new_revision(
+    world: Callable[..., _World],
+) -> None:
+    w = world(validations=("passed",))
+    run_id = w.create()
+    w.runner.run_pending()
+    before = _validation_rows(w)
+    w.answer(run_id, "revise")
+    w.runner.run_pending()
+    assert (w.status(run_id).status, w.status(run_id).revision) == ("awaiting_review", 1)
+    rows = _validation_rows(w)
+    assert len(rows) == 2 and rows[:1] == before
+    assert rows[0]["artifact_id"] != rows[1]["artifact_id"]
+    assert len(w.events(run_id)) == 6
+
+
+@pytest.mark.parametrize("invalid", ["run", "revision", "model", "sql"])
+def test_invalid_attempt_rolls_back_other_attempts_artifacts_and_progress(
+    world: Callable[..., _World], monkeypatch: pytest.MonkeyPatch, invalid: str
+) -> None:
+    publish = runner_module.publish_validation_attempts
+
+    def corrupt(conn: Any, holder: str, state: Any, attempts: Any) -> None:
+        if attempts:
+            copied = {key: attempt.copy() for key, attempt in attempts.items()}
+            attempt = list(copied.values())[-1]
+            artifact = attempt["artifact"].copy()
+            attempt["artifact"] = artifact
+            if invalid == "run":
+                attempt["run_id"] = str(uuid4())
+            elif invalid == "revision":
+                artifact["ref"] = artifact["ref"].evolve(revision=state.revision + 1)
+            elif invalid == "model":
+                artifact["model_hash"] = "0" * 64
+            elif invalid == "sql":
+                artifact["ref"] = artifact["ref"].evolve(hash="0" * 64)
+                attempt["result"] = attempt["result"].evolve(artifact_hash="0" * 64)
+            artifact["storage_ref"] = storage_ref(attempt["run_id"], artifact["ref"])
+            publish(conn, holder, state, copied)
+        else:
+            publish(conn, holder, state, attempts)
+
+    monkeypatch.setattr(runner_module, "publish_validation_attempts", corrupt)
+    w = world(validations=("passed", "failed"))
+    run_id = w.create()
+    w.runner.run_pending()
+    status = w.status(run_id)
+    assert status.status == "failed" and status.error is not None
+    assert status.error.code == "INTERNAL"
+    assert w.artifacts(run_id) == w.events(run_id) == _validation_rows(w) == []
+    assert status.interrupt is None
+
+
+def test_same_revision_regeneration_keeps_saved_history_and_publishes_the_new_attempt(
+    world: Callable[..., _World], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original_rules = _World._rules
+
+    def regenerate(self: _World, state: GraphState) -> Mapping[str, Any]:
+        original_rules(self, state)
+        sql = b"CREATE TABLE regenerated (id integer PRIMARY KEY);"
+        item = write_artifact(self.settings.storage_dir, state["design"], "ddl", "sql", sql)
+        attempt = run_validation_attempt(
+            state["design"],
+            item,
+            sql,
+            lambda payload: _validation_result("failed", item["ref"].hash),
+        )
+        self.attempts.append(attempt)
+        return {
+            "generated_artifacts": {artifact_key(item["ref"]): item},
+            "validation_attempts": {attempt["validation_id"]: attempt},
+        }
+
+    monkeypatch.setattr(_World, "_rules", regenerate)
+    w = world(validations=("passed",))
+    run_id = w.create()
+    w.runner.run_pending()
+    assert w.status(run_id).status == "awaiting_review"
+    rows = _validation_rows(w)
+    assert len(rows) == 2 and rows[0]["artifact_id"] == rows[1]["artifact_id"]
+    assert rows[0]["artifact_hash"] != rows[1]["artifact_hash"]
+    with w.pool.connection() as conn:
+        latest = latest_validation(conn, UUID(run_id), 0, **_VALIDATOR_VERSIONS)
+    assert latest is not None and latest.result.status == "failed"
+    assert latest.validation_id == UUID(w.attempts[-1]["validation_id"])
+    assert len(w.events(run_id)) == 4  # 최초 SQL·ERD·RTM + 교체 SQL
