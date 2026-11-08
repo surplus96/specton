@@ -10,6 +10,7 @@
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
@@ -22,12 +23,24 @@ from specton.llm.types import CallRecord
 from specton.nodes.common import build_request, data_block
 from specton.packs.examples import FewShot, load_examples
 from specton.review.fingerprint import fingerprint
+from specton.review.normalized_view import normalized_view
 from specton.review.perspective import InputSection, Perspective
 
 logger = logging.getLogger(__name__)
 
 COMBINED_STAGE = "REVIEW"
-SECTION_ORDER: tuple[InputSection, ...] = ("requirements", "functions", "entities", "relationships")
+SECTION_ORDER: tuple[InputSection, ...] = (
+    "requirements",
+    "functions",
+    "entities",
+    "relationships",
+    "normalized",
+)
+
+
+class MissingReviewInput(ValueError):
+    """관점이 고른 입력이 상태에 없다. LLM을 부르기 전에 멈춘다 (#12)."""
+
 
 # 입력 속 지시 무시·ID 생성 금지·원문 인용은 공통 규칙(specton.nodes.common)이 붙인다.
 REVIEW_RULES = """\
@@ -117,7 +130,7 @@ def review_perspective(
         prompt_version=perspective.prompt_version,
         system=f"{REVIEW_RULES}\n\n{_perspective_block(perspective)}",
         data=_review_data(state, perspective.inputs),
-        examples=_examples(pack, perspective),
+        examples=_examples(pack, perspective, root=settings.pack_root),
     )
 
     try:
@@ -153,7 +166,10 @@ def review_combined(
         system="\n\n".join(
             [
                 f"{REVIEW_RULES}\n{COMBINED_RULE}",
-                *(_perspective_block(p, _examples(pack, p)) for p in perspectives),
+                *(
+                    _perspective_block(p, _examples(pack, p, root=settings.pack_root))
+                    for p in perspectives
+                ),
             ]
         ),
         data=_review_data(state, tuple(s for p in perspectives for s in p.inputs)),
@@ -182,11 +198,13 @@ def _group_by_reviewer(
     return grouped
 
 
-def _examples(pack: str | None, perspective: Perspective) -> tuple[FewShot[ReviewOutput], ...]:
+def _examples(
+    pack: str | None, perspective: Perspective, *, root: Path
+) -> tuple[FewShot[ReviewOutput], ...]:
     """팩의 관점 예시(`examples/<reviewer_id>.yaml`). pack이 없으면 예시 없이 검토한다."""
     if pack is None:
         return ()
-    return load_examples(pack, perspective.reviewer_id, ReviewOutput)
+    return load_examples(pack, perspective.reviewer_id, ReviewOutput, root=root)
 
 
 def _perspective_block(
@@ -211,9 +229,21 @@ def _perspective_block(
 
 
 def _review_data(state: DesignState, sections: Sequence[InputSection]) -> dict[str, Any]:
-    """선택한 입력만 담는다. 순서는 관점 설정과 무관하게 고정한다."""
+    """선택한 입력만 담는다. 순서는 관점 설정과 무관하게 고정한다.
+
+    `normalized`는 목록이 아니라 정리 결과 하나라 요약 보기로 넣는다. 고른 관점이 있는데 정리
+    결과가 없으면 LLM을 부르기 전에 멈춘다. 정리 결과 없이 정상 검토처럼 처리하지 않는다 (#12).
+    """
     selected = [s for s in SECTION_ORDER if s in sections]
-    return {s: [item.model_dump(mode="json") for item in getattr(state, s)] for s in selected}
+    data: dict[str, Any] = {}
+    for section in selected:
+        if section == "normalized":
+            if state.normalized is None:
+                raise MissingReviewInput("정리 결과(normalized)가 없어 검토할 수 없습니다")
+            data[section] = normalized_view(state.normalized)
+        else:
+            data[section] = [item.model_dump(mode="json") for item in getattr(state, section)]
+    return data
 
 
 def _succeeded(

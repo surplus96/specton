@@ -1,4 +1,4 @@
-"""#17: 실제 파일·병렬 그래프·Postgres·승인·다운로드 연결. 실제 DDL 인계도 확인한다."""
+"""#17: 실제 파일·병렬 그래프·Postgres·승인·다운로드. 실제 DDL·ERD 인계도 확인한다."""
 
 import hashlib
 from collections.abc import Callable, Iterator, Mapping
@@ -20,6 +20,7 @@ from specton.config import Settings
 from specton.contracts import Entity, Normalized, NormalizedModel, Requirement, RunStatus
 from specton.contracts.base import TargetStage
 from specton.ddl_adapter import DdlArtifact, create_ddl_artifact
+from specton.erd_node import erd_node
 from specton.graph import GraphState, Node, build_graph
 from specton.persistence.db import Pool, create_checkpointer
 from specton.persistence.runs import events_after, request_cancel
@@ -73,14 +74,15 @@ class _World:
         mutate: Mutate | None = None,
         *,
         real_ddl: bool = False,
+        real_erd: bool = False,
     ) -> None:
         self.pool, self.settings, self.client, self.mutate = pool, settings, client, mutate
-        self.real_ddl = real_ddl
+        self.real_ddl, self.real_erd = real_ddl, real_erd
         self.ddl_results: list[DdlArtifact] = []
         self.generated: list[tuple[str, int]] = []
         nodes = {name: self._generator(name) for name in OUTPUTS}
         nodes.update(
-            normalize=_real_normalize if real_ddl else _normalize,
+            normalize=_real_normalize if real_ddl or real_erd else _normalize,
             rules=self._rules, export=self._export,
             a09=lambda state: {"router_stage": TargetStage.DATA_MODEL},
         )  # fmt: skip
@@ -98,6 +100,9 @@ class _World:
                 )
                 self.ddl_results.append(result)
                 item = result.generated
+            elif name == "erd" and self.real_erd:
+                update = erd_node(self.settings.storage_dir)(state)
+                (item,) = update["generated_artifacts"].values()
             else:
                 file_format, content = OUTPUTS[name]
                 item = write_artifact(
@@ -197,13 +202,17 @@ def world(
     with ExitStack() as stack:
 
         def make(
-            previous: _World | None = None, mutate: Mutate | None = None, *, real_ddl: bool = False
+            previous: _World | None = None,
+            mutate: Mutate | None = None,
+            *,
+            real_ddl: bool = False,
+            real_erd: bool = False,
         ) -> _World:
             client = stack.enter_context(TestClient(create_app(settings, pool)))
             if previous is not None:
                 previous.runner.stop()
                 client.cookies.update(previous.client.cookies)
-            result = _World(pool, settings, client, mutate, real_ddl=real_ddl)
+            result = _World(pool, settings, client, mutate, real_ddl=real_ddl, real_erd=real_erd)
             worlds.append(result)
             return result
 
@@ -271,8 +280,9 @@ def test_parallel_drafts_restart_and_approved_downloads(world: Callable[..., _Wo
     assert "storage_ref" not in str(refs + restarted.events(run_id))
 
 
-def test_rework_keeps_old_revision_downloads(world: Callable[..., _World]) -> None:
-    first = world()
+@pytest.mark.parametrize("real_erd", [False, True])
+def test_rework_keeps_old_revision_downloads(world: Callable[..., _World], real_erd: bool) -> None:
+    first = world(real_erd=real_erd)
     run_id = first.create()
     first.runner.run_pending()
     old = first.artifacts(run_id)
@@ -314,11 +324,11 @@ def test_invalid_generation_publishes_no_metadata_or_events(
     assert response.status_code == 409
 
 
-@pytest.mark.parametrize("real_ddl", [False, True])
+@pytest.mark.parametrize(("real_ddl", "real_erd"), [(False, False), (True, False), (False, True)])
 def test_checkpoint_ahead_of_app_recovers_files_without_regeneration_or_duplicate_events(
-    world: Callable[..., _World], monkeypatch: pytest.MonkeyPatch, real_ddl: bool
+    world: Callable[..., _World], monkeypatch: pytest.MonkeyPatch, real_ddl: bool, real_erd: bool
 ) -> None:
-    first = world(real_ddl=real_ddl)
+    first = world(real_ddl=real_ddl, real_erd=real_erd)
     run_id = first.create()
     publish = runner_module.publish_artifacts
 
@@ -334,7 +344,7 @@ def test_checkpoint_ahead_of_app_recovers_files_without_regeneration_or_duplicat
     assert first.artifacts(run_id) == first.events(run_id) == []
     assert len(first.generated) == 3
     monkeypatch.setattr(runner_module, "publish_artifacts", publish)
-    restarted = world(previous=first, real_ddl=real_ddl)
+    restarted = world(previous=first, real_ddl=real_ddl, real_erd=real_erd)
     restarted.runner.run_pending()
     assert restarted.status(run_id).status == "awaiting_review"
     assert restarted.generated == []
@@ -343,15 +353,15 @@ def test_checkpoint_ahead_of_app_recovers_files_without_regeneration_or_duplicat
     assert len(restarted.events(run_id)) == 3
 
 
-@pytest.mark.parametrize("real_ddl", [False, True])
+@pytest.mark.parametrize(("real_ddl", "real_erd"), [(False, False), (True, False), (False, True)])
 def test_cancel_at_generator_boundary_never_publishes_results(
-    world: Callable[..., _World], real_ddl: bool
+    world: Callable[..., _World], real_ddl: bool, real_erd: bool
 ) -> None:
     def cancel(state: GraphState, item: GeneratedArtifact) -> None:
         with w.pool.connection() as conn:
             request_cancel(conn, UUID(state["design"].run_id), w.client.cookies[SESSION_COOKIE], 0)
 
-    w = world(mutate=cancel, real_ddl=real_ddl)
+    w = world(mutate=cancel, real_ddl=real_ddl, real_erd=real_erd)
     run_id = w.create()
     w.runner.run_pending()
     assert w.status(run_id).status == "cancelled"
@@ -395,6 +405,58 @@ def test_real_ddl_handoff_keeps_bytes_hash_and_model_after_restart(
     assert restarted.download(run_id, "ddl", "sql").content == download.content
     assert len(restarted.events(run_id)) == 3
     assert "storage_ref" not in str(restarted.artifacts(run_id) + restarted.events(run_id))
+
+
+def test_real_erd_handoff_keeps_bytes_hash_and_model_after_restart(
+    world: Callable[..., _World],
+) -> None:
+    first = world(real_erd=True)
+    run_id = first.create()
+    first.runner.run_pending()
+    assert first.status(run_id).status == "awaiting_review"
+    response = first.download(run_id, "erd", "mmd")
+    assert response.status_code == 200
+    assert response.content.startswith(b"erDiagram\n")
+    assert 'wrhus["창고"]' in response.text
+    digest = hashlib.sha256(response.content).hexdigest()
+    assert response.headers["etag"] == f'"{digest}"'
+    assert "-draft.mmd" in response.headers["content-disposition"]
+    with first.pool.connection() as conn:
+        stored = conn.execute(
+            "SELECT a.hash, a.approval_status, s.model_hash FROM artifact a "
+            "JOIN model_snapshot s USING (snapshot_id) "
+            "WHERE s.run_id = %s AND s.revision = 0 AND a.kind = 'erd'",
+            (UUID(run_id),),
+        ).fetchone()
+    checkpoint = first.graph.get_state({"configurable": {"thread_id": run_id}})
+    item = checkpoint.values["generated_artifacts"]["0:erd:mmd"]
+    assert stored == {"hash": digest, "approval_status": "draft", "model_hash": item["model_hash"]}
+
+    restarted = world(previous=first, real_erd=True)
+    restarted.runner.run_pending()
+    assert restarted.status(run_id).status == "awaiting_review"
+    assert restarted.generated == []
+    assert restarted.download(run_id, "erd", "mmd").content == response.content
+    assert len(restarted.events(run_id)) == 3
+    assert "storage_ref" not in str(restarted.artifacts(run_id) + restarted.events(run_id))
+
+
+@pytest.mark.parametrize("stage", ["render_erd", "write_artifact"])
+def test_real_erd_failure_is_an_execution_error_without_an_erd_download(
+    stage: str, world: Callable[..., _World], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unavailable(*args: Any, **kwargs: Any) -> Any:
+        raise OSError("fixture failure")
+
+    monkeypatch.setattr(f"specton.erd_node.{stage}", unavailable)
+    first = world(real_erd=True)
+    run_id = first.create()
+    first.runner.run_pending()
+    status = first.status(run_id)
+    assert status.status == "failed" and status.error is not None
+    assert status.error.code == "INTERNAL"
+    assert not any(item["kind"] == "erd" for item in first.artifacts(run_id))
+    assert first.download(run_id, "erd", "mmd").status_code == 409
 
 
 def test_approved_artifact_replacement_and_downgrade_are_rejected(

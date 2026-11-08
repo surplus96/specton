@@ -1,7 +1,10 @@
 # few-shot 예시 (inventory · A08 normalization_review). 사람이 작성하는 입력 파일이다.
 # - 입력은 개발용 세트(비공개, 저장소에 올리지 않음)에서만 가져오고 source_id에 원문 ID를 적는다. 평가용 세트 문서는 넣지 않는다.
 # - output은 해당 노드의 LLM 출력 모델과 같은 모양이어야 한다. load_examples가 그 모델로 검증한다 (docs/04 "노드 작성 규칙").
-# - 요구사항 문장은 개발용 세트(INV-005)의 것이고, 검토 대상 엔티티는 예시를 위해 만든 가상 설계다.
+# - 요구사항 문장은 개발용 세트(INV-005)의 것이고, 검토 대상 엔티티·관계는 예시를 위해 만든 가상 설계다.
+# - A08 입력은 requirements·entities·relationships·normalized다 (#12). 부모 키는 A03 속성에 넣지 않고
+#   A04 관계로 나타내며, normalized는 그 설계를 모델 정리 코드로 정리한 결과의 요약이다
+#   (tests/unit/test_review_a08.py가 같은 결과인지 다시 계산해 확인한다). ID는 정리 코드가 계산한 값이다.
 agent: A08
 role: normalization_review
 status: draft
@@ -27,6 +30,18 @@ examples:
       attributes:
       - {id: ATTR-01, name: 문서번호, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-01]}
       - {id: ATTR-02, name: 품목코드목록, description: 문서의 품목 코드를 쉼표로 구분해 저장, data_type: varchar, length: 200, req_ids: [REQ-01]}
+    relationships: []
+    normalized:
+      tables:
+      - id: TBL-baacc078da43921e
+        name: 수불문서
+        entity_id: ENT-01
+        columns:
+        - {id: COL-5f2ff79ce614166e, name: 문서번호, attribute_id: ATTR-01}
+        - {id: COL-f8cd7b2bc89a3402, name: 품목코드목록, attribute_id: ATTR-02}
+        primary_key: [COL-5f2ff79ce614166e]
+        unique_keys: []
+      foreign_keys: []
   output:
     findings:
     - kind: multi_valued_attribute
@@ -52,13 +67,70 @@ examples:
     entities:
     - id: ENT-01
       pack: inventory
+      name: 수불문서
+      description: 품목 내역을 묶는 수불 문서
+      req_ids: [REQ-01]
+      crud_exemptions: []
+      attributes:
+      - {id: ATTR-01, name: 문서번호, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-01]}
+    - id: ENT-02
+      pack: inventory
+      name: 품목
+      description: 내역이 가리키는 품목
+      req_ids: [REQ-02]
+      crud_exemptions: []
+      attributes:
+      - {id: ATTR-02, name: 품목코드, data_type: varchar, length: 10, is_key: true, nullable: false, req_ids: [REQ-02]}
+    - id: ENT-03
+      pack: inventory
       name: 수불내역
       description: 수불 문서에 등록하는 품목별 내역
       req_ids: [REQ-01, REQ-02]
       crud_exemptions: []
       attributes:
-      - {id: ATTR-01, name: 문서번호, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-01]}
-      - {id: ATTR-02, name: 품목코드, data_type: varchar, length: 10, is_key: true, nullable: false, req_ids: [REQ-02]}
-      - {id: ATTR-03, name: 수량, data_type: numeric, precision: 10, scale: 3, req_ids: [REQ-02]}
+      - {id: ATTR-03, name: 내역순번, data_type: integer, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-04, name: 수량, data_type: numeric, precision: 10, scale: 3, req_ids: [REQ-02]}
+    relationships:
+    - {id: REL-01, parent: ENT-01, child: ENT-03, cardinality: '1:N', optional: false, identifying: true, rationale: '"하나의 수불 문서에는 하나 이상의 품목 내역을 등록한다."', req_ids: [REQ-01]}
+    - {id: REL-02, parent: ENT-02, child: ENT-03, cardinality: '1:N', optional: false, identifying: false, rationale: '"각 내역은 한 품목과 수량을 가지며"', req_ids: [REQ-02]}
+    normalized:
+      tables:
+      - id: TBL-baacc078da43921e
+        name: 수불문서
+        entity_id: ENT-01
+        columns:
+        - {id: COL-5f2ff79ce614166e, name: 문서번호, attribute_id: ATTR-01}
+        primary_key: [COL-5f2ff79ce614166e]
+        unique_keys: []
+      - id: TBL-ddc1f6c6071dd2f3
+        name: 수불내역
+        entity_id: ENT-03
+        columns:
+        - {id: COL-4d03e5a0f2f92f69, name: 내역순번, attribute_id: ATTR-03}
+        - {id: COL-05dc404db9a6f875, name: 수량, attribute_id: ATTR-04}
+        - {id: COL-ce8ab77a017ba833, name: 문서번호, relationship_id: REL-01}
+        - {id: COL-ba4716db236aa058, name: 품목코드, relationship_id: REL-02}
+        primary_key: [COL-ce8ab77a017ba833, COL-4d03e5a0f2f92f69]
+        unique_keys: []
+      - id: TBL-efa24e70897cffcf
+        name: 품목
+        entity_id: ENT-02
+        columns:
+        - {id: COL-f8cd7b2bc89a3402, name: 품목코드, attribute_id: ATTR-02}
+        primary_key: [COL-f8cd7b2bc89a3402]
+        unique_keys: []
+      foreign_keys:
+      - id: FK-c962effd07827664
+        relationship_id: REL-01
+        table_id: TBL-ddc1f6c6071dd2f3
+        columns: [COL-ce8ab77a017ba833]
+        parent_table_id: TBL-baacc078da43921e
+        parent_columns: [COL-5f2ff79ce614166e]
+      - id: FK-dae1e2ea4412e36e
+        relationship_id: REL-02
+        table_id: TBL-ddc1f6c6071dd2f3
+        columns: [COL-ba4716db236aa058]
+        parent_table_id: TBL-efa24e70897cffcf
+        parent_columns: [COL-f8cd7b2bc89a3402]
   output:
     findings: []
