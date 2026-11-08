@@ -30,7 +30,8 @@ import re
 import subprocess
 import tempfile
 import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -426,12 +427,16 @@ def _esc(text: str) -> str:
 
 
 class _MissingGlyphs(logging.Handler):
-    """WeasyPrint가 폰트에 없는 글자를 □(.notdef)로 그렸다는 경고를 모은다.
+    """WeasyPrint가 폰트에 없는 글자를 □(.notdef)로 그렸다는 경고를, 그 경고를 낸 스레드에서
+    지금 렌더링 중인 `html_to_pdf` 호출(`collect`)에 넘긴다.
 
     `weasyprint` 로거는 프로세스 전체가 함께 쓴다. 실행기가 PDF 여러 개를 동시에 만들 때
-    (`run_concurrency`) 다른 렌더링의 경고가 섞이지 않게, 이 핸들러를 만든 스레드의 기록만 모은다
-    (#209 R1 리뷰: 한 문서의 깨진 글자 때문에 동시에 만들던 정상 문서까지 실패하던 결함).
-    WeasyPrint의 `render`·`write_pdf`는 부른 스레드에서 그대로 돈다.
+    (`run_concurrency`) 경고가 섞이거나 빠지지 않게 두 가지를 지킨다 (#209 R1 리뷰).
+    - 경고는 그것을 낸 스레드의 렌더링에만 넘긴다. WeasyPrint의 `render`·`write_pdf`는
+      부른 스레드에서 그대로 돈다.
+    - 핸들러는 로거에 한 번만 걸고 떼지 않는다(`_glyph_watch`). 호출마다 붙였다 떼면
+      다른 스레드가 핸들러 목록을 도는 중에 목록이 바뀌어 그 스레드의 핸들러를 건너뛰고,
+      깨진 PDF가 성공으로 나온다.
     """
 
     _PATTERN = re.compile(
@@ -440,15 +445,39 @@ class _MissingGlyphs(logging.Handler):
 
     def __init__(self) -> None:
         super().__init__(level=logging.WARNING)
-        self.chars: set[str] = set()
-        self._thread = threading.get_ident()
+        self._local = threading.local()
+
+    @contextmanager
+    def collect(self) -> Iterator[set[str]]:
+        """이 스레드에서 블록 안에 나온 깨진 글자를 모은 집합."""
+        chars: set[str] = set()
+        previous = getattr(self._local, "chars", None)
+        self._local.chars = chars
+        try:
+            yield chars
+        finally:
+            self._local.chars = previous
 
     def emit(self, record: logging.LogRecord) -> None:
-        if record.thread != self._thread:
-            return  # 다른 렌더링(다른 스레드)의 경고
+        chars = getattr(self._local, "chars", None)
+        if chars is None:
+            return  # 이 스레드는 지금 렌더링 중이 아니다 (다른 렌더링의 경고)
         match = self._PATTERN.search(record.getMessage())
         if match:
-            self.chars.update(match.group(1))
+            chars.update(match.group(1))
+
+
+_GLYPHS = _MissingGlyphs()
+_GLYPHS_LOCK = threading.Lock()
+
+
+def _glyph_watch() -> _MissingGlyphs:
+    """상시 핸들러를 `weasyprint` 로거에 한 번만 건다. 렌더링마다 핸들러 목록을 바꾸지 않는다."""
+    logger = logging.getLogger("weasyprint")
+    with _GLYPHS_LOCK:
+        if _GLYPHS not in logger.handlers:
+            logger.addHandler(_GLYPHS)
+    return _GLYPHS
 
 
 def html_to_pdf(document: str) -> PdfResult:
@@ -473,19 +502,16 @@ def html_to_pdf(document: str) -> PdfResult:
                 raise ValueError(f"외부 리소스를 가져오지 않습니다: {url}")
             return super().fetch(url, headers)
 
-    missing = _MissingGlyphs()
-    logger = logging.getLogger("weasyprint")
-    logger.addHandler(missing)
-    try:
-        rendered = HTML(string=document, url_fetcher=_DataOnly(allowed_protocols={"data"})).render()
-        pdf = rendered.write_pdf()
-    except Exception as exc:  # WeasyPrint 내부 오류를 PDF 오류 하나로
-        raise PdfError(f"PDF로 바꾸지 못했습니다: {exc}") from exc
-    finally:
-        logger.removeHandler(missing)
-    if missing.chars:
+    with _glyph_watch().collect() as missing:
+        try:
+            fetcher = _DataOnly(allowed_protocols={"data"})
+            rendered = HTML(string=document, url_fetcher=fetcher).render()
+            pdf = rendered.write_pdf()
+        except Exception as exc:  # WeasyPrint 내부 오류를 PDF 오류 하나로
+            raise PdfError(f"PDF로 바꾸지 못했습니다: {exc}") from exc
+    if missing:
         # 폰트에 없는 글자는 □로 깨진 채 PDF가 나온다. 조용히 넘기지 않는다 (실행 이미지 #25 점검).
-        sample = "".join(sorted(missing.chars)[:10])
+        sample = "".join(sorted(missing)[:10])
         raise PdfError(
             f"폰트에 없는 글자가 있어 PDF 글자가 깨집니다: {sample} "
             "(한글 폰트 fonts-noto-cjk가 설치돼 있는지 확인하세요)"

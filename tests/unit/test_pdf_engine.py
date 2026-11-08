@@ -436,25 +436,39 @@ _NOTDEF = '.notdef glyph rendered for Unicode string unsupported by fonts: "{}"'
 
 
 def test_missing_glyph_handler_ignores_warnings_from_other_threads() -> None:
-    """핸들러는 자신을 만든 스레드(지금 렌더링)의 경고만 모은다. WeasyPrint 없이도 돈다."""
+    """핸들러는 경고를 낸 스레드에서 모으는 중(`collect`)일 때만 넘긴다. WeasyPrint 없이도 돈다."""
     logger = logging.getLogger("weasyprint")
     handler = pdf._MissingGlyphs()
     logger.addHandler(handler)
     try:
-        other = threading.Thread(target=lambda: logger.warning(_NOTDEF.format("가")))
-        other.start()
-        other.join()
-        assert handler.chars == set()  # 다른 스레드 경고는 무시
-        logger.warning(_NOTDEF.format("나"))
-        assert handler.chars == {"나"}  # 이 스레드 경고는 모은다
+        logger.warning(_NOTDEF.format("다"))  # 모으는 중이 아님: 버린다
+        with handler.collect() as chars:
+            other = threading.Thread(target=lambda: logger.warning(_NOTDEF.format("가")))
+            other.start()
+            other.join()
+            assert chars == set()  # 다른 스레드 경고는 무시
+            logger.warning(_NOTDEF.format("나"))
+        assert chars == {"나"}  # 이 스레드 경고만 모은다
     finally:
         logger.removeHandler(handler)
+
+
+def _glyph_handlers() -> list[logging.Handler]:
+    handlers = logging.getLogger("weasyprint").handlers
+    return [h for h in handlers if isinstance(h, pdf._MissingGlyphs)]
+
+
+def _run_into(results: dict[str, Any], name: str, document: str) -> None:
+    try:
+        results[name] = pdf.html_to_pdf(document)
+    except PdfError as exc:
+        results[name] = exc
 
 
 def test_concurrent_renders_fail_only_the_document_with_missing_glyphs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """정상 문서 렌더링이 핸들러를 건 뒤 멈춘 사이 다른 스레드가 깨지는 문서를 렌더링해도
+    """정상 문서 렌더링이 시작한 뒤 멈춘 사이 다른 스레드가 깨지는 문서를 렌더링해도
     정상 문서는 PDF가 나오고, 깨지는 문서만 PdfError다 (R1 재현 순서 그대로)."""
     weasyprint = _weasyprint()
     original = weasyprint.HTML.render
@@ -462,28 +476,84 @@ def test_concurrent_renders_fail_only_the_document_with_missing_glyphs(
 
     def render(self: Any, *args: Any, **kwargs: Any) -> Any:
         if threading.current_thread().name == "ascii":
-            ascii_ready.set()  # 핸들러 등록을 마치고 렌더링 직전
+            ascii_ready.set()  # 모으기를 시작하고 렌더링 직전
             assert release.wait(30)
         return original(self, *args, **kwargs)
 
     monkeypatch.setattr(weasyprint.HTML, "render", render)
     results: dict[str, Any] = {}
 
-    def run(name: str, document: str) -> None:
-        try:
-            results[name] = pdf.html_to_pdf(document)
-        except PdfError as exc:
-            results[name] = exc
-
-    ascii_doc = threading.Thread(target=run, args=("ascii", "<p>plain ascii</p>"), name="ascii")
+    ascii_doc = threading.Thread(
+        target=_run_into, args=(results, "ascii", "<p>plain ascii</p>"), name="ascii"
+    )
     ascii_doc.start()
     assert ascii_ready.wait(30)
-    run("broken", "<p>\U0010fffd</p>")  # 어떤 폰트에도 없는 글자, 이 스레드에서 끝까지 렌더링
+    _run_into(
+        results, "broken", "<p>\U0010fffd</p>"
+    )  # 어떤 폰트에도 없는 글자, 이 스레드에서 렌더링
     release.set()
     ascii_doc.join(30)
 
     assert isinstance(results["broken"], PdfError)
     assert isinstance(results["ascii"], pdf.PdfResult), results["ascii"]
     assert results["ascii"].pdf.startswith(b"%PDF")
-    handlers = logging.getLogger("weasyprint").handlers
-    assert not any(isinstance(h, pdf._MissingGlyphs) for h in handlers)  # 두 경로 모두 제거됨
+    assert len(_glyph_handlers()) == 1  # 상시 핸들러 하나만
+
+
+def test_a_render_ending_while_another_logs_does_not_hide_its_missing_glyphs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#209 R1 두 번째 재현: 깨지는 문서의 경고를 로거가 핸들러에 넘기는 도중 정상 문서 렌더링이
+    끝나도 깨지는 문서는 PdfError다. 렌더링마다 핸들러를 떼던 예전 코드는 로거가 도는 핸들러 목록이
+    바뀌어 깨지는 문서 쪽 핸들러를 건너뛰고 PDF가 성공으로 나왔다.
+    emit은 원래 동작을 그대로 부르고 Event로 순서만 맞춘다."""
+    weasyprint = _weasyprint()
+    original_render = weasyprint.HTML.render
+    original_emit = pdf._MissingGlyphs.emit
+    ascii_ready, ascii_go = threading.Event(), threading.Event()
+    broken_in_emit, broken_go = threading.Event(), threading.Event()
+
+    def render(self: Any, *args: Any, **kwargs: Any) -> Any:
+        if threading.current_thread().name == "ascii":
+            ascii_ready.set()
+            assert ascii_go.wait(30)
+        return original_render(self, *args, **kwargs)
+
+    def emit(self: Any, record: logging.LogRecord) -> None:
+        if threading.current_thread().name == "broken" and not broken_in_emit.is_set():
+            broken_in_emit.set()  # 로거가 첫 핸들러를 처리하는 중
+            assert broken_go.wait(30)
+        original_emit(self, record)
+
+    monkeypatch.setattr(weasyprint.HTML, "render", render)
+    monkeypatch.setattr(pdf._MissingGlyphs, "emit", emit)
+    results: dict[str, Any] = {}
+    ascii_doc = threading.Thread(
+        target=_run_into, args=(results, "ascii", "<p>plain ascii</p>"), name="ascii"
+    )
+    broken_doc = threading.Thread(
+        target=_run_into, args=(results, "broken", "<p>\U0010fffd</p>"), name="broken"
+    )
+    ascii_doc.start()
+    assert ascii_ready.wait(30)  # 정상 문서가 먼저 시작
+    broken_doc.start()
+    assert broken_in_emit.wait(30)  # 깨지는 문서의 경고가 핸들러에 넘어가는 중
+    ascii_go.set()
+    ascii_doc.join(30)  # 그 사이 정상 문서는 끝까지 (예전 코드는 여기서 핸들러를 뗐다)
+    broken_go.set()
+    broken_doc.join(30)
+
+    assert isinstance(results["ascii"], pdf.PdfResult), results["ascii"]
+    assert isinstance(results["broken"], PdfError), results["broken"]
+    assert len(_glyph_handlers()) == 1
+
+
+def test_rendering_does_not_change_the_weasyprint_handler_list() -> None:
+    """핸들러는 처음 한 번만 걸린다. 그 뒤 렌더링은 로거의 핸들러 목록을 바꾸지 않는다."""
+    _weasyprint()
+    pdf.html_to_pdf("<p>first</p>")
+    before = list(logging.getLogger("weasyprint").handlers)
+    pdf.html_to_pdf("<p>second</p>")
+    with pytest.raises(PdfError):
+        pdf.html_to_pdf("<p>\U0010fffd</p>")
+    assert logging.getLogger("weasyprint").handlers == before
