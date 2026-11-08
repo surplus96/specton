@@ -111,18 +111,22 @@ class _AbbreviationRule(_Strict):
 
 class _TermRule(_Strict):
     classifier_last: bool
-    max_words: int | None  # 기본값을 두지 않는다: 미정값은 키를 생략하지 못하고 null을 적어야 한다
+    # 기본값을 두지 않는다: 미정값은 키를 생략하지 못하고 null을 적어야 한다
+    max_words: Literal["unlimited"] | None
     official_term_immutable: bool
 
 
 class _TableRule(_Strict):
-    prefix: str | None  # 기본값 없음(위와 같은 이유)
-    form: Literal["singular", "plural"] | None
+    prefix: Literal["none"] | None  # 기본값 없음(위와 같은 이유). "none" = 접두어 없음, null = 미정
+    form: Literal["as_dictionary"] | None
+    junction_name: Literal["parent_child"] | None  # 기본값 없음(위와 같은 이유)
 
 
 class _ColumnRule(_Strict):
-    primary_key: str | None  # 기본값 없음(위와 같은 이유)
-    foreign_key: str | None
+    primary_key: Literal["term_physical_name"] | None  # 기본값 없음(위와 같은 이유)
+    foreign_key: Literal["parent_key_physical_name"] | None
+    # 기본값 없음(위와 같은 이유). 값은 words.yaml의 표준단어(예: 상위)
+    self_reference_prefix: str | None
 
 
 class Naming(_Strict):
@@ -287,15 +291,21 @@ def load_pack(pack: str, *, root: Path = DEFAULT_ROOT) -> Pack:
 
 
 def _naming_blanks(naming: Naming) -> list[str]:
-    """naming.yaml에서 아직 정하지 않은 값(미정값)의 경로 목록."""
+    """naming.yaml에서 아직 정하지 않은 값(미정값)의 경로 목록.
+
+    null과 빈 문자열을 미정값으로 본다(#151 기준). 공백만 있는 값은 `str_strip_whitespace`로
+    읽을 때 빈 문자열이 되므로 여기서 함께 걸린다.
+    """
     fields = {
         "term.max_words": naming.term.max_words,
         "table.prefix": naming.table.prefix,
         "table.form": naming.table.form,
+        "table.junction_name": naming.table.junction_name,
         "column.primary_key": naming.column.primary_key,
         "column.foreign_key": naming.column.foreign_key,
+        "column.self_reference_prefix": naming.column.self_reference_prefix,
     }
-    return [path for path, value in fields.items() if value is None]
+    return [path for path, value in fields.items() if value is None or value == ""]
 
 
 def _rules_blanks(rules: Rules) -> list[str]:

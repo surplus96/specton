@@ -17,8 +17,8 @@ from pathlib import Path
 from specton.artifacts import GeneratedArtifact, write_artifact
 from specton.codegen.ddl import DdlResult, generate_ddl
 from specton.codegen.naming import DEFAULT_PACK_ROOT, load_naming_rules
-from specton.contracts import DesignState
-from specton.validate.allowed_sql import SqlValidation, check_allowed_sql
+from specton.contracts import DesignState, SqlValidation
+from specton.validate.allowed_sql import check_allowed_sql
 
 
 @dataclass(frozen=True)
@@ -67,7 +67,7 @@ def create_ddl_artifact(
     넣지 않는다. 검증 기록·오류 종료·승인 연결은 #167 공용 계약과 저장 함수 뒤에 연결한다.
     """
     prepared = prepare_ddl(design, root=root)
-    if hashlib.sha256(prepared.sql_bytes).hexdigest() != prepared.validation.sql_sha256:
+    if hashlib.sha256(prepared.sql_bytes).hexdigest() != prepared.validation.artifact_hash:
         raise ValueError("DDL 파일 저장: 검사한 SQL 바이트의 해시가 다릅니다")
     generated = write_artifact(storage_dir, design, "ddl", "sql", prepared.sql_bytes)
     return DdlArtifact(prepared=prepared, generated=generated)
