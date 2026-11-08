@@ -107,7 +107,8 @@ def test_request_uses_design_model_prompt_version_and_few_shot() -> None:
         settings.design_model,
     )
     # system, few-shot(user·assistant), 실제 입력
-    assert [m.role for m in request.messages] == ["system", "user", "assistant", "user"]
+    shots = len(load_examples("inventory", "A02", A02Output))
+    assert [m.role for m in request.messages] == ["system", *["user", "assistant"] * shots, "user"]
     sent = json.loads(unwrap_data(request.messages[-1].content))
     assert [r["id"] for r in sent["requirements"]] == ["REQ-01", "REQ-02", "REQ-03"]
 
