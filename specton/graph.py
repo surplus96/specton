@@ -45,6 +45,7 @@ from specton.review.rework import (
     decide_rework,
     resolve_with_router,
 )
+from specton.validation_attempts import ValidationAttempt, merge_validation_attempts
 
 GENERATORS = ("ddl", "erd", "rtm")  # 같은 고정 모델을 읽는 코드 작업 (병렬)
 REVIEWERS = ("A05", "A06", "A07", "A08")  # 검토 관점 = 리뷰 가지 이름 (병렬)
@@ -133,6 +134,7 @@ class GraphState(TypedDict, total=False):
     ]  # 방금 끝난 노드가 남긴 안내. 실행기는 노드 결과(update)에서만 읽는다
     branches: Annotated[dict[str, BranchResult], _merge_branches]
     generated_artifacts: Annotated[dict[str, GeneratedArtifact], _merge_artifacts]
+    validation_attempts: Annotated[dict[str, ValidationAttempt], merge_validation_attempts]
     rule_findings: tuple[Finding, ...]  # 규칙 검사(#15) 결과
     normalization_failed: bool  # 정리 실패이면 생성·LLM 검토를 건너뛴다
     requires_manual_review: bool  # 사전·명명 규칙 등 자동 수정으로 해결할 수 없는 문제
@@ -160,6 +162,7 @@ def initial_state(design: DesignState, documents: tuple[DocumentRef, ...] = ()) 
         documents=documents,
         branches={},
         generated_artifacts={},
+        validation_attempts={},
         rule_findings=(),
         normalization_failed=False,
         requires_manual_review=False,
