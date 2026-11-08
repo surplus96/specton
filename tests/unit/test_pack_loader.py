@@ -30,8 +30,8 @@ NAMING = """\
 physical_name: { dictionary_case: upper_snake, ddl_case: lower, word_separator: "_", max_bytes: 63 }
 abbreviation: { case: upper, min_length: 2, max_length: 6 }
 term: { classifier_last: true, max_words: null, official_term_immutable: true }
-table: { prefix: null, form: null }
-column: { primary_key: null, foreign_key: null }
+table: { prefix: null, form: null, junction_name: null }
+column: { primary_key: null, foreign_key: null, self_reference_prefix: null }
 type_profile: strict
 reserved_words_source: postgresql_18_sql_key_words
 """
@@ -237,6 +237,20 @@ def test_real_common_pack_loads_as_is() -> None:
     assert len(common.domains) > 0
 
 
+def test_real_common_naming_has_decided_values() -> None:
+    """R4 초안(#11, 2026-11-05)으로 정한 값이 실제 naming.yaml에 반영됐는지 확인한다."""
+    common = load_common(root=REPO_ROOT / "domain_packs")
+    naming = common.naming
+
+    assert naming.term.max_words == "unlimited"
+    assert naming.table.prefix == "none"
+    assert naming.table.form == "as_dictionary"
+    assert naming.table.junction_name == "parent_child"
+    assert naming.column.primary_key == "term_physical_name"
+    assert naming.column.foreign_key == "parent_key_physical_name"
+    assert naming.column.self_reference_prefix == "상위"
+
+
 # --- 팩 모델 (task 2) ---
 
 
@@ -317,6 +331,61 @@ def test_approved_common_rejects_blank_naming_and_rules(tmp_path: Path) -> None:
     assert "standard_compliance.SC-01.severity" in message
 
 
+@pytest.mark.parametrize(
+    ("path", "bad_value"),
+    [
+        (
+            "table: { prefix: null, form: null, junction_name: null }",
+            "table: { prefix: null, form: plural_auto, junction_name: null }",
+        ),
+        (
+            "column: { primary_key: null, foreign_key: null, self_reference_prefix: null }",
+            "column: { primary_key: id, foreign_key: null, self_reference_prefix: null }",
+        ),
+        (  # 아직 정하지 않은 값도 naming.py가 모르면 거절한다 (허용 값 목록은 한 곳과 똑같이 둔다)
+            "table: { prefix: null, form: null, junction_name: null }",
+            "table: { prefix: TB_, form: singular, junction_name: null }",
+        ),
+        (
+            "term: { classifier_last: true, max_words: null, official_term_immutable: true }",
+            "term: { classifier_last: true, max_words: 5, official_term_immutable: true }",
+        ),
+    ],
+)
+def test_naming_rejects_unknown_value_names(tmp_path: Path, path: str, bad_value: str) -> None:
+    """정해 둔 값 이름(Literal) 밖의 값은 거절한다 — 예: `form: plural_auto`, `primary_key: id`."""
+    naming = NAMING.replace(path, bad_value)
+    make_common(tmp_path, naming=naming)
+
+    with pytest.raises(PackError, match="형식이 틀렸습니다"):
+        load_common(root=tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("filled", "blank", "path"),
+    [
+        ("junction_name: parent_child", "junction_name: null", "table.junction_name"),
+        (
+            "self_reference_prefix: 상위",
+            "self_reference_prefix: null",
+            "column.self_reference_prefix",
+        ),
+    ],
+)
+def test_approved_common_reports_each_new_blank_key(
+    tmp_path: Path, filled: str, blank: str, path: str
+) -> None:
+    """나머지는 채웠지만 새 키 하나만 null이면 approved에서 미정값으로 걸린다."""
+    make_common(
+        tmp_path, status="approved", naming=FILLED_NAMING.replace(filled, blank), rules=FILLED_RULES
+    )
+
+    with pytest.raises(PackError, match="미정값") as exc:
+        load_common(root=tmp_path)
+
+    assert path in str(exc.value)
+
+
 def test_domain_also_constructs_by_field_name_not_only_alias() -> None:
     """`class`는 별칭이고 필드 이름은 `domain_class`다. 생성자에서 필드 이름으로도 써야 한다."""
     pg = PgType(type="varchar", length=200)
@@ -356,9 +425,10 @@ crud_exemption_reasons:
 FILLED_NAMING = """\
 physical_name: { dictionary_case: upper_snake, ddl_case: lower, word_separator: "_", max_bytes: 63 }
 abbreviation: { case: upper, min_length: 2, max_length: 6 }
-term: { classifier_last: true, max_words: 5, official_term_immutable: true }
-table: { prefix: TB_, form: singular }
-column: { primary_key: id, foreign_key: id }
+term: { classifier_last: true, max_words: unlimited, official_term_immutable: true }
+table: { prefix: none, form: as_dictionary, junction_name: parent_child }
+column: { primary_key: term_physical_name, foreign_key: parent_key_physical_name,
+  self_reference_prefix: 상위 }
 type_profile: strict
 reserved_words_source: postgresql_18_sql_key_words
 """
@@ -375,12 +445,41 @@ crud_exemption_reasons:
 """
 
 
+@pytest.mark.parametrize("empty", ['""', '"  "'], ids=["empty", "spaces"])
+def test_approved_common_rejects_empty_self_reference_prefix(tmp_path: Path, empty: str) -> None:
+    """approved에서는 빈 문자열·공백만 있는 접두어도 미정값이다 (#166 R1 리뷰, #151 기준).
+
+    다른 값은 모두 채우고 이 칸만 비워, 다른 미정값 때문에 걸리는 것과 구분한다.
+    """
+    naming = FILLED_NAMING.replace("self_reference_prefix: 상위", f"self_reference_prefix: {empty}")
+    make_common(tmp_path, status="approved", naming=naming, rules=FILLED_RULES)
+
+    with pytest.raises(PackError, match="미정값") as exc:
+        load_common(root=tmp_path)
+
+    assert "column.self_reference_prefix" in str(exc.value)
+
+
+@pytest.mark.parametrize("empty", ['""', '"  "'], ids=["empty", "spaces"])
+def test_draft_common_allows_empty_self_reference_prefix(tmp_path: Path, empty: str) -> None:
+    """draft에서는 빈 문자열·공백도 지금처럼 받아 준다(미정값 허용 유지).
+
+    공백만 있는 값은 `str_strip_whitespace`로 읽을 때 빈 문자열이 된다.
+    """
+    naming = FILLED_NAMING.replace("self_reference_prefix: 상위", f"self_reference_prefix: {empty}")
+    make_common(tmp_path, status="draft", naming=naming, rules=FILLED_RULES)
+
+    common = load_common(root=tmp_path)
+
+    assert common.naming.column.self_reference_prefix == ""
+
+
 def test_approved_common_with_all_values_filled_passes(tmp_path: Path) -> None:
     make_common(tmp_path, status="approved", naming=FILLED_NAMING, rules=FILLED_RULES)
 
     common = load_common(root=tmp_path)
 
-    assert common.naming.term.max_words == 5
+    assert common.naming.term.max_words == "unlimited"
     assert common.rules.standard_compliance.checks[0].severity == "minor"
 
 
