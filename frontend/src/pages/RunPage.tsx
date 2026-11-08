@@ -36,7 +36,7 @@ function RunPage({ runId }: { runId: string }) {
           type={notFound ? 'warning' : 'error'}
           showIcon
           title={errorMessage(loadError)}
-          action={<Button onClick={() => navigate('/')}>업로드로 돌아가기</Button>}
+          action={<Button onClick={() => navigate('/start')}>업로드로 돌아가기</Button>}
         />
       </PageCard>
     )
