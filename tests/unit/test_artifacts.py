@@ -2,15 +2,81 @@
 
 import hashlib
 import json
-from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from uuid import uuid4
 
 import pytest
 
-from specton.artifacts import artifact_key, write_artifact
+from specton.artifacts import artifact_key, is_within_storage, write_artifact
 from specton.contracts import DesignState
 from specton.model_hash import model_hash
 from specton.persistence.db import checkpoint_serde
+
+
+@pytest.mark.parametrize(
+    ("root", "path"),
+    [
+        (r"C:\storage", r"C:\storage\run\file.sql"),
+        (r"C:\storage", r"\\?\C:\storage\run\file.sql"),
+        (r"\\?\C:\storage", r"C:\storage\run\file.sql"),
+        (r"\\?\C:\storage", r"\\?\C:\storage\run\file.sql"),
+        (r"C:\Storage", r"\\?\c:\storage\run\file.sql"),
+        (r"\\server\share\storage", r"\\server\share\storage\run\file.sql"),
+        (r"\\server\share\storage", r"\\?\UNC\server\share\storage\run\file.sql"),
+        (r"\\?\UNC\server\share\storage", r"\\server\share\storage\run\file.sql"),
+        (r"\\?\UNC\server\share\storage", r"\\?\UNC\server\share\storage\run\file.sql"),
+    ],
+)
+def test_resolved_windows_paths_allow_mixed_extended_prefixes(root: str, path: str) -> None:
+    # 생성 중인 폴더에서 resolve()가 한쪽에만 확장 접두어를 남기는 #17 보고를 재현한다.
+    assert is_within_storage(PureWindowsPath(path), PureWindowsPath(root))
+
+
+@pytest.mark.parametrize(
+    ("root", "path"),
+    [
+        (r"C:\storage", r"\\?\C:\storage-other\file.sql"),
+        (r"C:\storage", r"\\?\C:\outside\file.sql"),
+        (r"\\?\C:\storage", r"C:\outside\file.sql"),
+        (r"C:\storage", r"\\?\D:\storage\file.sql"),
+        (r"\\server\share\storage", r"\\?\UNC\other\share\storage\file.sql"),
+        (r"\\server\share\storage", r"\\?\UNC\server\other\storage\file.sql"),
+        (r"\\server\share\storage", r"\\?\UNC\server\share\storage-other\file.sql"),
+        (r"C:\storage", r"\\.\C:\storage\file.sql"),
+        (r"C:\storage", r"\\?\GLOBALROOT\Device\HarddiskVolume1\storage\file.sql"),
+    ],
+)
+def test_resolved_windows_paths_reject_other_locations_and_namespaces(root: str, path: str) -> None:
+    assert not is_within_storage(PureWindowsPath(path), PureWindowsPath(root))
+
+
+def test_posix_comparison_keeps_backslashes_and_case_significant() -> None:
+    root = PurePosixPath("/storage")
+    assert is_within_storage(root / r"\\?\C:\file.sql", root)
+    assert not is_within_storage(PurePosixPath("/Storage/file.sql"), root)
+    assert not is_within_storage(PurePosixPath("/storage-other/file.sql"), root)
+
+
+def test_parallel_artifact_writes_keep_every_file_inside_storage(tmp_path: Path) -> None:
+    state = DesignState(run_id=str(uuid4()))
+    root = tmp_path / "storage"
+    contents = [f"CREATE TABLE fixture_{i} (id bigint);".encode() for i in range(24)]
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        items = list(
+            executor.map(
+                lambda content: write_artifact(root, state, "ddl", "sql", content),
+                contents + contents,
+            )
+        )
+
+    assert len({item["storage_ref"] for item in items}) == len(contents)
+    for item, content in zip(items, contents + contents, strict=True):
+        path = root / item["storage_ref"]
+        assert path.read_bytes() == content
+        assert hashlib.sha256(content).hexdigest() == item["ref"].hash
+    assert len([p for p in root.rglob("*") if p.is_file()]) == len(contents)
 
 
 def test_repeated_writes_share_an_immutable_path_and_survive_strict_serialization(
