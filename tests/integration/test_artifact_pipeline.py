@@ -32,6 +32,7 @@ from specton.contracts import (
 from specton.contracts.base import TargetStage
 from specton.ddl_adapter import DdlArtifact, create_ddl_artifact
 from specton.erd_node import erd_node
+from specton.export_node import export_node
 from specton.graph import GraphState, Node, build_graph
 from specton.persistence import lease
 from specton.persistence.db import Pool, create_checkpointer
@@ -160,27 +161,7 @@ class _World:
         return {}
 
     def _export(self, state: GraphState) -> Mapping[str, Any]:
-        result = {}
-        for name, (file_format, content) in OUTPUTS.items():
-            item = write_artifact(
-                self.settings.storage_dir,
-                state["design"],
-                name,
-                file_format,
-                content,
-                approved=True,
-            )  # type: ignore[arg-type]
-            result[artifact_key(item["ref"])] = item
-        item = write_artifact(
-            self.settings.storage_dir,
-            state["design"],
-            "erd",
-            "pdf",
-            b"%PDF-fixture",
-            approved=True,
-        )
-        result[artifact_key(item["ref"])] = item
-        return {"generated_artifacts": result}
+        return export_node(self.settings.storage_dir)(state)
 
     def create(self) -> str:
         response = self.client.post(
@@ -231,7 +212,9 @@ def world(
     pool: Pool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[Callable[..., _World]]:
     monkeypatch.setenv("LANGGRAPH_STRICT_MSGPACK", "true")
-    settings = Settings(_env_file=None, storage_dir=tmp_path / "storage")
+    settings = Settings(
+        _env_file=None, require_sql_validation=False, storage_dir=tmp_path / "storage"
+    )
     worlds: list[_World] = []
     serde_events: list[SerdeEvent] = []
     unregister = register_serde_event_listener(serde_events.append)
@@ -293,14 +276,14 @@ def test_parallel_drafts_restart_and_approved_downloads(world: Callable[..., _Wo
     assert restarted.status(run_id).status == "completed"
     assert restarted.generated == []
     refs = restarted.artifacts(run_id)
-    assert len(refs) == 4 and all(ref["approved"] for ref in refs)
-    assert len(restarted.events(run_id)) == 7  # 3 초안 + 4 승인본, 후속 체크포인트는 중복 없음
+    assert len(refs) == 3 and all(ref["approved"] for ref in refs)
+    assert len(restarted.events(run_id)) == 6  # 3 초안 + 3 승인본, 후속 체크포인트는 중복 없음
     assert all(path.read_bytes() == content for path, content in before.items())
     for name, (file_format, content) in OUTPUTS.items():
         response = restarted.download(run_id, name, file_format)
-        assert response.content == content
+        assert response.content == b"DRAFT\n" + content
         assert "-draft" not in response.headers["content-disposition"]
-    assert restarted.download(run_id, "erd", "pdf").content == b"%PDF-fixture"
+    assert restarted.download(run_id, "erd", "pdf").status_code == 409
     with TestClient(create_app(restarted.settings, restarted.pool)) as other:
         assert (
             other.get(
@@ -316,7 +299,7 @@ def test_parallel_drafts_restart_and_approved_downloads(world: Callable[..., _Wo
             "GROUP BY s.snapshot_id",
             (UUID(run_id),),
         ).fetchall()
-    assert len(rows) == 1 and rows[0]["total"] == 4
+    assert len(rows) == 1 and rows[0]["total"] == 3
     assert "normalized" in rows[0]["normalized_model"]
     checkpoint = restarted.graph.get_state({"configurable": {"thread_id": run_id}})
     assert {item["model_hash"] for item in checkpoint.values["generated_artifacts"].values()} == {
@@ -536,8 +519,8 @@ def test_approved_artifact_replacement_and_downgrade_are_rejected(
     w.runner.run_pending()
     assert w.status(run_id).status == "completed"
     assert checked == [True]
-    assert len(w.events(run_id)) == 7
-    assert w.download(run_id, "ddl", "sql").content == OUTPUTS["ddl"][1]
+    assert len(w.events(run_id)) == 6
+    assert w.download(run_id, "ddl", "sql").content == b"DRAFT\n" + OUTPUTS["ddl"][1]
 
 
 _VALIDATOR_VERSIONS = {

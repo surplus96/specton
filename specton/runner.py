@@ -36,6 +36,7 @@ from specton.contracts import (
     InterruptKind,
     RunState,
     RunStatus,
+    ValidationStatus,
 )
 from specton.contracts import SseEventType as E
 from specton.graph import (
@@ -53,7 +54,7 @@ from specton.persistence.errors import InvalidTransitionError, LeaseLostError
 from specton.persistence.lease import WAITING_STATES
 from specton.persistence.runs import NewEvent
 from specton.persistence.validation_attempts import publish_validation_attempts
-from specton.validation_attempts import ValidationAttempt
+from specton.validation_attempts import SqlValidationExecutionError, ValidationAttempt
 
 logger = logging.getLogger(__name__)
 S = RunState
@@ -329,6 +330,7 @@ class _Job:
             events=events,
             generated=snapshot.values.get("generated_artifacts", {}),
             attempts=snapshot.values.get("validation_attempts", {}),
+            validation_status=snapshot.values.get("ddl_validation_status"),
         )
 
     def _pause(self, snapshot: StateSnapshot) -> None:
@@ -354,6 +356,7 @@ class _Job:
             events=events,
             generated=snapshot.values.get("generated_artifacts", {}),
             attempts=snapshot.values.get("validation_attempts", {}),
+            validation_status=snapshot.values.get("ddl_validation_status"),
         )
 
     def _status_events(self, status: RunState) -> list[NewEvent]:
@@ -374,6 +377,7 @@ class _Job:
         events: list[NewEvent],
         generated: Mapping[str, GeneratedArtifact],
         attempts: Mapping[str, ValidationAttempt],
+        validation_status: ValidationStatus | None,
     ) -> None:
         """진행·모델·산출물·검증 시도를 한 트랜잭션으로 저장한다.
 
@@ -409,6 +413,9 @@ class _Job:
                 raise _Cancelled from None  # 저장 직전에 취소 요청이 들어왔다
             raise
         self.status = design.status
+        if validation_status == ValidationStatus.ERROR:
+            # 동일 SQL과 안전한 검증 기록을 먼저 commit한 뒤 기존 실패 기록 경로로 넘긴다.
+            raise SqlValidationExecutionError("SQL 검증을 완료하지 못했습니다")
 
     def _fail(self, exc: Exception) -> None:
         logger.error("run %s 실패", self.run_id, exc_info=exc)
