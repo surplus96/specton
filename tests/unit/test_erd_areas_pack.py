@@ -48,7 +48,7 @@ areas:
   - {{name: {OTHER_AREA}, words: [입고]}}
 """
 
-INVENTORY_AREAS = ["기준정보", "수불", "재고 이력"]
+INVENTORY_AREAS = ["수불", "재고 이력", "기준정보"]
 
 
 def _pack(root: Path, areas: str | None, name: str = "inventory") -> Path:
@@ -134,14 +134,24 @@ def test_inventory_pack_has_three_areas_and_maintenance_has_none_yet() -> None:
         ("창고", "기준정보"),
         ("품목분류", "기준정보"),
         ("거래처", "기준정보"),  # 「거래처」(3글자)가 수불의 「거래」(2글자)보다 길다
+        ("거래처변경이력", "기준정보"),  # 「거래처」(3글자)가 「이력」보다 길다
+        ("보관위치", "기준정보"),
         ("재고거래", "수불"),
         ("재고거래내역", "수불"),
         ("수불문서", "수불"),
         ("입고", "수불"),
+        ("이동지시", "수불"),
+        ("재고", "재고 이력"),
         ("재고실사", "재고 이력"),
         ("재고조정", "재고 이력"),
         ("로트", "재고 이력"),
-        ("재고", OTHER_AREA),  # 「재고」만으로는 영역을 정하지 않는다 (낱말 목록 확인 대상)
+        ("재고수정기록", "재고 이력"),  # A03이 이름을 조금 다르게 지어도 같은 영역 (#13)
+        ("재고수량수정기록", "재고 이력"),
+        # 길이가 같으면 먼저 적힌 영역: 기준정보를 맨 뒤에 두어 거래 이름이 기준정보로 가지 않는다
+        ("자재투입", "수불"),
+        ("창고재고", "재고 이력"),
+        ("품목입고내역", "수불"),
+        ("표준용어", OTHER_AREA),  # 재고 업무 영역 밖 (SFR-206)
     ],
 )
 def test_real_inventory_areas_place_representative_names(name: str, area: str) -> None:
@@ -149,7 +159,7 @@ def test_real_inventory_areas_place_representative_names(name: str, area: str) -
 
 
 def test_every_table_of_a_model_gets_an_area_with_the_real_pack() -> None:
-    names = ["창고", "품목", "재고거래", "재고거래내역", "재고실사", "재고"]
+    names = ["창고", "품목", "재고거래", "재고거래내역", "재고실사", "표준용어"]
     tables = [
         Table.model_validate(
             {
