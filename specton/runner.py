@@ -261,7 +261,70 @@ class _Job:
         except LeaseLostError:
             raise
         except Exception as exc:
+            try:
+                if not isinstance(exc, SqlValidationExecutionError):
+                    self._save_completed_sql()
+            except _Stop:
+                return
+            except _Cancelled:
+                self._end(
+                    S.CANCELLED, NewEvent(E.CANCELLED, "실행을 취소했습니다", stage="cancelled")
+                )
+                return
+            except LeaseLostError:
+                raise
+            except Exception:
+                logger.exception("run %s의 완료된 SQL 검증 결과를 복구하지 못했습니다", self.run_id)
             self._fail(exc)
+
+    def _save_completed_sql(self) -> None:
+        """다른 병렬 가지의 예외로 step이 끝나지 못해도 완료된 SQL·시도는 보존한다.
+
+        get_state(latest)는 성공한 노드의 pending writes를 반영한다. 실패한 가지의 산출물을
+        꾸며 넣지 않고 현재 revision의 검증 결과가 남은 SQL만 기존 외부 트랜잭션으로 게시한다.
+        """
+        snapshot = self.runner.graph.get_state(self.config)
+        if not snapshot.values:
+            return
+        design: DesignState = snapshot.values["design"]
+        generated = {
+            key: item
+            for key, item in snapshot.values.get("generated_artifacts", {}).items()
+            if (item["ref"].kind, item["ref"].file_format, item["ref"].revision)
+            == ("ddl", "sql", design.revision)
+        }
+        if not generated:
+            return
+        (sql,) = generated.values()
+        attempts: Mapping[str, ValidationAttempt] = snapshot.values.get("validation_attempts", {})
+        current = [
+            key
+            for key, attempt in attempts.items()
+            if attempt["run_id"] == design.run_id
+            and attempt["artifact"]["ref"].revision == design.revision
+            and attempt["artifact"]["ref"].hash == sql["ref"].hash
+            and attempt["artifact"]["model_hash"] == sql["model_hash"]
+        ]
+        if not current:
+            return
+        with self.runner.pool.connection() as conn:
+            saved = conn.execute(
+                "SELECT 1 FROM artifact_validation v JOIN artifact a USING (artifact_id) "
+                "JOIN model_snapshot s USING (snapshot_id) "
+                "WHERE s.run_id = %s AND v.validation_id = %s",
+                (self.run_id, UUID(current[-1])),
+            ).fetchone()
+        if saved is not None:
+            return
+        self._at_boundary()
+        self._record(
+            f"sql-complete:{_checkpoint_id(snapshot)}:{current[-1]}",
+            design,
+            events=[],
+            generated=generated,
+            attempts=attempts,
+            validation_status=None,  # 원래 가지 예외를 보존하고 아래 _fail에서 종료한다
+        )
 
     def _at_boundary(self) -> None:
         """노드 경계 확인. lease를 잃었거나 취소 요청이면 이 노드 결과를 저장하지 않는다."""
