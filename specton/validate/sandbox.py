@@ -23,7 +23,8 @@
 
 규칙 상태:
 - 확정 (문서): 제한 계정·허용 문장·시간 제한, 실행기가 트랜잭션 소유, 잔여 객체 확인 (docs/11)
-- R4 제안 (#15·#167 확인 전): 시간 제한 값, SQLSTATE 분류표, 검증 스키마 방식, 결과 모양
+- 확정 (#167·#176): 결과 모양(공용 계약 `SqlValidation`)
+- R4 제안 (#15 확인 전): 시간 제한 값, SQLSTATE 분류표, 검증 스키마 방식
 
 이 모듈은 LLM client를 import하지 않고 앱 DB에 쓰지 않는다.
 """
@@ -42,15 +43,19 @@ from psycopg import sql as pgsql
 from psycopg.conninfo import conninfo_to_dict
 
 from specton.config import Settings
-from specton.validate.allowed_sql import (
-    ProblemKind,
-    SqlProblem,
+from specton.contracts import (
     SqlValidation,
-    StageName,
-    StageResult,
-    build_result,
-    check_allowed_sql,
+    StepStatus,
+    ValidationIssue,
+    ValidationStatus,
+    ValidationStep,
+    ValidationStepName,
 )
+from specton.validate.allowed_sql import IssueCode, build_result, check_allowed_sql, issue, step
+
+_EXECUTE = ValidationStepName.EXECUTE
+_ROLLBACK = ValidationStepName.ROLLBACK
+_CLEANUP = ValidationStepName.CLEANUP
 
 TARGET_MAJOR_VERSION = 18  # 대상 PostgreSQL 주요 버전 (DDL 생성기 대상과 같음)
 SCHEMA_PREFIX = "specton_check_"
@@ -101,14 +106,14 @@ def validate_sql(
 ) -> SqlValidation:
     """5단계 검증. 앞 두 단계를 통과하지 못하면 DB에 연결하지 않고 그 결과를 돌려준다."""
     first = check_allowed_sql(sql)
-    if first.state != "unverified":
+    if first.status is not ValidationStatus.UNVERIFIED:
         return first
     app_database = _database_name(str(settings.app_database_url))
     if app_database is None:
         # 사용자명·환경 변수 기본값으로 DB를 추측하지 않는다.
         # DSN·파서 오류도 결과에 노출하지 않는다.
         problem = _problem("environment", "앱 DB 이름을 확정하지 못함")
-        return build_result(sql, [*first.stages[:2], _stage("sandbox_execute", "error", problem)])
+        return build_result(sql, [*first.steps[:2], _stage(_EXECUTE, StepStatus.ERROR, problem)])
     statements = _statement_texts(sql.decode("utf-8"))
     run = _SandboxRun(
         url=str(settings.sandbox_database_url),
@@ -116,7 +121,7 @@ def validate_sql(
         limits=limits,
         connect=connect,
     )
-    return build_result(sql, [*first.stages[:2], *run.run(statements)])
+    return build_result(sql, [*first.steps[:2], *run.run(statements)])
 
 
 def _statement_texts(text: str) -> list[str]:
@@ -147,7 +152,7 @@ class _SandboxRun:
     # 취소 요청이 제한 시간 안에 끝나지 않은 예산 타이머. 그동안 연결은 취소 스레드가 쓴다.
     _unsettled: "_BudgetTimer | None" = field(default=None, init=False)
 
-    def run(self, statements: list[str]) -> list[StageResult]:
+    def run(self, statements: list[str]) -> list[ValidationStep]:
         schema = f"{SCHEMA_PREFIX}{uuid.uuid4().hex}"
         try:
             conn = self.connect(
@@ -155,7 +160,7 @@ class _SandboxRun:
             )
         except Exception as exc:
             # 연결 전이라 트랜잭션이 없다. 롤백·잔여 확인은 실행하지 않은 것으로 둔다.
-            return [_error("sandbox_execute", "connection", exc)]
+            return [_error(_EXECUTE, "connection", exc)]
         try:
             execute = self._execute(conn, schema, statements)
         except BaseException:
@@ -168,16 +173,16 @@ class _SandboxRun:
             # `error`, 잔여 확인은 하지 않는다(다른 세션에서는 끝나지 않은 트랜잭션의 스키마가
             # 보이지 않아, 지금 확인하면 「남지 않음」으로 잘못 나온다).
             pending = _problem("rollback_failed", "실행 취소가 끝나지 않아 롤백을 확인하지 못함")
-            return [execute, _stage("rollback", "error", pending)]
+            return [execute, _stage(_ROLLBACK, StepStatus.ERROR, pending)]
         rollback = _rollback(conn)
         _close(conn)
         return [execute, rollback, self._residual(schema)]
 
-    def _execute(self, conn: Any, schema: str, statements: list[str]) -> StageResult:
+    def _execute(self, conn: Any, schema: str, statements: list[str]) -> ValidationStep:
         try:
             problem = self._preflight(conn)
             if problem is not None:
-                return _stage("sandbox_execute", "error", problem)
+                return _stage(_EXECUTE, StepStatus.ERROR, problem)
             conn.execute(pgsql.SQL("CREATE SCHEMA {}").format(pgsql.Identifier(schema)))
             conn.execute(
                 pgsql.SQL("SET LOCAL search_path = {}, pg_temp").format(pgsql.Identifier(schema))
@@ -189,10 +194,10 @@ class _SandboxRun:
             )
         except Exception as exc:
             # 준비 단계 실패는 SQL 결함이 아니다.
-            return _error("sandbox_execute", _env_code(exc), exc)
+            return _error(_EXECUTE, _env_code(exc), exc)
         return self._run_statements(conn, statements)
 
-    def _preflight(self, conn: Any) -> SqlProblem | None:
+    def _preflight(self, conn: Any) -> ValidationIssue | None:
         row = conn.execute(
             "SELECT current_setting('server_version_num')::int / 10000,"
             " current_database(), r.rolsuper, r.rolcreatedb, r.rolcreaterole,"
@@ -216,14 +221,14 @@ class _SandboxRun:
             return _problem("environment", "격리 DB 사전 확인 실패: " + ", ".join(reasons))
         return None
 
-    def _run_statements(self, conn: Any, statements: list[str]) -> StageResult:
+    def _run_statements(self, conn: Any, statements: list[str]) -> ValidationStep:
         budget = _BudgetTimer(conn, self.limits)
         budget.start()
-        result: StageResult | None = None
+        result: ValidationStep | None = None
         try:
             for index, text in enumerate(statements):
                 if budget.over():
-                    result = _stage("sandbox_execute", "error", _budget_problem(index))
+                    result = _stage(_EXECUTE, StepStatus.ERROR, _budget_problem(index))
                     break
                 try:
                     conn.execute(text)
@@ -231,7 +236,7 @@ class _SandboxRun:
                     result = _classify(exc, index, budget_fired=budget.fired.is_set())
                     break
                 except Exception as exc:
-                    result = _error("sandbox_execute", "internal", exc, statement=index)
+                    result = _error(_EXECUTE, "internal", exc, statement=index)
                     break
         finally:
             # 취소가 진행 중이면 끝날 때까지 기다린다. 그 뒤에야 롤백·닫기를 한다.
@@ -239,22 +244,22 @@ class _SandboxRun:
         if not settled:
             self._unsettled = budget
             problem = _problem("database", "실행 취소 작업이 제한 시간 안에 끝나지 않음")
-            return _stage("sandbox_execute", "error", problem)
+            return _stage(_EXECUTE, StepStatus.ERROR, problem)
         if result is not None:
             return result
         # 마지막 문장 뒤: 타이머 콜백이 늦게 돌았어도 마감 시간을 넘겼으면 통과가 아니다.
         if budget.over():
-            return _stage("sandbox_execute", "error", _budget_problem(None))
-        return StageResult(stage="sandbox_execute", state="passed")
+            return _stage(_EXECUTE, StepStatus.ERROR, _budget_problem(None))
+        return step(_EXECUTE, StepStatus.PASSED)
 
-    def _residual(self, schema: str) -> StageResult:
+    def _residual(self, schema: str) -> ValidationStep:
         """새 연결로 검증 스키마가 없는지 본다. 남은 것은 지우지 않고 그대로 보고한다."""
         try:
             check = self.connect(
                 self.url, connect_timeout=self.limits.connect_seconds, autocommit=True
             )
         except Exception as exc:
-            return _error("residual_check", "residual_check_failed", exc)
+            return _error(_CLEANUP, "residual_check_failed", exc)
         try:
             check.execute(
                 "SELECT set_config('statement_timeout', %s, false)",
@@ -264,14 +269,14 @@ class _SandboxRun:
                 "SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = %s)", (schema,)
             ).fetchone()
         except Exception as exc:
-            return _error("residual_check", "residual_check_failed", exc)
+            return _error(_CLEANUP, "residual_check_failed", exc)
         finally:
             _close(check)
         if found is None or found[0]:
             return _stage(
-                "residual_check", "error", _problem("residual_found", "검증 스키마가 남아 있음")
+                _CLEANUP, StepStatus.ERROR, _problem("residual_found", "검증 스키마가 남아 있음")
             )
-        return StageResult(stage="residual_check", state="passed")
+        return step(_CLEANUP, StepStatus.PASSED)
 
 
 # ── 전체 시간 예산 ───────────────────────────────────────────────────
@@ -350,12 +355,12 @@ class _BudgetTimer:
 # ── 정리 ─────────────────────────────────────────────────────────────
 
 
-def _rollback(conn: Any) -> StageResult:
+def _rollback(conn: Any) -> ValidationStep:
     try:
         conn.rollback()
     except Exception as exc:
-        return _error("rollback", "rollback_failed", exc)
-    return StageResult(stage="rollback", state="passed")
+        return _error(_ROLLBACK, "rollback_failed", exc)
+    return step(_ROLLBACK, StepStatus.PASSED)
 
 
 def _cleanup(conn: Any) -> None:
@@ -372,27 +377,27 @@ def _close(conn: Any) -> None:
 # ── 분류 ─────────────────────────────────────────────────────────────
 
 
-def _classify(exc: psycopg.Error, statement: int, *, budget_fired: bool) -> StageResult:
+def _classify(exc: psycopg.Error, statement: int, *, budget_fired: bool) -> ValidationStep:
     state = exc.sqlstate
     if state in _SQL_DEFECTS:
         message = (exc.diag.message_primary or _SQL_DEFECTS[state]).strip()
-        problem = SqlProblem(
-            kind="execution_error",
+        problem = issue(
+            "execution_error",
+            f"{_SQL_DEFECTS[state]}: {message}",
             statement=statement,
-            detail=f"{_SQL_DEFECTS[state]}: {message}",
             sqlstate=state,
         )
-        return _stage("sandbox_execute", "failed", problem)
+        return _stage(_EXECUTE, StepStatus.FAILED, problem)
     if state == _QUERY_CANCELED:
-        kind: ProblemKind = "budget_exceeded" if budget_fired else "timeout"
+        kind: IssueCode = "budget_exceeded" if budget_fired else "timeout"
     elif state == _LOCK_NOT_AVAILABLE:
         kind = "lock_timeout"
     else:
         kind = _env_code(exc)
-    return _error("sandbox_execute", kind, exc, statement=statement)
+    return _error(_EXECUTE, kind, exc, statement=statement)
 
 
-def _env_code(exc: BaseException) -> ProblemKind:
+def _env_code(exc: BaseException) -> IssueCode:
     state = getattr(exc, "sqlstate", None) or ""
     if state.startswith("08") or (isinstance(exc, psycopg.OperationalError) and not state):
         return "connection"
@@ -403,25 +408,27 @@ def _env_code(exc: BaseException) -> ProblemKind:
     return "internal"
 
 
-def _budget_problem(statement: int | None) -> SqlProblem:
+def _budget_problem(statement: int | None) -> ValidationIssue:
     return _problem("budget_exceeded", "SQL 전체 실행 시간 예산을 넘음", statement=statement)
 
 
 def _error(
-    stage: StageName, kind: ProblemKind, exc: BaseException, *, statement: int | None = None
-) -> StageResult:
+    name: ValidationStepName, code: IssueCode, exc: BaseException, *, statement: int | None = None
+) -> ValidationStep:
     """장애 결과. 내부 메시지는 넣지 않고 종류·SQLSTATE·예외 이름만 남긴다."""
     state = getattr(exc, "sqlstate", None)
-    problem = SqlProblem(kind=kind, statement=statement, detail=type(exc).__name__, sqlstate=state)
-    return _stage(stage, "error", problem)
+    problem = issue(code, type(exc).__name__, statement=statement, sqlstate=state)
+    return _stage(name, StepStatus.ERROR, problem)
 
 
-def _problem(kind: ProblemKind, detail: str, *, statement: int | None = None) -> SqlProblem:
-    return SqlProblem(kind=kind, statement=statement, detail=detail)
+def _problem(code: IssueCode, message: str, *, statement: int | None = None) -> ValidationIssue:
+    return issue(code, message, statement=statement)
 
 
-def _stage(stage: StageName, state: Any, problem: SqlProblem) -> StageResult:
-    return StageResult(stage=stage, state=state, problems=(problem,))
+def _stage(
+    name: ValidationStepName, status: StepStatus, problem: ValidationIssue
+) -> ValidationStep:
+    return step(name, status, problem)
 
 
 def _ms(seconds: float) -> str:

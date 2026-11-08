@@ -1,9 +1,9 @@
 """SQL 검증 앞 두 단계 (#15): 파싱 → 허용 SQL 검사. DB에 접속하지 않는다. **임시 구현.**
 
-검증기 전체는 5단계(파싱 → 허용 SQL 검사 → 격리 DB 실행 → 롤백 → 잔여 객체 확인)다(#167 제안).
-이 모듈은 앞 두 단계만 실행하고, 뒤 세 단계는 `not_run`으로 남긴다. 그래서 정상 SQL도 전체 상태는
-`unverified`이며 `passed`가 되지 않는다. 뒤 세 단계는 `specton.validate.sandbox`가 같은 결과 모양에
-채운다.
+검증기 전체는 5단계(파싱 → 허용 문장 검사 → 격리 DB 실행 → 롤백 → 잔여 객체 확인)다(#167).
+결과는 공용 계약 `specton.contracts.SqlValidation`(#176)이다. 이 모듈은 앞 두 단계만 실행하고, 뒤 세
+단계는 `not_run`으로 남긴다. 그래서 정상 SQL도 전체 상태는 `unverified`이며 `passed`가 되지 않는다.
+뒤 세 단계는 `specton.validate.sandbox`가 같은 결과에 채운다.
 
 허용 목록 방식이다. DDL 생성기(#165)가 내는 두 문장만 받는다.
 - `CREATE TABLE`: 칸(허용 타입 11개), `NOT NULL`·`NULL`, `PRIMARY KEY`·`UNIQUE`·`REFERENCES`
@@ -15,8 +15,8 @@ pglast 노드마다 「쓰는 칸」만 정해 두고, 나머지 칸은 비어 �
 규칙 상태:
 - 확정 (문서): 실행 전 문법 검사·허용 AST 정의(docs/11), 트랜잭션 제어는 실행기 소유(docs/11),
   허용 타입 11개(docs/05)
-- R4 제안 (#15·#167 확인 전): 결과 모양(단계별 결과, unverified/passed/failed/error),
-  허용 문장 목록, 제약 이름 허용, FK 동작은 기본값만,
+- 확정 (#167·#176): 결과 모양(공용 계약), 대상 DB 값은 DDL 생성기의 `DDL_TARGET`
+- R4 제안 (#15 확인 전): 허용 문장 목록, 제약 이름 허용, FK 동작은 기본값만,
   스키마 없는 내장 타입(`text`·`date`·`timestamptz`) 허용
 - 한계: 스키마 없는 타입 이름은 실제 DB의 `search_path`로 해석된다. 이 모듈은 이름 모양만 보며,
   실제로 내장 타입으로 해석되는지는 격리 DB 단계에서 확인한다.
@@ -31,19 +31,27 @@ from typing import Any, Literal
 from pglast import ast, parse_sql
 from pglast.enums import AlterTableType, ConstrType, ObjectType
 from pglast.parser import ParseError
-from pydantic import BaseModel, ConfigDict
 
+from specton.codegen.ddl import DDL_TARGET
+from specton.contracts import (
+    VALIDATION_STEPS,
+    SqlValidation,
+    StepStatus,
+    ValidationIssue,
+    ValidationStep,
+    ValidationStepName,
+    overall_status,
+)
 from specton.contracts.base import SqlType
 
+# 세 버전은 승인 조건이다 (#167). 값이 바뀌면 이전 검증 기록으로는 승인할 수 없다.
+# 검사 결과가 실제로 달라지는 수정일 때만 올린다.
 VALIDATOR_VERSION = "sql-validator-v1"  # 검증기 동작이 바뀌면 올린다. 임시 값이다. v1: 격리 DB 단계
 POLICY_VERSION = "allowed-sql-v0"  # 허용 목록이 바뀌면 올린다. 임시 값이다.
-# 대상 DB. DDL 생성기(#165 `DDL_TARGET`)와 같은 값이다. #165 병합 뒤 한 곳으로 합친다.
-TARGET = "postgresql-18"
+TARGET = DDL_TARGET  # 대상 DB (`postgres_version`). DDL 생성기와 한 곳에서 정한다
 
-StageName = Literal["parse", "allowed_sql", "sandbox_execute", "rollback", "residual_check"]
-StageState = Literal["passed", "failed", "error", "not_run"]
-OverallState = Literal["unverified", "passed", "failed", "error"]
-ProblemKind = Literal[
+# `ValidationIssue.code` 값
+IssueCode = Literal[
     "parse_error",
     "not_allowed",
     "empty",
@@ -62,13 +70,6 @@ ProblemKind = Literal[
     "residual_found",  # 검증 스키마가 남음
     "residual_check_failed",  # 남았는지 확인하지 못함
 ]
-STAGES: tuple[StageName, ...] = (
-    "parse",
-    "allowed_sql",
-    "sandbox_execute",
-    "rollback",
-    "residual_check",
-)
 
 # 허용 타입 → pglast가 내놓는 정확한 이름(pglast 8.7로 확인). 파서는 대부분의 내장 타입에
 # `pg_catalog`를 붙이고, `text`·`date`·`timestamptz`는 한 부분 이름으로 남긴다. 마지막 이름만 보지
@@ -103,106 +104,63 @@ _PERMANENT = "p"  # RangeVar.relpersistence: 일반 테이블 (TEMP 't', UNLOGGE
 _IGNORED = frozenset({"location", "stmt_location", "stmt_len"})
 
 
-class SqlProblem(BaseModel):
-    """검증 문제 한 건. `detail`은 사람이 읽는 이유이며 내부 경로·비밀값을 담지 않는다."""
+def issue(
+    code: IssueCode, message: str, *, statement: int | None = None, sqlstate: str | None = None
+) -> ValidationIssue:
+    """문제 한 건. `message`에는 보여도 되는 문장만 넣는다(내부 경로·접속 정보·예외 원문 금지).
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    kind: ProblemKind
-    statement: int | None  # 몇 번째 문장(0부터). 문장 단위가 아니면 None
-    detail: str
-    sqlstate: str | None = None  # DB 오류 코드 (격리 DB 단계)
-
-
-class StageResult(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    stage: StageName
-    state: StageState
-    problems: tuple[SqlProblem, ...] = ()
-
-
-class SqlValidation(BaseModel):
-    """SQL 검증 결과. 공용 계약이 아닌 임시 모양이다(#167에서 저장·승인 연결과 함께 정한다).
-
-    실행 revision·model_hash·snapshot_id는 검증기가 모르므로 넣지 않는다. 연결하는 쪽이 넘긴다.
+    `statement`는 몇 번째 문장인지(0부터)이고, 문장 단위가 아니면 None이다.
     """
+    return ValidationIssue(code=code, message=message, statement_index=statement, sqlstate=sqlstate)
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
 
-    state: OverallState
-    stages: tuple[StageResult, ...]  # 5단계, 순서 고정
-    sql_sha256: str  # 받은 바이트 전체의 SHA-256 (#163 ArtifactRef.hash와 같은 계산)
-    validator_version: str
-    policy_version: str
-    target: str
+def step(name: ValidationStepName, status: StepStatus, *issues: ValidationIssue) -> ValidationStep:
+    return ValidationStep(name=name, status=status, issues=issues)
 
 
 def check_allowed_sql(sql: bytes) -> SqlValidation:
-    """파싱·허용 SQL 검사를 한다. 뒤 세 단계는 `not_run`이다."""
+    """파싱·허용 문장 검사를 한다. 뒤 세 단계는 `not_run`이다."""
     parse = _parse_stage(sql)
-    if isinstance(parse, StageResult):
+    if isinstance(parse, ValidationStep):
         done = [parse]
     else:
         statements = parse
-        done = [StageResult(stage="parse", state="passed"), _allowed_stage(statements)]
+        done = [step(ValidationStepName.PARSE, StepStatus.PASSED), _allowed_stage(statements)]
     return build_result(sql, done)
 
 
-def build_result(sql: bytes, done: Iterable[StageResult]) -> SqlValidation:
-    """실행한 단계 결과로 전체 결과를 만든다. 실행하지 않은 단계는 `not_run`으로 채운다.
+def build_result(sql: bytes, done: Iterable[ValidationStep]) -> SqlValidation:
+    """실행한 단계 결과로 공용 결과를 만든다. 실행하지 않은 단계는 `not_run`으로 채운다.
 
     앞 단계가 실패·장애이면 뒤 단계는 실행하지 않는다. 예외는 정리 단계(롤백·잔여 확인)다:
     격리 DB에서 실행이 실패해도 롤백과 잔여 확인은 시도하고 그 결과를 남긴다 (`sandbox`).
+    전체 상태는 계약의 `overall_status`로 정하고, 단계 순서·문제 유무는 계약이 다시 검사한다.
+    해시는 받은 바이트 전체의 SHA-256이다 (#163 `ArtifactRef.hash`와 같은 계산).
     """
     done = tuple(done)
-    names = [s.stage for s in done]
-    unknown = set(names) - set(STAGES)
-    if unknown:
-        raise ValueError(f"모르는 단계: {sorted(unknown)}")
-    duplicated = sorted({n for n in names if names.count(n) > 1})
+    names = [s.name for s in done]
+    duplicated = sorted({str(n) for n in names if names.count(n) > 1})
     if duplicated:
         # 뒤 결과로 앞 결과(예: 실패)를 덮어쓰지 않도록 거절한다.
         raise ValueError(f"같은 단계 결과가 두 번 있음: {duplicated}")
-    by_stage = {s.stage: s for s in done}
-    stages = tuple(by_stage.get(name, StageResult(stage=name, state="not_run")) for name in STAGES)
+    by_name = {s.name: s for s in done}
+    steps = tuple(by_name.get(name, step(name, StepStatus.NOT_RUN)) for name in VALIDATION_STEPS)
     return SqlValidation(
-        state=overall_state(stages),
-        stages=stages,
-        sql_sha256=hashlib.sha256(sql).hexdigest(),
+        status=overall_status(steps),
+        artifact_hash=hashlib.sha256(sql).hexdigest(),
         validator_version=VALIDATOR_VERSION,
         policy_version=POLICY_VERSION,
-        target=TARGET,
+        postgres_version=TARGET,
+        steps=steps,
     )
-
-
-def overall_state(stages: Iterable[StageResult]) -> OverallState:
-    """전체 상태. `error`가 가장 우선이고, 그다음 `failed`, 남은 단계가 있으면 `unverified`다.
-
-    SQL 결함 뒤 정리(롤백)까지 실패하면 둘 다 알아야 하므로 `error`로 올리고, 결함은 단계 결과에
-    `failed`로 그대로 남긴다 (#167 검토). 5단계가 순서대로 한 번씩 있어야 계산한다. 빈 목록이나
-    일부 단계만으로 `passed`가 나오지 않게 한다.
-    """
-    stages = tuple(stages)
-    if tuple(s.stage for s in stages) != STAGES:
-        raise ValueError(f"5단계가 순서대로 한 번씩 있어야 함: {[s.stage for s in stages]}")
-    states = [s.state for s in stages]
-    if "error" in states:
-        return "error"
-    if "failed" in states:
-        return "failed"
-    if "not_run" in states:
-        return "unverified"
-    return "passed"
 
 
 # ── 1단계: 파싱 ─────────────────────────────────────────────────────
 
 
-def _parse_stage(sql: bytes) -> StageResult | tuple[Any, ...]:
-    def failed(kind: ProblemKind, detail: str) -> StageResult:
-        problem = SqlProblem(kind=kind, statement=None, detail=detail)
-        return StageResult(stage="parse", state="failed", problems=(problem,))
+def _parse_stage(sql: bytes) -> ValidationStep | tuple[Any, ...]:
+    def failed(code: IssueCode, message: str) -> ValidationStep:
+        return step(ValidationStepName.PARSE, StepStatus.FAILED, issue(code, message))
 
     # pglast는 NUL에서 문자열이 끝난 것으로 보고 뒤를 읽지 않는다. 앞부분만 검사하고 전체 해시를
     # 남기지 않도록 파싱 전에 막는다.
@@ -217,28 +175,29 @@ def _parse_stage(sql: bytes) -> StageResult | tuple[Any, ...]:
     except ParseError as exc:
         return failed("parse_error", f"문법 오류: {exc}")
     except Exception as exc:  # 파서 장애는 SQL 결함이 아니라 검증 장애다
-        problem = SqlProblem(kind="internal", statement=None, detail=type(exc).__name__)
-        return StageResult(stage="parse", state="error", problems=(problem,))
+        return step(
+            ValidationStepName.PARSE, StepStatus.ERROR, issue("internal", type(exc).__name__)
+        )
     if not statements:
         return failed("empty", "실행할 문장이 없음")
     return tuple(raw.stmt for raw in statements)
 
 
-# ── 2단계: 허용 SQL 검사 ───────────────────────────────────────────
+# ── 2단계: 허용 문장 검사 ──────────────────────────────────────────
 
 
-def _allowed_stage(statements: tuple[Any, ...]) -> StageResult:
+def _allowed_stage(statements: tuple[Any, ...]) -> ValidationStep:
+    name = ValidationStepName.ALLOWED_STATEMENTS
     try:
-        problems = [
-            SqlProblem(kind="not_allowed", statement=i, detail=detail)
+        issues = [
+            issue("not_allowed", detail, statement=i)
             for i, stmt in enumerate(statements)
             for detail in _statement_problems(stmt)
         ]
     except Exception as exc:  # 검사기 장애는 SQL 결함과 구분한다
-        problem = SqlProblem(kind="internal", statement=None, detail=type(exc).__name__)
-        return StageResult(stage="allowed_sql", state="error", problems=(problem,))
-    state: StageState = "failed" if problems else "passed"
-    return StageResult(stage="allowed_sql", state=state, problems=tuple(problems))
+        return step(name, StepStatus.ERROR, issue("internal", type(exc).__name__))
+    status = StepStatus.FAILED if issues else StepStatus.PASSED
+    return step(name, status, *issues)
 
 
 def _statement_problems(stmt: Any) -> Iterator[str]:

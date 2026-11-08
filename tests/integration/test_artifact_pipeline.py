@@ -366,13 +366,13 @@ def test_real_ddl_handoff_keeps_bytes_hash_and_model_after_restart(
     first.runner.run_pending()
     assert first.status(run_id).status == "awaiting_review"
     (result,) = first.ddl_results
-    assert result.prepared.validation.state == "unverified"
+    assert result.prepared.validation.status == "unverified"
     ref = result.generated["ref"]
     assert ref.approved is False
     assert b'CREATE TABLE "wrhus"' in result.prepared.sql_bytes
     download = first.download(run_id, "ddl", "sql")
     assert download.content == result.prepared.sql_bytes
-    assert download.headers["etag"] == f'"{result.prepared.validation.sql_sha256}"'
+    assert download.headers["etag"] == f'"{result.prepared.validation.artifact_hash}"'
     with first.pool.connection() as conn:
         stored = conn.execute(
             "SELECT a.hash, a.storage_ref, a.approval_status, s.model_hash FROM artifact a "
@@ -381,7 +381,7 @@ def test_real_ddl_handoff_keeps_bytes_hash_and_model_after_restart(
             (UUID(run_id),),
         ).fetchone()
     assert stored is not None
-    assert stored["hash"] == ref.hash == result.prepared.validation.sql_sha256
+    assert stored["hash"] == ref.hash == result.prepared.validation.artifact_hash
     assert stored["model_hash"] == result.generated["model_hash"]
     assert stored["storage_ref"] == result.generated["storage_ref"]
     assert stored["approval_status"] == "draft"

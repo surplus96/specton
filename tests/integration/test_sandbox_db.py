@@ -20,8 +20,7 @@ from specton.codegen.model import Normalized
 from specton.codegen.naming import load_naming_rules, load_pack_lexicon
 from specton.codegen.normalize import PackRef, normalize
 from specton.config import Settings
-from specton.contracts import DesignState, Entity, Relationship, Requirement
-from specton.validate.allowed_sql import SqlValidation
+from specton.contracts import DesignState, Entity, Relationship, Requirement, SqlValidation
 from specton.validate.sandbox import SCHEMA_PREFIX, SandboxLimits, validate_sql
 
 pytestmark = pytest.mark.db
@@ -68,7 +67,7 @@ def _validate(sql: str, **limits: float) -> SqlValidation:
 
 
 def _states(result: SqlValidation) -> dict[str, str]:
-    return {s.stage: s.state for s in result.stages}
+    return {s.name: s.status for s in result.steps}
 
 
 def _check_schemas() -> list[str]:
@@ -178,7 +177,7 @@ def test_generated_ddl_passes_all_five_stages_and_leaves_nothing() -> None:
 
     result = _validate(sql)
 
-    assert result.state == "passed", result
+    assert result.status == "passed", result
     assert set(_states(result).values()) == {"passed"}
     assert _check_schemas() == []
 
@@ -211,7 +210,7 @@ ALTER TABLE "wrhsg" ADD FOREIGN KEY ("bzmn_no", "brnch_sn")
   REFERENCES "bcnc" ("bzmn_no", "brnch_sn");
 """
     result = _validate(sql)
-    assert result.state == "passed", result
+    assert result.status == "passed", result
 
 
 # ── 실행 중 SQL 결함 ─────────────────────────────────────────────────
@@ -258,16 +257,16 @@ def test_sql_defect_is_failed_with_its_statement_and_earlier_objects_are_gone(
 ) -> None:
     result = _validate(sql)
 
-    assert result.state == "failed", result
-    execute = next(s for s in result.stages if s.stage == "sandbox_execute")
-    [problem] = execute.problems
-    assert (problem.kind, problem.statement, problem.sqlstate) == (
+    assert result.status == "failed", result
+    execute = next(s for s in result.steps if s.name == "execute")
+    [problem] = execute.issues
+    assert (problem.code, problem.statement_index, problem.sqlstate) == (
         "execution_error",
         statement,
         sqlstate,
     )
     # 앞에서 만든 테이블까지 롤백되고 검증 스키마도 남지 않는다
-    assert (_states(result)["rollback"], _states(result)["residual_check"]) == ("passed", "passed")
+    assert (_states(result)["rollback"], _states(result)["cleanup"]) == ("passed", "passed")
     assert _check_schemas() == []
 
 
@@ -297,8 +296,8 @@ def test_names_do_not_fall_through_to_public(public_parent: str) -> None:
         'CREATE TABLE "c" ("a" integer);\n'
         f'ALTER TABLE "c" ADD FOREIGN KEY ("a") REFERENCES "{public_parent}" ("a");'
     )
-    execute = next(s for s in result.stages if s.stage == "sandbox_execute")
-    assert (result.state, execute.problems[0].sqlstate) == ("failed", "42P01")
+    execute = next(s for s in result.steps if s.name == "execute")
+    assert (result.status, execute.issues[0].sqlstate) == ("failed", "42P01")
 
 
 def test_names_do_not_fall_through_to_other_schemas(sentinel: str) -> None:
@@ -307,8 +306,8 @@ def test_names_do_not_fall_through_to_other_schemas(sentinel: str) -> None:
         'CREATE TABLE "c" ("a" integer);\n'
         'ALTER TABLE "c" ADD FOREIGN KEY ("a") REFERENCES "p" ("a");'
     )
-    execute = next(s for s in result.stages if s.stage == "sandbox_execute")
-    assert (result.state, execute.problems[0].sqlstate) == ("failed", "42P01")
+    execute = next(s for s in result.steps if s.name == "execute")
+    assert (result.status, execute.issues[0].sqlstate) == ("failed", "42P01")
 
 
 def test_existing_objects_survive_success_and_failure(sentinel: str) -> None:
@@ -350,7 +349,7 @@ def _run_builtin_type_check() -> None:
         'CREATE TABLE "c" ("t" text);\n'
         'ALTER TABLE "c" ADD FOREIGN KEY ("t") REFERENCES "p" ("t");'
     )
-    assert result.state == "passed", result
+    assert result.status == "passed", result
 
 
 def test_same_sql_twice_and_concurrent_runs_do_not_interfere() -> None:
@@ -367,7 +366,7 @@ def test_same_sql_twice_and_concurrent_runs_do_not_interfere() -> None:
         t.join()
     results.append(_validate(sql))  # 같은 SQL 한 번 더
 
-    assert [r.state for r in results] == ["passed"] * 4
+    assert [r.status for r in results] == ["passed"] * 4
     assert _check_schemas() == []
 
 
@@ -377,9 +376,9 @@ def test_same_sql_twice_and_concurrent_runs_do_not_interfere() -> None:
 def test_tiny_budget_is_budget_exceeded_and_still_cleaned_up() -> None:
     """입력 허용 목록에 pg_sleep을 넣지 않고, 예산을 0으로 줄여 재현한다."""
     result = _validate(_inventory_ddl(), budget_seconds=0)
-    execute = next(s for s in result.stages if s.stage == "sandbox_execute")
-    assert (result.state, execute.problems[0].kind) == ("error", "budget_exceeded")
-    assert (_states(result)["rollback"], _states(result)["residual_check"]) == ("passed", "passed")
+    execute = next(s for s in result.steps if s.name == "execute")
+    assert (result.status, execute.issues[0].code) == ("error", "budget_exceeded")
+    assert (_states(result)["rollback"], _states(result)["cleanup"]) == ("passed", "passed")
     assert _check_schemas() == []
 
 
@@ -396,7 +395,7 @@ def test_wrong_port_is_a_connection_error_without_cleanup_claims() -> None:
         settings=settings,
         limits=SandboxLimits(connect_seconds=2),
     )
-    assert result.state == "error"
+    assert result.status == "error"
     assert _states(result)["rollback"] == "not_run"
     assert "x@localhost" not in result.model_dump_json()  # 접속 정보는 결과에 없다
 
@@ -408,8 +407,8 @@ def test_app_database_url_is_rejected_by_preflight() -> None:
         sandbox_database_url=str(SETTINGS.app_database_url),  # 앱 계정·앱 DB
     )
     result = validate_sql(b'CREATE TABLE "t" ("a" integer);', settings=settings)
-    execute = next(s for s in result.stages if s.stage == "sandbox_execute")
-    assert (result.state, execute.problems[0].kind) == ("error", "environment")
+    execute = next(s for s in result.steps if s.name == "execute")
+    assert (result.status, execute.issues[0].code) == ("error", "environment")
 
 
 @pytest.mark.parametrize("suffix", ["/review_path?dbname=specton_sandbox", "/specton%5Fsandbox"])
@@ -422,9 +421,9 @@ def test_effective_app_database_is_rejected_before_creating_schema(suffix: str) 
     )
     before = _check_schemas()
     result = validate_sql(b"CREATE TABLE guard_probe (id integer);", settings=settings)
-    execute = next(s for s in result.stages if s.stage == "sandbox_execute")
-    assert result.state == "error"
-    assert execute.problems[0].kind == "environment"
-    assert "앱 DB에 접속함" in execute.problems[0].detail
-    assert _states(result)["rollback"] == _states(result)["residual_check"] == "passed"
+    execute = next(s for s in result.steps if s.name == "execute")
+    assert result.status == "error"
+    assert execute.issues[0].code == "environment"
+    assert "앱 DB에 접속함" in execute.issues[0].message
+    assert _states(result)["rollback"] == _states(result)["cleanup"] == "passed"
     assert _check_schemas() == before

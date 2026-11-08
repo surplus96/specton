@@ -1,6 +1,8 @@
-"""SQL 검증 앞 두 단계 (#15): 파싱 → 허용 SQL 검사.
+"""SQL 검증 앞 두 단계 (#15): 파싱 → 허용 문장 검사.
 
 DB에 접속하지 않는다. 정상 SQL도 격리 DB 단계가 남아 전체 상태는 `unverified`다.
+결과는 공용 계약 `SqlValidation`(#176)이다. 전체 상태 계산 규칙 자체는 계약 테스트
+(`test_validation_contract.py`)가 확인하고, 여기서는 검증기가 계약을 바르게 채우는지 본다.
 """
 
 import ast as pyast
@@ -8,23 +10,29 @@ import hashlib
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
+from specton.codegen.ddl import DDL_TARGET
+from specton.contracts import (
+    VALIDATION_STEPS,
+    SqlValidation,
+    StepStatus,
+    ValidationStep,
+    ValidationStepName,
+)
 from specton.contracts.base import SqlType
 from specton.validate import allowed_sql
 from specton.validate.allowed_sql import (
     POLICY_VERSION,
-    STAGES,
     TARGET,
     VALIDATOR_VERSION,
-    SqlValidation,
-    StageResult,
     build_result,
     check_allowed_sql,
-    overall_state,
+    issue,
+    step,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-
 # DDL 생성기(#165) 출력과 같은 모양: 머리말 주석, 큰따옴표 이름, 표 제약, 복합·자기참조 FK
 HEADER = (
     "-- postgresql 18 / pack inventory 0.1.8 / rules normalize-v0 / lexicon abc"
@@ -72,17 +80,17 @@ def _check(sql: str | bytes) -> SqlValidation:
     return check_allowed_sql(sql.encode("utf-8") if isinstance(sql, str) else sql)
 
 
-def _stage(result: SqlValidation, name: str) -> StageResult:
-    return next(s for s in result.stages if s.stage == name)
+def _stage(result: SqlValidation, name: str) -> ValidationStep:
+    return next(s for s in result.steps if s.name == name)
 
 
-def _not_allowed(sql: str) -> list[str]:
+def _not_allowed(sql: str) -> list[str | None]:
     result = _check(sql)
-    assert result.state == "failed", result
-    stage = _stage(result, "allowed_sql")
-    assert stage.state == "failed"
-    assert all(p.kind == "not_allowed" for p in stage.problems)
-    return [p.detail for p in stage.problems]
+    assert result.status == "failed", result
+    stage = _stage(result, "allowed_statements")
+    assert stage.status == "failed"
+    assert all(p.code == "not_allowed" for p in stage.issues)
+    return [p.message for p in stage.issues]
 
 
 # ── 결과 모양 ─────────────────────────────────────────────────────────
@@ -90,22 +98,26 @@ def _not_allowed(sql: str) -> list[str]:
 
 def test_generated_ddl_passes_first_two_stages_and_stays_unverified() -> None:
     result = _check(GENERATED)
-    assert [(s.stage, s.state) for s in result.stages] == [
+    assert [(s.name, s.status) for s in result.steps] == [
         ("parse", "passed"),
-        ("allowed_sql", "passed"),
-        ("sandbox_execute", "not_run"),
+        ("allowed_statements", "passed"),
+        ("execute", "not_run"),
         ("rollback", "not_run"),
-        ("residual_check", "not_run"),
+        ("cleanup", "not_run"),
     ]
-    assert result.state == "unverified"  # 격리 DB 전에는 passed가 아니다
+    assert result.status == "unverified"  # 격리 DB 전에는 passed가 아니다
+
+
+def test_result_is_the_shared_contract() -> None:
+    assert type(_check(GENERATED)) is SqlValidation
 
 
 def test_result_carries_hash_of_all_bytes_and_versions() -> None:
     data = GENERATED.encode("utf-8")
     result = check_allowed_sql(data)
-    assert result.sql_sha256 == hashlib.sha256(data).hexdigest()
-    assert check_allowed_sql(data + b" ").sql_sha256 != result.sql_sha256
-    assert (result.validator_version, result.policy_version, result.target) == (
+    assert result.artifact_hash == hashlib.sha256(data).hexdigest()
+    assert check_allowed_sql(data + b" ").artifact_hash != result.artifact_hash
+    assert (result.validator_version, result.policy_version, result.postgres_version) == (
         VALIDATOR_VERSION,
         POLICY_VERSION,
         TARGET,
@@ -113,76 +125,63 @@ def test_result_carries_hash_of_all_bytes_and_versions() -> None:
     assert result == check_allowed_sql(data)  # 같은 입력 → 같은 결과
 
 
+def test_target_is_the_ddl_generator_target() -> None:
+    """대상 DB 값은 DDL 생성기와 한 곳에서 정한다 (#176: `postgresql-18`)."""
+    assert TARGET == DDL_TARGET == "postgresql-18"
+
+
 def test_stages_are_always_five_in_fixed_order() -> None:
     for sql in (GENERATED, "SELECT 1;", "CREATE TABLE (", ""):
-        assert tuple(s.stage for s in _check(sql).stages) == STAGES
+        assert tuple(s.name for s in _check(sql).steps) == VALIDATION_STEPS
 
 
-@pytest.mark.parametrize(
-    ("states", "expected"),
-    [
-        (["passed"] * 5, "passed"),
-        (["passed", "passed", "not_run", "not_run", "not_run"], "unverified"),
-        (["passed", "failed", "not_run", "not_run", "not_run"], "failed"),
-        (["passed", "error", "not_run", "not_run", "not_run"], "error"),
-        # SQL 결함 뒤 정리까지 실패: 전체는 error, 결함 단계는 failed로 남는다 (#167 검토)
-        (["passed", "passed", "failed", "error", "not_run"], "error"),
-        (["passed", "passed", "error", "failed", "not_run"], "error"),
-    ],
-)
-def test_overall_state_puts_error_first_then_failed_then_unverified(
-    states: list[str], expected: str
-) -> None:
-    stages = [
-        StageResult(stage=name, state=state)  # type: ignore[arg-type]
-        for name, state in zip(STAGES, states, strict=True)
-    ]
-    assert overall_state(stages) == expected
-
-
-def _passed(name: str) -> StageResult:
-    return StageResult(stage=name, state="passed")  # type: ignore[arg-type]
-
-
-@pytest.mark.parametrize(
-    "names",
-    [
-        [],  # 빈 목록이 passed가 되면 안 된다
-        ["parse", "allowed_sql"],  # 일부 단계만
-        [*STAGES, "parse"],  # 중복
-        list(reversed(STAGES)),  # 순서가 다름
-    ],
-    ids=["empty", "partial", "duplicate", "reordered"],
-)
-def test_overall_state_needs_all_five_stages_once_in_order(names: list[str]) -> None:
-    with pytest.raises(ValueError, match="5단계"):
-        overall_state([_passed(n) for n in names])
+def _passed(name: ValidationStepName) -> ValidationStep:
+    return step(name, StepStatus.PASSED)
 
 
 def test_duplicate_stage_in_build_result_is_rejected_not_overwritten() -> None:
     """파싱 실패 뒤 파싱 성공을 넣어 실패를 덮어쓰면 안 된다 (검토에서 재현)."""
-    failed = StageResult(stage="parse", state="failed")
+    failed = step(ValidationStepName.PARSE, StepStatus.FAILED, issue("parse_error", "문법 오류"))
     with pytest.raises(ValueError, match="두 번"):
-        build_result(b"x", [failed, _passed("parse")])
+        build_result(b"x", [failed, _passed(ValidationStepName.PARSE)])
     with pytest.raises(ValueError, match="두 번"):
-        build_result(b"x", [_passed(n) for n in STAGES] + [failed])
+        build_result(b"x", [_passed(n) for n in VALIDATION_STEPS] + [failed])
 
 
 def test_build_result_with_no_stage_run_is_unverified() -> None:
-    assert build_result(b"x", []).state == "unverified"
+    result = build_result(b"x", [])
+    assert result.status == "unverified"
+    assert all(s.status == "not_run" for s in result.steps)
 
 
 def test_failed_and_error_together_keep_the_failed_stage() -> None:
-    failed = StageResult(stage="sandbox_execute", state="failed")
-    error = StageResult(stage="rollback", state="error")
-    result = build_result(b"x", [StageResult(stage="parse", state="passed"), failed, error])
-    assert result.state == "error"
-    assert _stage(result, "sandbox_execute") == failed
+    """실행에서 SQL 결함이 나고 롤백까지 실패한 경우: 전체는 error, 결함은 그대로 남는다 (#167)."""
+    failed = step(
+        ValidationStepName.EXECUTE,
+        StepStatus.FAILED,
+        issue("execution_error", "undefined_table", statement=1, sqlstate="42P01"),
+    )
+    error = step(
+        ValidationStepName.ROLLBACK, StepStatus.ERROR, issue("rollback_failed", "OperationalError")
+    )
+    done = [_passed(ValidationStepName.PARSE), _passed(ValidationStepName.ALLOWED_STATEMENTS)]
+    result = build_result(b"x", [*done, failed, error])
+    assert result.status == "error"
+    assert _stage(result, "execute") == failed
+    assert _stage(result, "cleanup").status == "not_run"
 
 
-def test_unknown_stage_name_stops() -> None:
-    with pytest.raises(ValueError, match="모르는 단계"):
-        build_result(b"x", [StageResult.model_construct(stage="deploy", state="passed")])
+def test_build_result_refuses_a_run_without_the_allowed_check() -> None:
+    """허용 문장 검사 없이 실행한 기록은 결과로 만들지 않는다. 계약이 막는다 (#176)."""
+    done = [_passed(ValidationStepName.PARSE), _passed(ValidationStepName.EXECUTE)]
+    with pytest.raises(ValidationError, match="실행하지 않습니다"):
+        build_result(b"x", done)
+
+
+def test_a_failed_step_needs_an_issue() -> None:
+    """이유 없는 실패는 단계로 만들 수 없다. 검증기는 실패마다 문제를 적는다 (#176)."""
+    with pytest.raises(ValidationError, match="1건 이상"):
+        step(ValidationStepName.PARSE, StepStatus.FAILED)
 
 
 # ── 파싱 단계 ─────────────────────────────────────────────────────────
@@ -200,10 +199,10 @@ def test_unknown_stage_name_stops() -> None:
 )
 def test_parse_failures_stop_before_allowed_check(data: bytes, kind: str) -> None:
     result = check_allowed_sql(data)
-    assert result.state == "failed"
+    assert result.status == "failed"
     parse = _stage(result, "parse")
-    assert (parse.state, [p.kind for p in parse.problems]) == ("failed", [kind])
-    assert _stage(result, "allowed_sql").state == "not_run"
+    assert (parse.status, [p.code for p in parse.issues]) == ("failed", [kind])
+    assert _stage(result, "allowed_statements").status == "not_run"
 
 
 @pytest.mark.parametrize(
@@ -218,9 +217,9 @@ def test_parse_failures_stop_before_allowed_check(data: bytes, kind: str) -> Non
 def test_nul_byte_is_rejected_before_parsing(data: bytes) -> None:
     """pglast는 NUL 뒤를 읽지 않는다. 앞부분만 검사하고 통과시키면 안 된다 (#167 검토)."""
     result = check_allowed_sql(data)
-    assert result.state == "failed"
-    assert [p.kind for p in _stage(result, "parse").problems] == ["nul_byte"]
-    assert result.sql_sha256 == hashlib.sha256(data).hexdigest()  # NUL 포함 전체 바이트
+    assert result.status == "failed"
+    assert [p.code for p in _stage(result, "parse").issues] == ["nul_byte"]
+    assert result.artifact_hash == hashlib.sha256(data).hexdigest()  # NUL 포함 전체 바이트
 
 
 def test_parser_crash_is_error_not_sql_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -229,9 +228,9 @@ def test_parser_crash_is_error_not_sql_failure(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr(allowed_sql, "parse_sql", broken)
     result = _check(GENERATED)
-    assert result.state == "error"
-    assert _stage(result, "parse").state == "error"
-    assert [p.kind for p in _stage(result, "parse").problems] == ["internal"]
+    assert result.status == "error"
+    assert _stage(result, "parse").status == "error"
+    assert [p.code for p in _stage(result, "parse").issues] == ["internal"]
 
 
 def test_checker_crash_is_error_not_sql_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -240,7 +239,7 @@ def test_checker_crash_is_error_not_sql_failure(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr(allowed_sql, "_statement_problems", broken)
     result = _check(GENERATED)
-    assert (result.state, _stage(result, "allowed_sql").state) == ("error", "error")
+    assert (result.status, _stage(result, "allowed_statements").status) == ("error", "error")
 
 
 # ── 허용 밖 문장 ─────────────────────────────────────────────────────
@@ -279,8 +278,8 @@ def test_statements_outside_the_list_are_rejected(sql: str) -> None:
 
 def test_every_bad_statement_is_reported_with_its_number() -> None:
     sql = 'CREATE TABLE "a" ("x" integer);\nCOMMIT;\nCREATE TABLE "b" ("y" integer);\nSELECT 1;'
-    stage = _stage(_check(sql), "allowed_sql")
-    assert [(p.statement, p.detail.split(":")[0]) for p in stage.problems] == [
+    stage = _stage(_check(sql), "allowed_statements")
+    assert [(p.statement_index, (p.message or "").split(":")[0]) for p in stage.issues] == [
         (1, "허용하지 않는 문장"),
         (3, "허용하지 않는 문장"),
     ]
@@ -288,13 +287,13 @@ def test_every_bad_statement_is_reported_with_its_number() -> None:
 
 def test_line_break_after_header_comment_makes_a_statement_that_is_rejected() -> None:
     sql = "-- pack 0.1.8\nSELECT 1;\n" + 'CREATE TABLE "t" ("a" integer);'
-    stage = _stage(_check(sql), "allowed_sql")
-    assert [p.statement for p in stage.problems] == [0]
+    stage = _stage(_check(sql), "allowed_statements")
+    assert [p.statement_index for p in stage.issues] == [0]
 
 
 def test_dangerous_words_inside_strings_or_identifiers_are_judged_by_the_tree() -> None:
     """판단은 파싱 결과로 한다. 이름 안의 글자는 문장이 아니다."""
-    assert _check('CREATE TABLE "commit; drop table x" ("a" integer);').state == "unverified"
+    assert _check('CREATE TABLE "commit; drop table x" ("a" integer);').status == "unverified"
 
 
 # ── CREATE TABLE ─────────────────────────────────────────────────────
@@ -372,7 +371,7 @@ def test_type_table_covers_exactly_the_allowed_sql_types() -> None:
     ],
 )
 def test_allowed_types_pass_even_though_the_parser_adds_pg_catalog(type_text: str) -> None:
-    assert _check(f"CREATE TABLE t (a {type_text});").state == "unverified"
+    assert _check(f"CREATE TABLE t (a {type_text});").status == "unverified"
 
 
 @pytest.mark.parametrize(
@@ -401,7 +400,7 @@ def test_allowed_types_pass_even_though_the_parser_adds_pg_catalog(type_text: st
 )
 def test_other_types_and_shapes_are_rejected(type_text: str) -> None:
     result = _check(f"CREATE TABLE t (a {type_text});")
-    assert result.state == "failed", type_text
+    assert result.status == "failed", type_text
 
 
 # ── 제약 ─────────────────────────────────────────────────────────────
@@ -434,12 +433,12 @@ def test_constraint_names_are_allowed() -> None:
         "CREATE TABLE c (a integer CONSTRAINT c_a_nn NOT NULL, CONSTRAINT c_uq UNIQUE (a));\n"
         "ALTER TABLE c ADD CONSTRAINT c_fk FOREIGN KEY (a) REFERENCES p (a);"
     )
-    assert _check(sql).state == "unverified"
+    assert _check(sql).status == "unverified"
 
 
 def test_inline_references_and_null_are_allowed() -> None:
     sql = "CREATE TABLE c (a integer NULL REFERENCES p (a), b integer REFERENCES p);"
-    assert _check(sql).state == "unverified"
+    assert _check(sql).status == "unverified"
 
 
 # ── ALTER TABLE ──────────────────────────────────────────────────────

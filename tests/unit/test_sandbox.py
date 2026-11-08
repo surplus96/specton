@@ -11,8 +11,8 @@ import psycopg
 import pytest
 
 from specton.config import Settings
+from specton.contracts import SqlValidation, ValidationStep
 from specton.validate import sandbox
-from specton.validate.allowed_sql import SqlValidation, StageResult
 from specton.validate.sandbox import SCHEMA_PREFIX, SandboxLimits, validate_sql
 
 SQL = (
@@ -115,11 +115,11 @@ def _run(connect: FakeConnect, sql: bytes = SQL, **limits: float) -> SqlValidati
 
 
 def _states(result: SqlValidation) -> dict[str, str]:
-    return {s.stage: s.state for s in result.stages}
+    return {s.name: s.status for s in result.steps}
 
 
-def _stage(result: SqlValidation, name: str) -> StageResult:
-    return next(s for s in result.stages if s.stage == name)
+def _stage(result: SqlValidation, name: str) -> ValidationStep:
+    return next(s for s in result.steps if s.name == name)
 
 
 # ── 정상 흐름 ─────────────────────────────────────────────────────────
@@ -129,7 +129,7 @@ def test_all_five_stages_pass_and_the_sql_is_never_committed() -> None:
     connect = FakeConnect()
     result = _run(connect)
 
-    assert result.state == "passed"
+    assert result.status == "passed"
     assert set(_states(result).values()) == {"passed"}
     assert connect.main.calls == ["rollback", "close"]  # commit 없음
     assert connect.opened[0]["autocommit"] is False
@@ -165,10 +165,10 @@ def test_failed_allowed_check_never_connects_and_keeps_the_hash() -> None:
     connect = FakeConnect()
     bad = b"CREATE TABLE t (a integer);\nCOMMIT;"
     result = _run(connect, bad)
-    assert result.state == "failed"
+    assert result.status == "failed"
     assert connect.opened == []
-    assert _states(result)["sandbox_execute"] == "not_run"
-    assert result.sql_sha256 == __import__("hashlib").sha256(bad).hexdigest()
+    assert _states(result)["execute"] == "not_run"
+    assert result.artifact_hash == __import__("hashlib").sha256(bad).hexdigest()
 
 
 # ── SQL 결함 ─────────────────────────────────────────────────────────
@@ -181,12 +181,16 @@ def test_known_sql_defect_is_failed_with_statement_and_cleanup_still_runs(sqlsta
     connect = FakeConnect(main=FakeConn(fail_on={"ALTER TABLE": _db_error(sqlstate, "no key")}))
     result = _run(connect)
 
-    execute = _stage(result, "sandbox_execute")
-    assert (result.state, execute.state) == ("failed", "failed")
-    [problem] = execute.problems
-    assert (problem.kind, problem.statement, problem.sqlstate) == ("execution_error", 2, sqlstate)
-    assert "no key" in problem.detail  # SQL 결함은 DB의 기본 문장을 남긴다
-    assert (_states(result)["rollback"], _states(result)["residual_check"]) == ("passed", "passed")
+    execute = _stage(result, "execute")
+    assert (result.status, execute.status) == ("failed", "failed")
+    [problem] = execute.issues
+    assert (problem.code, problem.statement_index, problem.sqlstate) == (
+        "execution_error",
+        2,
+        sqlstate,
+    )
+    assert "no key" in problem.message  # SQL 결함은 DB의 기본 문장을 남긴다
+    assert (_states(result)["rollback"], _states(result)["cleanup"]) == ("passed", "passed")
     assert connect.main.calls == ["rollback", "close"]
 
 
@@ -210,10 +214,10 @@ def test_other_db_errors_are_error_and_hide_internal_messages(sqlstate: str, kin
     connect = FakeConnect(main=FakeConn(fail_on={"ALTER TABLE": _db_error(sqlstate, secret)}))
     result = _run(connect)
 
-    execute = _stage(result, "sandbox_execute")
-    assert (result.state, execute.state) == ("error", "error")
-    [problem] = execute.problems
-    assert (problem.kind, problem.sqlstate, problem.statement) == (kind, sqlstate, 2)
+    execute = _stage(result, "execute")
+    assert (result.status, execute.status) == ("error", "error")
+    [problem] = execute.issues
+    assert (problem.code, problem.sqlstate, problem.statement_index) == (kind, sqlstate, 2)
     assert secret not in result.model_dump_json()
     assert connect.main.calls == ["rollback", "close"]
 
@@ -221,15 +225,15 @@ def test_other_db_errors_are_error_and_hide_internal_messages(sqlstate: str, kin
 def test_connection_failure_does_not_claim_rollback_or_residual() -> None:
     connect = FakeConnect(fail_main=psycopg.OperationalError("refused"))
     result = _run(connect)
-    assert result.state == "error"
+    assert result.status == "error"
     assert _states(result) == {
         "parse": "passed",
-        "allowed_sql": "passed",
-        "sandbox_execute": "error",
+        "allowed_statements": "passed",
+        "execute": "error",
         "rollback": "not_run",
-        "residual_check": "not_run",
+        "cleanup": "not_run",
     }
-    assert _stage(result, "sandbox_execute").problems[0].kind == "connection"
+    assert _stage(result, "execute").issues[0].code == "connection"
 
 
 @pytest.mark.parametrize(
@@ -247,9 +251,9 @@ def test_connection_failure_does_not_claim_rollback_or_residual() -> None:
 def test_unsafe_environment_stops_before_user_sql(row: Any, reason: str) -> None:
     connect = FakeConnect(main=FakeConn(row=row))
     result = _run(connect)
-    execute = _stage(result, "sandbox_execute")
-    assert (execute.state, execute.problems[0].kind) == ("error", "environment")
-    assert reason in execute.problems[0].detail
+    execute = _stage(result, "execute")
+    assert (execute.status, execute.issues[0].code) == ("error", "environment")
+    assert reason in execute.issues[0].message
     assert not any(q.startswith("CREATE TABLE") for q in connect.main.executed)
     assert connect.main.calls == ["rollback", "close"]
 
@@ -257,8 +261,8 @@ def test_unsafe_environment_stops_before_user_sql(row: Any, reason: str) -> None
 def test_setup_failure_is_environment_not_sql_defect() -> None:
     connect = FakeConnect(main=FakeConn(fail_on={"CREATE SCHEMA": _db_error("42501")}))
     result = _run(connect)
-    execute = _stage(result, "sandbox_execute")
-    assert (execute.state, execute.problems[0].kind) == ("error", "environment")
+    execute = _stage(result, "execute")
+    assert (execute.status, execute.issues[0].code) == ("error", "environment")
 
 
 def test_rollback_failure_keeps_the_sql_defect_and_makes_the_whole_result_error() -> None:
@@ -267,18 +271,18 @@ def test_rollback_failure_keeps_the_sql_defect_and_makes_the_whole_result_error(
         rollback_error=psycopg.OperationalError("gone"),
     )
     result = _run(FakeConnect(main=main))
-    assert result.state == "error"
-    assert _states(result)["sandbox_execute"] == "failed"  # 결함 기록은 남는다
+    assert result.status == "error"
+    assert _states(result)["execute"] == "failed"  # 결함 기록은 남는다
     assert _states(result)["rollback"] == "error"
-    assert _stage(result, "rollback").problems[0].kind == "rollback_failed"
+    assert _stage(result, "rollback").issues[0].code == "rollback_failed"
     assert main.calls == ["rollback", "close"]  # 롤백이 실패해도 닫는다
 
 
 def test_remaining_schema_is_reported_not_dropped() -> None:
     connect = FakeConnect(check=FakeConn(residual=True))
     result = _run(connect)
-    assert result.state == "error"
-    assert _stage(result, "residual_check").problems[0].kind == "residual_found"
+    assert result.status == "error"
+    assert _stage(result, "cleanup").issues[0].code == "residual_found"
     assert not any("DROP" in q for q in connect.main.executed + connect.check.executed)
 
 
@@ -289,15 +293,15 @@ def test_residual_check_failure_is_not_passed(where: str) -> None:
     else:
         connect = FakeConnect(check=FakeConn(fail_on={"pg_namespace": _db_error("57P01")}))
     result = _run(connect)
-    assert result.state == "error"
-    assert _stage(result, "residual_check").problems[0].kind == "residual_check_failed"
+    assert result.status == "error"
+    assert _stage(result, "cleanup").issues[0].code == "residual_check_failed"
 
 
 def test_unexpected_exception_during_user_sql_is_internal_and_cleaned_up() -> None:
     connect = FakeConnect(main=FakeConn(fail_on={"ALTER TABLE": RuntimeError("bug")}))
     result = _run(connect)
-    execute = _stage(result, "sandbox_execute")
-    assert (execute.state, execute.problems[0].kind) == ("error", "internal")
+    execute = _stage(result, "execute")
+    assert (execute.status, execute.issues[0].code) == ("error", "internal")
     assert connect.main.calls == ["rollback", "close"]
 
 
@@ -316,8 +320,8 @@ def test_budget_timer_cancels_and_is_reported_as_budget_exceeded() -> None:
 
     main = SlowThenCanceled()
     result = _run(FakeConnect(main=main), budget_seconds=0.1)
-    execute = _stage(result, "sandbox_execute")
-    assert (execute.state, execute.problems[0].kind) == ("error", "budget_exceeded")
+    execute = _stage(result, "execute")
+    assert (execute.status, execute.issues[0].code) == ("error", "budget_exceeded")
     assert "cancel" in main.calls
     assert main.calls[-2:] == ["rollback", "close"]
 
@@ -325,8 +329,8 @@ def test_budget_timer_cancels_and_is_reported_as_budget_exceeded() -> None:
 def test_budget_checked_between_statements() -> None:
     main = FakeConn(sleep_on={'CREATE TABLE "p"': 0.3})
     result = _run(FakeConnect(main=main), budget_seconds=0.1)
-    execute = _stage(result, "sandbox_execute")
-    assert execute.problems[0].kind == "budget_exceeded"
+    execute = _stage(result, "execute")
+    assert execute.issues[0].code == "budget_exceeded"
     assert not any(q.startswith("ALTER TABLE") for q in main.executed)
 
 
@@ -364,8 +368,8 @@ def test_rollback_waits_for_a_cancel_already_in_progress() -> None:
     result = _run(FakeConnect(main=main), budget_seconds=0.05, connect_seconds=2)
 
     assert main.calls == ["cancel:start", "cancel:end", "rollback", "close"]
-    execute = _stage(result, "sandbox_execute")
-    assert (execute.state, execute.problems[0].kind) == ("error", "budget_exceeded")
+    execute = _stage(result, "execute")
+    assert (execute.status, execute.issues[0].code) == ("error", "budget_exceeded")
 
 
 def test_cancel_that_never_settles_hands_cleanup_over_without_overlap() -> None:
@@ -380,13 +384,13 @@ def test_cancel_that_never_settles_hands_cleanup_over_without_overlap() -> None:
 
     # 결과를 돌려준 시점: 취소는 아직 진행 중이고, 이 스레드는 연결을 건드리지 않았다
     assert main.calls == ["cancel:start"]
-    execute = _stage(result, "sandbox_execute")
-    assert (execute.state, execute.problems[0].kind) == ("error", "database")
+    execute = _stage(result, "execute")
+    assert (execute.status, execute.issues[0].code) == ("error", "database")
     rollback = _stage(result, "rollback")
-    assert (rollback.state, rollback.problems[0].kind) == ("error", "rollback_failed")
-    assert _stage(result, "residual_check").state == "not_run"
+    assert (rollback.status, rollback.issues[0].code) == ("error", "rollback_failed")
+    assert _stage(result, "cleanup").status == "not_run"
     assert len(connect.opened) == 1  # 잔여 확인 연결을 열지 않음
-    assert result.state == "error"
+    assert result.status == "error"
 
     # 취소가 끝나면 취소 스레드가 이어서 정리한다. 겹치지 않고 이 순서다
     deadline = time.monotonic() + 3
@@ -439,10 +443,10 @@ def test_deadline_is_checked_after_the_last_statement_even_if_the_timer_is_late(
     main = FakeConn(sleep_on={"ALTER TABLE": 0.2})
     result = _run(FakeConnect(main=main), budget_seconds=0.1)
 
-    execute = _stage(result, "sandbox_execute")
-    assert (execute.state, execute.problems[0].kind) == ("error", "budget_exceeded")
-    assert execute.problems[0].statement is None  # 모든 문장을 실행한 뒤에 확인함
-    assert result.state == "error"
+    execute = _stage(result, "execute")
+    assert (execute.status, execute.issues[0].code) == ("error", "budget_exceeded")
+    assert execute.issues[0].statement_index is None  # 모든 문장을 실행한 뒤에 확인함
+    assert result.status == "error"
     assert main.calls == ["rollback", "close"]
 
 
@@ -467,9 +471,9 @@ def test_effective_app_db_name_blocks_same_db_and_connect_permission(
 
     connect = FakeConnect(main=PermissionConn())
     result = validate_sql(SQL, settings=settings, connect=connect)
-    problem = _stage(result, "sandbox_execute").problems[0]
-    assert (result.state, problem.kind) == ("error", "environment")
-    assert ("앱 DB에 접속함" if same_database else "앱 DB 접속 권한") in problem.detail
+    problem = _stage(result, "execute").issues[0]
+    assert (result.status, problem.code) == ("error", "environment")
+    assert ("앱 DB에 접속함" if same_database else "앱 DB 접속 권한") in problem.message
     assert not any("CREATE SCHEMA" in q or "CREATE TABLE" in q for q in connect.main.executed)
     assert connect.main.calls == ["rollback", "close"]
 
@@ -482,9 +486,9 @@ def test_missing_app_db_name_is_environment_error_without_connecting(suffix: str
     )
     connect = FakeConnect()
     result = validate_sql(SQL, settings=settings, connect=connect)
-    assert result.state == "error"
-    assert _stage(result, "sandbox_execute").problems[0].kind == "environment"
-    assert _states(result)["rollback"] == _states(result)["residual_check"] == "not_run"
+    assert result.status == "error"
+    assert _stage(result, "execute").issues[0].code == "environment"
+    assert _states(result)["rollback"] == _states(result)["cleanup"] == "not_run"
     assert connect.opened == []
     assert "private_password" not in result.model_dump_json()
     assert "review_user" not in result.model_dump_json()
@@ -497,7 +501,7 @@ def test_invalid_conninfo_is_rejected_without_exposing_parser_message(monkeypatc
     monkeypatch.setattr(sandbox, "conninfo_to_dict", invalid)
     connect = FakeConnect()
     result = _run(connect)
-    assert result.state == "error"
-    assert _stage(result, "sandbox_execute").problems[0].kind == "environment"
+    assert result.status == "error"
+    assert _stage(result, "execute").issues[0].code == "environment"
     assert connect.opened == []
     assert "private_password" not in result.model_dump_json()
