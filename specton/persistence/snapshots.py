@@ -50,7 +50,7 @@ def save_model(conn: Connection[DictRow], run_id: UUID, holder: str, state: Desi
     model = model_payload(state)
     digest = model_hash(state)
     with conn.transaction():
-        _lock_for_writer(conn, run_id, holder)
+        lock_for_writer(conn, run_id, holder)
         # 승인도 run 행을 잠그고 기록하므로 잠금 뒤에 확인하면 그 사이에 바뀌지 않는다
         approved = conn.execute(
             """
@@ -121,7 +121,7 @@ def add_artifact(
 ) -> bool:
     """파일을 기록하고 변경 여부를 돌려준다. 승인본은 같은 내용을 다시 저장할 수만 있다."""
     with conn.transaction():
-        _lock_for_writer(conn, run_id, holder)
+        lock_for_writer(conn, run_id, holder)
         existing = conn.execute(
             "SELECT a.hash, a.storage_ref, a.approval_status FROM artifact a "
             "JOIN model_snapshot s USING (snapshot_id) "
@@ -232,7 +232,7 @@ def _jsonb(model: Contract) -> Jsonb:
     return Jsonb(model.model_dump(mode="json"))
 
 
-def _lock_for_writer(conn: Connection[DictRow], run_id: UUID, holder: str) -> None:
+def lock_for_writer(conn: Connection[DictRow], run_id: UUID, holder: str) -> None:
     """run → job_lease 순서로 잠근다 (lease.py 잠금 순서). lease를 잃었으면 LeaseLostError."""
     if conn.execute("SELECT 1 FROM run WHERE run_id = %s FOR UPDATE", (run_id,)).fetchone() is None:
         raise RunNotFoundError(str(run_id))
