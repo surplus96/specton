@@ -36,7 +36,7 @@ from specton.nodes.a03_entities import (
 )
 from specton.nodes.common import assign_ids, unwrap_data
 from specton.packs.build import DEFAULT_ROOT
-from specton.packs.examples import load_examples
+from specton.packs.examples import FewShot, load_examples
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PACKS = REPO_ROOT / DEFAULT_ROOT
@@ -52,7 +52,7 @@ def _reasons(pack: dict[str, Any]) -> dict[str, list[Crud]]:
 
 def _a02_state(pack: str = "inventory") -> DesignState:
     """A02 예시의 입력·출력으로 만든 상태 (A02가 코드로 ID를 붙인 뒤의 모양)."""
-    [example] = _yaml(f"{pack}/examples/A02.yaml")["examples"]
+    example = _yaml(f"{pack}/examples/A02.yaml")["examples"][0]
     requirements = tuple(
         Requirement(
             id=r["id"],
@@ -124,7 +124,7 @@ def test_inventory_example_loads_as_a03_output() -> None:
 
 
 def test_inventory_example_input_is_what_input_data_builds() -> None:
-    [example] = load_examples("inventory", "A03", A03Output)
+    example = load_examples("inventory", "A03", A03Output)[0]
     pack = example.input["pack"]
     terms = _example_terms([t["term"] for t in pack["terms"]])
 
@@ -134,7 +134,7 @@ def test_inventory_example_input_is_what_input_data_builds() -> None:
 
 
 def test_inventory_example_output_refers_only_to_its_input() -> None:
-    [example] = load_examples("inventory", "A03", A03Output)
+    example = load_examples("inventory", "A03", A03Output)[0]
     function_ids = {f["id"] for f in example.input["functions"]}
     req_ids = {r["id"] for r in example.input["requirements"]}
     terms = {t["term"] for t in example.input["pack"]["terms"]}
@@ -163,6 +163,28 @@ def test_inventory_example_output_refers_only_to_its_input() -> None:
             for c in op.operations
         }
         assert not exempt & done
+
+
+@pytest.mark.parametrize(
+    "example", load_examples("inventory", "A03", A03Output), ids=lambda e: e.source_id
+)
+def test_every_inventory_example_passes_the_checks_for_its_own_input(
+    example: FewShot[A03Output],
+) -> None:
+    # 새 예시는 팩 용어가 아닌 속성도 쓴다(계약이 허용한다). 그래서 이름 대신 A03 검사기로 본다.
+    pack = example.input["pack"]
+    checked = _checked_against(
+        {f["id"] for f in example.input["functions"]},
+        {r["id"] for r in example.input["requirements"]},
+        [PackTerm.model_validate(t) for t in pack["terms"]],
+        _reasons(pack),
+    )
+
+    checked.model_validate(example.output.model_dump(mode="json"))
+    assert pack["crud_exemption_reasons"] == {
+        reason: list(ops)
+        for reason, ops in _yaml("common/rules.yaml")["crud_exemption_reasons"].items()
+    }
 
 
 def test_maintenance_example_input_is_what_input_data_builds() -> None:
@@ -196,7 +218,7 @@ def test_maintenance_example_passes_the_checks_for_its_own_input() -> None:
 
 
 def _checked() -> type[A03Output]:
-    [example] = load_examples("inventory", "A03", A03Output)
+    example = load_examples("inventory", "A03", A03Output)[0]
     terms = [PackTerm.model_validate(t) for t in example.input["pack"]["terms"]]
     return _checked_against(
         {f["id"] for f in example.input["functions"]},
@@ -207,7 +229,7 @@ def _checked() -> type[A03Output]:
 
 
 def _output() -> dict[str, Any]:
-    [example] = load_examples("inventory", "A03", A03Output)
+    example = load_examples("inventory", "A03", A03Output)[0]
     return copy.deepcopy(example.output.model_dump(mode="json"))
 
 
@@ -336,7 +358,7 @@ def test_reason_may_exempt_every_operation_it_lists() -> None:
 
 
 def test_example_exemption_reasons_match_rules_yaml() -> None:
-    [example] = load_examples("inventory", "A03", A03Output)
+    example = load_examples("inventory", "A03", A03Output)[0]
 
     assert example.input["pack"]["crud_exemption_reasons"] == {
         reason: [op for op in ops]
@@ -466,7 +488,7 @@ def _settings() -> Settings:
 
 
 def _example_output() -> A03Output:
-    [example] = load_examples("inventory", "A03", A03Output)
+    example = load_examples("inventory", "A03", A03Output)[0]
     return example.output
 
 
@@ -531,7 +553,8 @@ def test_request_uses_design_model_prompt_version_few_shot_and_input() -> None:
         PROMPT_VERSION,
         settings.design_model,
     )
-    assert [m.role for m in request.messages] == ["system", "user", "assistant", "user"]
+    shots = len(load_examples("inventory", "A03", A03Output))
+    assert [m.role for m in request.messages] == ["system", *["user", "assistant"] * shots, "user"]
     context = load_pack_context("inventory")
     expected = input_data(state, terms=context.terms, exemption_reasons=context.exemption_reasons)
     assert json.loads(unwrap_data(request.messages[-1].content)) == expected
@@ -751,7 +774,7 @@ def test_id_collision_stops_instead_of_overwriting(monkeypatch: pytest.MonkeyPat
 
 def _checked_with_synonyms() -> type[A03Output]:
     """예시 입력의 팩 용어 중 창고코드에 실제 팩의 동의어를 붙인 검사 모델."""
-    [example] = load_examples("inventory", "A03", A03Output)
+    example = load_examples("inventory", "A03", A03Output)[0]
     terms = [
         PackTerm.model_validate(
             {**t, "synonyms": ["창고 번호", "보관소 코드"]} if t["term"] == "창고코드" else t

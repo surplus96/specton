@@ -111,18 +111,22 @@ class _AbbreviationRule(_Strict):
 
 class _TermRule(_Strict):
     classifier_last: bool
-    max_words: int | None  # 기본값을 두지 않는다: 미정값은 키를 생략하지 못하고 null을 적어야 한다
+    # 기본값을 두지 않는다: 미정값은 키를 생략하지 못하고 null을 적어야 한다
+    max_words: Literal["unlimited"] | None
     official_term_immutable: bool
 
 
 class _TableRule(_Strict):
-    prefix: str | None  # 기본값 없음(위와 같은 이유)
-    form: Literal["singular", "plural"] | None
+    prefix: Literal["none"] | None  # 기본값 없음(위와 같은 이유). "none" = 접두어 없음, null = 미정
+    form: Literal["as_dictionary"] | None
+    junction_name: Literal["parent_child"] | None  # 기본값 없음(위와 같은 이유)
 
 
 class _ColumnRule(_Strict):
-    primary_key: str | None  # 기본값 없음(위와 같은 이유)
-    foreign_key: str | None
+    primary_key: Literal["term_physical_name"] | None  # 기본값 없음(위와 같은 이유)
+    foreign_key: Literal["parent_key_physical_name"] | None
+    # 기본값 없음(위와 같은 이유). 값은 words.yaml의 표준단어(예: 상위)
+    self_reference_prefix: str | None
 
 
 class Naming(_Strict):
@@ -194,6 +198,21 @@ class Pattern(_Strict):
     when: NonEmpty
     suggests: dict[str, Any]
     source: NonEmpty
+
+
+class ErdAreaSpec(_Strict):
+    """ERD 업무 영역 하나 (#13). 엔티티 한글 이름에 낱말이 들어 있으면 이 영역 후보다.
+
+    배정 규칙(가장 긴 낱말 우선, 같으면 먼저 적힌 영역)과 「기타」·낱말 겹침 검사는
+    `specton/codegen/erd_areas.py`가 맡는다. 여기서는 파일 모양만 본다.
+    """
+
+    name: NonEmpty
+    words: tuple[NonEmpty, ...] = Field(min_length=1)
+
+
+class _ErdAreasFile(_Strict):
+    areas: tuple[ErdAreaSpec, ...] = Field(min_length=1)
 
 
 class _CommonWordsFile(_Strict):
@@ -286,16 +305,37 @@ def load_pack(pack: str, *, root: Path = DEFAULT_ROOT) -> Pack:
     return Pack(manifest=manifest, common=common, terms=terms, words=words, patterns=patterns)
 
 
+def load_erd_areas(pack: str, *, root: Path = DEFAULT_ROOT) -> tuple[ErdAreaSpec, ...]:
+    """팩의 `erd_areas.yaml`(ERD 업무 영역, #13)을 읽는다. 파일이 없으면 빈 목록이다.
+
+    영역이 없으면 PDF는 영역을 나누지 않고 전체 상세도 하나로 그린다. 그래서 다른 팩 파일과 달리
+    없어도 오류가 아니다. `load_pack`과 따로 두어, 영역을 쓰지 않는 노드는 이 파일을 읽지 않는다.
+    """
+    if pack == COMMON:
+        raise PackError(f"{COMMON}은 선택할 수 있는 팩이 아닙니다")
+    load_manifest(pack, root=root)  # 팩 이름·폴더 검사
+    path = root / pack / "erd_areas.yaml"
+    if not path.is_file():
+        return ()
+    return _validate(_ErdAreasFile, path).areas
+
+
 def _naming_blanks(naming: Naming) -> list[str]:
-    """naming.yaml에서 아직 정하지 않은 값(미정값)의 경로 목록."""
+    """naming.yaml에서 아직 정하지 않은 값(미정값)의 경로 목록.
+
+    null과 빈 문자열을 미정값으로 본다(#151 기준). 공백만 있는 값은 `str_strip_whitespace`로
+    읽을 때 빈 문자열이 되므로 여기서 함께 걸린다.
+    """
     fields = {
         "term.max_words": naming.term.max_words,
         "table.prefix": naming.table.prefix,
         "table.form": naming.table.form,
+        "table.junction_name": naming.table.junction_name,
         "column.primary_key": naming.column.primary_key,
         "column.foreign_key": naming.column.foreign_key,
+        "column.self_reference_prefix": naming.column.self_reference_prefix,
     }
-    return [path for path, value in fields.items() if value is None]
+    return [path for path, value in fields.items() if value is None or value == ""]
 
 
 def _rules_blanks(rules: Rules) -> list[str]:

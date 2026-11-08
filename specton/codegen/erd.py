@@ -12,8 +12,10 @@ N:M은 정리 단계에서 연결 테이블과 FK 둘로 바뀌어 있으므로 
 """
 
 import re
+import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 from specton.contracts.base import Cardinality
 from specton.contracts.design import Relationship
@@ -26,6 +28,14 @@ _NAME_BAD = re.compile(r"[^\w\-()\[\]]")
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # Mermaid 11.15.0 ER 문법의 단독 키워드. PostgreSQL 예약어와 별개이며 대소문자를 구분하지 않는다.
 _MERMAID_KEYWORDS = frozenset({"erdiagram", "style", "classdef", "class", "one", "many", "to"})
+
+
+# Mermaid erDiagram 배치 방향
+Direction = Literal["TB", "BT", "LR", "RL"]
+
+
+def _direction_line(direction: Direction | None) -> list[str]:
+    return [f"    direction {direction}"] if direction else []
 
 
 @dataclass(frozen=True)
@@ -74,14 +84,20 @@ def erd_edges(model: NormalizedModel, relationships: Sequence[Relationship]) -> 
 
 
 def render_erd(
-    model: NormalizedModel, relationships: Sequence[Relationship], *, attributes: bool = True
+    model: NormalizedModel,
+    relationships: Sequence[Relationship],
+    *,
+    attributes: bool = True,
+    direction: Direction | None = None,
 ) -> str:
     """Mermaid `erDiagram` 원문.
 
     `attributes=False`면 속성 없이 엔티티와 관계만 그린다 (전체 관계 개요).
+    `direction`을 주면 배치 방향을 정한다 (`LR`: 좌우, ADR-0004 PDF 상세도).
     """
     idents = _identifiers(model.tables)
-    lines = ["erDiagram", f"    %% Specton ERD · {model.pack} {model.pack_version}"]
+    lines = ["erDiagram", *_direction_line(direction)]
+    lines.append(f"    %% Specton ERD · {_alias(model.pack)} {_alias(model.pack_version)}")
     fk_columns = {c for fk in model.foreign_keys for c in fk.columns}
     for table in model.tables:
         head = f'    {idents[table.id]}["{_alias(table.name)}"]'
@@ -125,9 +141,25 @@ def _identifiers(tables: Sequence[Table]) -> dict[str, str]:
     return idents
 
 
+def _breaks_line(ch: str) -> bool:
+    """제어·서식 문자와 줄·문단 구분 문자."""
+    category = unicodedata.category(ch)
+    return category[0] == "C" or category in ("Zl", "Zp")
+
+
 def _alias(name: str) -> str:
-    """엔티티 별칭(한글 이름). 큰따옴표는 Mermaid 파싱 오류라 작은따옴표로 바꾼다."""
-    return name.replace('"', "'")
+    """엔티티 별칭·설명에 넣는 사용자 글자. 따옴표 안이라도 Mermaid가 읽는 기호를 걸러 낸다.
+
+    - 큰따옴표는 Mermaid 파싱 오류라 작은따옴표로 바꾼다.
+    - `%%`는 지시문(`%%{init: ...}%%`)과 주석의 시작이라 `%`로 줄인다. 따옴표 안의 `init` 지시문도
+      strict에서 인식된 것을 R1이 실험으로 확인했다 (#190 리뷰, ADR-0004 「Mermaid 설정 보안」).
+    - 줄바꿈·제어 문자(줄·문단 구분 문자 U+2028·U+2029 포함)는 새 줄로 `style`·`classDef` 같은
+      문장을 끼워 넣을 수 있어 공백으로 바꾼다.
+    """
+    text = "".join(" " if _breaks_line(ch) else ch for ch in name)
+    while "%%" in text:
+        text = text.replace("%%", "%")
+    return text.replace('"', "'")
 
 
 def _attribute(table: Table, col: Column, fk_columns: set[str]) -> str:
@@ -148,7 +180,7 @@ def _attribute(table: Table, col: Column, fk_columns: set[str]) -> str:
         notes.append(type_note)
     if name != col.name:
         notes.append(col.name)
-    comment = " · ".join(notes).replace('"', "'")
+    comment = _alias(" · ".join(notes))
     key_text = f" {','.join(keys)}" if keys else ""
     return f'{data_type} {name}{key_text} "{comment}"'
 

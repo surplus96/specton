@@ -40,6 +40,15 @@ class Settings(BaseSettings):
         "postgresql://specton_sandbox:specton_sandbox@localhost:5432/specton_sandbox"
     )
 
+    # 실제 DDL 생성·검증·저장 연결(#17)에 맞춰 최종 SQL 승인 검사를 기본으로 켠다.
+    # 명시적으로 끄는 호환 모드에서도 승인 근거(approval_basis)는 남긴다 (#167, #195)
+    require_sql_validation: bool = True
+
+    # PDF 엔진 인계·실행 이미지 도구 준비 뒤 활성화한다 (#13·#17·#25).
+    enable_erd_pdf: bool = False
+    mermaid_cli_command: tuple[str, ...] = Field(default=("mmdc",), min_length=1)
+    mermaid_puppeteer_config: Path | None = None
+
     # 실행기·lease 시작값 (ADR-0012). 연결 풀은 동시 실행 수, lease 갱신, API 요청을 합쳐 잡는다.
     run_concurrency: int = Field(default=2, gt=0)
     lease_seconds: int = Field(default=60, gt=0)
@@ -55,6 +64,10 @@ class Settings(BaseSettings):
     sse_poll_seconds: float = Field(default=1.0, gt=0)
 
     max_upload_mb: int = Field(default=20, gt=0)
+    # xlsx·hwpx 압축을 푼 크기 합의 한도. 압축 폭탄을 파서 전에 막는다 (#21)
+    max_unzipped_mb: int = Field(default=200, gt=0)
+    # HTTPS로 배포하면 켠다. 세션 쿠키에 Secure를 붙여 HTTP로 보내지 않는다 (#21, PR #108 리뷰)
+    session_cookie_secure: bool = False
     max_structured_retries: int = Field(default=2, ge=0)
     max_rework_iterations: int = Field(default=3, ge=0)
 

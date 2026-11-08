@@ -19,7 +19,7 @@ from specton.api.deps import ConnDep, PoolDep, SettingsDep
 from specton.api.errors import ApiError
 from specton.api.session import OwnerRef
 from specton.api.uploads import discard_upload, save_upload
-from specton.artifacts import ARTIFACT_FORMATS
+from specton.artifacts import ARTIFACT_FORMATS, is_within_storage
 from specton.config import Settings
 from specton.contracts import (
     ErrorCode,
@@ -102,7 +102,10 @@ def create_run(
         )
     pack_version = _pack_version(settings, pack)
     run_id, document_id = uuid4(), uuid4()
-    stored = save_upload(file, settings.storage_dir, run_id, document_id, max_bytes)
+    stored = save_upload(
+        file, settings.storage_dir, run_id, document_id, max_bytes,
+        settings.max_unzipped_mb * 1024 * 1024,
+    )  # fmt: skip
     try:
         with pool.connection() as conn, conn.transaction():
             status = runs.create_run(
@@ -146,9 +149,13 @@ def get_run(run_id: RunId, owner: OwnerRef, conn: ConnDep) -> RunStatus:
 
 
 @router.post("/{id}/resume", status_code=202, operation_id="resumeRun")
-def resume_run(run_id: RunId, owner: OwnerRef, conn: ConnDep, body: ResumeRequest) -> RunStatus:
+def resume_run(
+    run_id: RunId, owner: OwnerRef, conn: ConnDep, settings: SettingsDep, body: ResumeRequest
+) -> RunStatus:
     """사람 확인 응답. 같은 요청에 두 번 답하거나 오래된 요청에 답하면 409."""
-    runs.answer_interrupt(conn, run_id, owner, body)
+    runs.answer_interrupt(
+        conn, run_id, owner, body, require_sql_validation=settings.require_sql_validation
+    )
     return runs.get_run(conn, run_id, owner)
 
 
@@ -197,7 +204,7 @@ def download_artifact(
     stored = snapshots.find_artifact(conn, run_id, owner, kind, file_format, revision)
     root = settings.storage_dir.resolve()
     path = (root / stored.storage_ref).resolve()
-    if not path.is_relative_to(root) or not path.is_file():
+    if not is_within_storage(path, root) or not path.is_file():
         raise RuntimeError("산출물 기록은 있으나 파일이 없습니다")  # 경로는 응답에 넣지 않는다
     draft = "" if stored.ref.approved else "-draft"
     return FileResponse(

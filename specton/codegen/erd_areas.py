@@ -1,7 +1,7 @@
 """ERD 업무 영역 나누기 (#13): 테이블을 이름에 든 낱말로 영역에 넣는다.
 
 PDF는 전체 관계 개요 한 장과 업무 영역별 상세 ERD로 나눠 그린다 (#13 R1 결정).
-영역과 낱말은 도메인 정보라 팩(`erd_areas.yaml`, #166 뒤 로더 연결)에서 받고 여기에 적지 않는다.
+영역과 낱말은 도메인 정보라 팩의 `erd_areas.yaml`에서 받고 여기에 적지 않는다 (`pack_areas`).
 
 배정 규칙 (#13 댓글 6702688564):
 - 비교 대상은 정리 결과의 한글 `name`이다. 물리명은 바뀔 수 있어 쓰지 않는다.
@@ -16,11 +16,22 @@ PDF는 전체 관계 개요 한 장과 업무 영역별 상세 ERD로 나눠 그
 import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 # 표기 규칙(A안·Mermaid 글자 제한)은 전체 ERD와 같아야 하므로 erd.py의 것을 그대로 쓴다
-from specton.codegen.erd import ErdEdge, _alias, _attribute, _identifiers, erd_edges
+from specton.codegen.erd import (
+    Direction,
+    ErdEdge,
+    _alias,
+    _attribute,
+    _direction_line,
+    _identifiers,
+    erd_edges,
+)
 from specton.contracts.design import Relationship
 from specton.contracts.normalized import NormalizedModel, Table
+from specton.packs.build import DEFAULT_ROOT
+from specton.packs.loader import PackError, load_erd_areas
 
 OTHER_AREA = "기타"
 
@@ -73,6 +84,21 @@ class AreaSplit:
         raise KeyError(area)
 
 
+def pack_areas(pack: str, *, root: Path = DEFAULT_ROOT) -> tuple[ErdArea, ...]:
+    """팩의 ERD 업무 영역. 파일이 없으면 빈 목록(영역을 나누지 않음)이다.
+
+    영역 이름이 「기타」이거나 겹치고, 같은 낱말이 두 영역에 있으면 팩 오류로 멈춘다.
+    """
+    try:
+        areas = tuple(ErdArea(a.name, a.words) for a in load_erd_areas(pack, root=root))
+        _check_areas(areas)
+    except PackError:
+        raise
+    except ValueError as exc:
+        raise PackError(f"{root / pack / 'erd_areas.yaml'}: {exc}") from exc
+    return areas
+
+
 def area_for_name(name: str, areas: Sequence[ErdArea]) -> str:
     """이름 하나의 영역. 가장 긴 낱말이 이기고, 길이가 같으면 먼저 적힌 영역이 이긴다."""
     target = _compact(name)
@@ -118,6 +144,15 @@ def _check_areas(areas: Sequence[ErdArea]) -> None:
 # ── 영역별 상세 ERD ───────────────────────────────────────
 
 
+def _is_key(table: Table, column_id: str, fk_columns: set[str]) -> bool:
+    """PK·FK·UK에 드는 칸인지 (PDF 상세도의 키 속성, ADR-0004)."""
+    return (
+        column_id in table.primary_key
+        or column_id in fk_columns
+        or any(column_id in unique for unique in table.unique_keys)
+    )
+
+
 def area_edges(edges: Sequence[ErdEdge], split: AreaSplit, area: str) -> tuple[ErdEdge, ...]:
     """영역 상세도에 그릴 선: 한쪽 끝이라도 이 영역 테이블이면 그린다.
 
@@ -129,11 +164,18 @@ def area_edges(edges: Sequence[ErdEdge], split: AreaSplit, area: str) -> tuple[E
 
 
 def render_area_erd(
-    model: NormalizedModel, relationships: Sequence[Relationship], split: AreaSplit, area: str
+    model: NormalizedModel,
+    relationships: Sequence[Relationship],
+    split: AreaSplit,
+    area: str,
+    *,
+    keys_only: bool = False,
+    direction: Direction | None = None,
 ) -> str:
     """영역 하나의 상세 ERD (Mermaid `erDiagram`).
 
-    - 이 영역 테이블: 속성까지 그린다 (A안, 전체 ERD와 같은 표기).
+    - 이 영역 테이블: 속성까지 그린다 (A안, 전체 ERD와 같은 표기). `keys_only=True`면 키 속성
+      (PK·FK·UK)만 그린다. PDF 상세도는 이 방식과 `direction="LR"`을 쓴다 (ADR-0004, #197).
     - 선으로 이어진 다른 영역 테이블: 속성 없는 상자로, 이름 뒤에 영역을 붙인다.
       예: `품목 (→ 기준정보)`
     - 식별자는 전체 ERD와 같아서 상세도끼리 같은 테이블은 같은 이름이다.
@@ -145,12 +187,16 @@ def render_area_erd(
     fk_columns = {c for fk in model.foreign_keys for c in fk.columns}
     lines = [
         "erDiagram",
-        f"    %% Specton ERD · {model.pack} {model.pack_version} · {_alias(area)}",
+        *_direction_line(direction),
+        f"    %% Specton ERD · {_alias(model.pack)} {_alias(model.pack_version)} · {_alias(area)}",
     ]
     for table in model.tables:
         if table.id in members:
+            columns = [
+                c for c in table.columns if not keys_only or _is_key(table, c.id, fk_columns)
+            ]
             lines.append(f'    {idents[table.id]}["{_alias(table.name)}"] {{')
-            lines.extend(f"        {_attribute(table, col, fk_columns)}" for col in table.columns)
+            lines.extend(f"        {_attribute(table, col, fk_columns)}" for col in columns)
             lines.append("    }")
         elif table.id in linked:
             label = f"{table.name} (→ {split.area_of(table.id)})"
