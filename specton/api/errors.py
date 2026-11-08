@@ -62,6 +62,7 @@ _PERSISTENCE: dict[type[pe.PersistenceError], tuple[int, ErrorCode, str | None, 
         "차단 오류가 남아 있어 승인할 수 없습니다.",
         False,
     ),
+    pe.UnverifiedSqlError: (422, ErrorCode.INVALID_RESPONSE, None, False),
     pe.ArtifactNotReadyError: (
         409,
         ErrorCode.ARTIFACT_NOT_READY,
