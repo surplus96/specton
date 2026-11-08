@@ -124,6 +124,16 @@ CREATE INDEX IF NOT EXISTS artifact_validation_latest ON artifact_validation (
     validated_at DESC, saved_order DESC
 );
 
+-- 승인 근거 (#167, #195). 최종 승인 때 그 revision의 산출물마다 승인한 파일 해시를 남긴다.
+-- export·승인본 게시는 이 해시와 같은지 확인한다. 과거 승인에는 근거를 만들어 넣지 않는다.
+CREATE TABLE IF NOT EXISTS approval_basis (
+    approval_id   uuid NOT NULL REFERENCES approval ON DELETE CASCADE,
+    artifact_id   uuid NOT NULL REFERENCES artifact ON DELETE CASCADE,
+    artifact_hash text NOT NULL,
+    validation_id uuid REFERENCES artifact_validation,  -- 검사를 통과한 SQL의 근거 시도. 그 외 NULL
+    PRIMARY KEY (approval_id, artifact_id)
+);
+
 CREATE TABLE IF NOT EXISTS run_event (
     run_id     uuid NOT NULL REFERENCES run ON DELETE CASCADE,
     event_id   bigint NOT NULL CHECK (event_id >= 1),
