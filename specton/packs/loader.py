@@ -200,6 +200,21 @@ class Pattern(_Strict):
     source: NonEmpty
 
 
+class ErdAreaSpec(_Strict):
+    """ERD 업무 영역 하나 (#13). 엔티티 한글 이름에 낱말이 들어 있으면 이 영역 후보다.
+
+    배정 규칙(가장 긴 낱말 우선, 같으면 먼저 적힌 영역)과 「기타」·낱말 겹침 검사는
+    `specton/codegen/erd_areas.py`가 맡는다. 여기서는 파일 모양만 본다.
+    """
+
+    name: NonEmpty
+    words: tuple[NonEmpty, ...] = Field(min_length=1)
+
+
+class _ErdAreasFile(_Strict):
+    areas: tuple[ErdAreaSpec, ...] = Field(min_length=1)
+
+
 class _CommonWordsFile(_Strict):
     edition: NonEmpty
     words: tuple[Word, ...]
@@ -288,6 +303,21 @@ def load_pack(pack: str, *, root: Path = DEFAULT_ROOT) -> Pack:
     if unknown:
         raise PackError(f"{folder / 'terms.yaml'}: 공통 도메인에 없는 domain {unknown}")
     return Pack(manifest=manifest, common=common, terms=terms, words=words, patterns=patterns)
+
+
+def load_erd_areas(pack: str, *, root: Path = DEFAULT_ROOT) -> tuple[ErdAreaSpec, ...]:
+    """팩의 `erd_areas.yaml`(ERD 업무 영역, #13)을 읽는다. 파일이 없으면 빈 목록이다.
+
+    영역이 없으면 PDF는 영역을 나누지 않고 전체 상세도 하나로 그린다. 그래서 다른 팩 파일과 달리
+    없어도 오류가 아니다. `load_pack`과 따로 두어, 영역을 쓰지 않는 노드는 이 파일을 읽지 않는다.
+    """
+    if pack == COMMON:
+        raise PackError(f"{COMMON}은 선택할 수 있는 팩이 아닙니다")
+    load_manifest(pack, root=root)  # 팩 이름·폴더 검사
+    path = root / pack / "erd_areas.yaml"
+    if not path.is_file():
+        return ()
+    return _validate(_ErdAreasFile, path).areas
 
 
 def _naming_blanks(naming: Naming) -> list[str]:
