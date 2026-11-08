@@ -67,6 +67,16 @@ export function progressIndex(stage: string | null | undefined): number {
   return stage === 'review' || stage === 'exporting' ? PROGRESS_STAGES.length : -1
 }
 
+/**
+ * UI-04에 보일 단계. 서버는 실행이 실패·취소되면 `run.stage`를 비우므로,
+ * 그때는 마지막 진행 이벤트의 단계를 써서 실패한 단계에 표시가 가게 한다.
+ */
+export function displayStage(stage: string | null | undefined, events: readonly SseEvent[]): string | null {
+  if (stage && progressIndex(stage) >= 0) return stage
+  const last = [...events].reverse().find((e) => progressIndex(e.data.stage) >= 0)
+  return last?.data.stage ?? stage ?? null
+}
+
 /** 분석 확인을 건너뛰었을 때 서버가 남기는 문구 (docs/06 「SSE」, ADR-0015) */
 export const SKIPPED_REQUIREMENTS_MESSAGE = '확인할 항목이 없어 분석 확인을 생략했습니다'
 
