@@ -14,6 +14,7 @@ import {
   fileNameOf,
   isAllowedErdSource,
   isApproved,
+  isDownloadable,
   mermaidConfig,
   missingKinds,
   resultViews,
@@ -61,6 +62,14 @@ describe('UI-07 다운로드 표', () => {
       ['pdf', 'needs-approval'],
     ])
     expect(rows.find((r) => r.kind === 'rtm')!.files.map((f) => f.file.state)).toEqual(['not-ready', 'not-ready'])
+  })
+
+  it('승인 전 PDF 후보가 목록에 있어도 받을 수 없어 「승인 후」다 (서버는 409, #217)', () => {
+    const erd = downloadRows([ref('erd', 'mmd'), ref('erd', 'pdf')], false).find((r) => r.kind === 'erd')!.files
+    expect(erd.map((f) => f.file.state)).toEqual(['ready', 'needs-approval'])
+    expect(isDownloadable(ref('erd', 'pdf'))).toBe(false)
+    expect(isDownloadable(ref('erd', 'pdf', true))).toBe(true)
+    expect(isDownloadable(ref('erd', 'mmd'))).toBe(true)
   })
 
   it('승인 뒤에도 PDF가 없으면 「없음」(생성 실패)이다', () => {
@@ -149,12 +158,14 @@ describe('서버(mock)와 같은 결과', () => {
     return run
   }
 
-  it('승인 전: 산출물은 초안, PDF는 목록에 없고 받으면 409', async () => {
+  it('승인 전: 산출물은 초안, ERD PDF는 후보로만 있고 받으면 409 (#217)', async () => {
     const run = await atReview()
     const artifacts = toArtifacts((await getView(run.run_id, 'design')).artifacts)
     expect(missingKinds(artifacts)).toEqual([])
     expect(isApproved(artifacts)).toBe(false)
-    expect(artifacts.some((a) => a.file_format === 'pdf')).toBe(false)
+    const pdfs = artifacts.filter((a) => a.file_format === 'pdf')
+    expect(pdfs.map((a) => [a.kind, a.approved])).toEqual([['erd', false]])
+    expect(pdfs.some(isDownloadable)).toBe(false)
 
     const erd = await downloadArtifact(run.run_id, 'erd', 'mmd', run.revision)
     expect(erd.fileName).toBe(`specton-erd-r${run.revision}-draft.mmd`)

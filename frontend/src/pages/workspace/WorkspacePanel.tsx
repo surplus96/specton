@@ -19,6 +19,7 @@ import {
   KIND_LABEL,
   downloadErrorText,
   isApproved,
+  isDownloadable,
   missingKinds,
   revisionOptions,
   toArtifacts,
@@ -198,7 +199,7 @@ function TextArtifact({ runId, artifact, kind }: { runId: string; artifact: Arti
 
 /** 화면에서 바로 보이기 어려운 산출물(RTM Excel·CSV)은 형식별로 내려받게만 한다. */
 function FilesOnly({ runId, artifacts, kind }: { runId: string; artifacts: ArtifactRef[]; kind: ArtifactKind }) {
-  const mine = artifacts.filter((a) => a.kind === kind)
+  const mine = artifacts.filter((a) => a.kind === kind && isDownloadable(a)) // 승인 전 PDF 후보는 받을 수 없다
   if (mine.length === 0) return <Alert type="warning" showIcon title={`${KIND_LABEL[kind]}이 아직 없습니다 (미완성)`} />
   return (
     <Flex gap={8} wrap>

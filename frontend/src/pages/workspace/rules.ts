@@ -79,17 +79,26 @@ export type DownloadRow = {
   files: { format: ArtifactFormat; file: FileState }[]
 }
 
-/** UI-07 표: 종류마다 형식별 상태. 목록에 없는 PDF는 승인 전이면 「승인 후」로 구분한다. */
+/**
+ * 지금 내려받을 수 있는 파일인지. 승인 전 PDF는 서버가 비공개 후보로 목록에 넣지만
+ * 받으면 409다 (docs/06 「승인 전 PDF 다운로드는 계속 409」, #217).
+ */
+export function isDownloadable(a: Pick<ArtifactRef, 'file_format' | 'approved'>): boolean {
+  return a.file_format !== 'pdf' || a.approved
+}
+
+/** UI-07 표: 종류마다 형식별 상태. 승인 전 PDF는 목록에 있든 없든 「승인 후」로 구분한다. */
 export function downloadRows(artifacts: readonly ArtifactRef[], approved: boolean): DownloadRow[] {
   return KIND_ORDER.map((kind) => ({
     kind,
     files: ARTIFACT_FORMATS[kind].map((format) => {
       const artifact = artifacts.find((a) => a.kind === kind && a.file_format === format)
-      const file: FileState = artifact
-        ? { state: 'ready', artifact }
-        : format === 'pdf' && !approved
-          ? { state: 'needs-approval' }
-          : { state: 'not-ready' }
+      const file: FileState =
+        artifact && isDownloadable(artifact)
+          ? { state: 'ready', artifact }
+          : format === 'pdf' && !approved
+            ? { state: 'needs-approval' }
+            : { state: 'not-ready' }
       return { format, file }
     }),
   }))

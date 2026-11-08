@@ -382,7 +382,9 @@ export function createMockBackend(options: MockOptions = {}) {
     const artifacts = run.artifactRevisions.has(revision)
       ? Object.entries(ARTIFACT_FORMATS).flatMap(([kind, formats]) =>
           formats
-            .filter((f) => f !== 'pdf' || run.approvedRevisions.has(revision))
+            // 서버처럼 ERD PDF는 승인 전에도 비공개 후보(approved=false)로 목록에 있다. 받으면 409 (docs/06, #217).
+            // 기능 명세 PDF 연결은 후속 범위라 승인 뒤에만 넣는다.
+            .filter((f) => f !== 'pdf' || kind === 'erd' || run.approvedRevisions.has(revision))
             .map((file_format) => ({
               kind,
               file_format,
