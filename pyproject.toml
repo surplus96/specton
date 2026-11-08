@@ -19,8 +19,11 @@ dependencies = [
     "openpyxl>=3.1",
     "pyyaml>=6.0",
     "rhwp-python==0.8.1",
+    "weasyprint>=70.0",
 ]
-# PDF 추출·출력은 ADR-0004 결정 후 추가한다. rhwp-python은 HWPX 엔진이라 버전을 고정한다(PyPI Alpha·성숙도 위험은 ADR-0004).
+# PDF 출력은 ADR-0004 승인(#197)대로 WeasyPrint를 쓴다. 시스템 라이브러리(Pango)·한글 폰트·mermaid-cli는
+# Python 패키지가 아니라 실행 이미지에 넣는다(#25). PDF 추출은 ADR-0004 결정 후 추가한다.
+# rhwp-python은 HWPX 엔진이라 버전을 고정한다(PyPI Alpha·성숙도 위험은 ADR-0004).
 
 [dependency-groups]
 dev = [
