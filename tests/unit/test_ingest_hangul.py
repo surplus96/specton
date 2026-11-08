@@ -12,6 +12,7 @@
 import os
 import stat
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -532,13 +533,32 @@ class TestFallbackDump:
             dump_paragraph_text(Path("문서.hwp"), 0, 0)
 
 
-def _require_engine() -> None:
-    """진짜 rhwp 엔진이 필요한 시험은 엔진을 못 불러오는 환경에서는 건너뛴다.
+def _skip_or_raise_engine_import_error(exc: ImportError) -> None:
+    """엔진 import 실패를 어떻게 다룰지 정한다.
 
-    리눅스에서 rhwp-python 0.8.1 휠은 시스템 FreeType 선로드(LD_PRELOAD)가 없으면 import가
-    실패한다(상류 DanMeon/rhwp-python #31). 이때 이 시험들이 fail이 되면 CI가 초록이 못 된다.
+    리눅스에서 rhwp-python 0.8.1 휠은 시스템 FreeType 선로드(LD_PRELOAD)가 없으면
+    `undefined symbol: FT_Palette_Data_Get`로 import가 실패한다(상류 DanMeon/rhwp-python #31).
+    이 알려진 오류만 건너뛰고, 그 밖의 import 실패(의존성 누락·휠 손상)는 그대로 올려
+    시험이 실패하게 한다.
+    `SPECTON_REQUIRE_ENGINE=1`이면 알려진 오류도 실패로 둔다(선로드 단계를 넣은 CI용).
     """
-    pytest.importorskip("rhwp", exc_type=ImportError)
+    if "FT_Palette_Data_Get" in str(exc) and os.environ.get("SPECTON_REQUIRE_ENGINE") != "1":
+        pytest.skip(f"rhwp를 불러올 수 없어 건너뜀(상류 #31): {exc}")
+    raise exc
+
+
+def _import_engine() -> Any:
+    """진짜 rhwp 엔진이 필요한 시험이 엔진을 불러온다. 알려진 휠 오류면 건너뛴다."""
+    try:
+        import rhwp
+    except ImportError as exc:
+        _skip_or_raise_engine_import_error(exc)
+        raise  # 위 함수가 항상 skip 또는 raise하지만 타입 검사기를 위해 둔다
+    return rhwp
+
+
+def _require_engine() -> None:
+    _import_engine()
 
 
 def _samples() -> Path:
@@ -598,7 +618,7 @@ class TestRegressionOnRealFiles:
 
         2026-11-07 실제 실행 결과: 두 원문 모두 같았다(KITECH 41건·경남 64건).
         """
-        rhwp = pytest.importorskip("rhwp", exc_type=ImportError)  # 엔진을 못 불러오면 건너뜀
+        rhwp = _import_engine()  # 알려진 휠 오류면 건너뜀
         # (시험에서 엔진을 직접 쓰는 것은 허용: 원본을 hwpx로 내보내려는 용도)
 
         for name in (_KITECH, _GYEONGNAM):
@@ -683,8 +703,8 @@ def test_engine_block_names_still_exist_in_rhwp() -> None:
     """
     import re
 
-    # 엔진을 못 불러오는 환경(리눅스 휠 문제)이면 건너뜀
-    pytest.importorskip("rhwp", exc_type=ImportError)
+    # 알려진 리눅스 휠 오류면 건너뛰고, 그 밖의 import 실패는 시험 실패로 둔다
+    _require_engine()
     from rhwp.ir import nodes  # 시험에서 엔진 직접 사용 허용(위 이유)
 
     source = (
@@ -711,3 +731,45 @@ def test_engine_block_names_still_exist_in_rhwp() -> None:
         assert not missing, f"{cls_name}에 필드 {sorted(missing)}가 없음. {_UPGRADE_HINT}"
     prov_missing = {"section_idx", "para_idx"} - fields("Provenance")
     assert not prov_missing, f"Provenance에 필드 {sorted(prov_missing)}가 없음. {_UPGRADE_HINT}"
+
+
+class TestEngineImportGuard:
+    """엔진을 못 불러올 때 어떤 경우만 건너뛰는지 확인한다(CI가 엔진 회귀를 조용히 덮지 않게).
+
+    이유: 리눅스 휠의 알려진 오류(`FT_Palette_Data_Get`, 상류 #31)만 건너뛰고, 그 밖의 import 실패
+    (의존성 누락·휠 손상)는 시험 실패로 드러나야 한다.
+    `SPECTON_REQUIRE_ENGINE=1`이면 알려진 오류도 실패다.
+    """
+
+    _KNOWN = ImportError("…/_rhwp.abi3.so: undefined symbol: FT_Palette_Data_Get")
+
+    def test_known_wheel_failure_skips(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("SPECTON_REQUIRE_ENGINE", raising=False)
+        with pytest.raises(pytest.skip.Exception):
+            _skip_or_raise_engine_import_error(self._KNOWN)
+
+    def test_other_import_error_is_not_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("SPECTON_REQUIRE_ENGINE", raising=False)
+        with pytest.raises(ImportError, match="No module named"):
+            _skip_or_raise_engine_import_error(ModuleNotFoundError("No module named 'rhwp'"))
+
+    def test_require_engine_env_turns_skip_into_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SPECTON_REQUIRE_ENGINE", "1")
+        with pytest.raises(ImportError, match="FT_Palette_Data_Get"):
+            _skip_or_raise_engine_import_error(self._KNOWN)
+
+
+def test_installed_engine_version_matches_pin() -> None:
+    """설치된 rhwp-python 버전이 pyproject.toml의 고정 버전과 같다.
+
+    엔진을 import하지 않으므로 엔진을 못 불러오는 환경에서도 항상 돈다.
+    """
+    import re
+    from importlib.metadata import version
+
+    pyproject = (Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(encoding="utf-8")
+    pinned = re.search(r'"rhwp-python==([\w.]+)"', pyproject)
+    assert pinned, "pyproject.toml에서 rhwp-python 고정 버전을 찾지 못함"
+    assert version("rhwp-python") == pinned.group(1)
