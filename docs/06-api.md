@@ -197,7 +197,10 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 - 승인 전 파일은 초안 파일명(`-draft`)·메타데이터(`approved=false`)로 구분한다.
 - 기능 명세 Markdown과 RTM Excel·CSV는 생성 단계에서 같은 모델·revision으로 저장한다.
   승인 때 각 파일 해시를 `approval_basis`에 기록하고, 내보내기는 재생성 없이 같은 바이트를
-  승인본으로 게시한다. 원문 제외·원문 없음 행도 RTM에 남는다. PDF와 manifest JSON의 연결은 후속 범위다.
+  승인본으로 게시한다. 원문 제외·원문 없음 행도 RTM에 남는다. 기능 명세 PDF와 manifest JSON의 연결은 후속 범위다.
+- ERD PDF 기능을 켜면
+  승인본용 PDF 바이트를 미리 비공개 후보로 저장하되 `approved=false`이며, 승인 전 PDF
+  다운로드는 계속 409다. 승인 근거가 기록한 후보 해시와 같은 바이트만 승인 후 공개한다.
 - 요청 revision의 객체 존재·접근 권한을 확인한 뒤 `Content-Disposition`으로 안전한 파일명을 지정한다.
 - 파일명은 `specton-<kind>-r<revision>.<file_format>`, 승인 전이면 `-draft`를 붙인다. `ETag`는 산출물 해시다.
 - 쿼리 이름은 `ArtifactRef`와 같은 `file_format`이다 (#94 이름 정리, #16).
