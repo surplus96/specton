@@ -14,7 +14,14 @@ from specton.artifacts import artifact_key
 from specton.codegen.ddl import DdlResult
 from specton.codegen.model import Normalized
 from specton.codegen.normalize_step import normalize_design
-from specton.contracts import DesignState, Entity, Relationship, Requirement, VersionInfo
+from specton.contracts import (
+    DesignState,
+    Entity,
+    Relationship,
+    Requirement,
+    SqlValidation,
+    VersionInfo,
+)
 from specton.ddl_adapter import create_ddl_artifact, prepare_ddl
 from specton.model_hash import model_hash
 from specton.packs.build import DEFAULT_ROOT, read_yaml
@@ -79,15 +86,15 @@ def test_real_pack_to_identical_checked_bytes_without_mutating_state(pack: str) 
     prepared = prepare_ddl(design)
 
     assert prepared.sql_bytes == prepared.generation.sql.encode("utf-8")
-    assert prepared.validation.sql_sha256 == hashlib.sha256(prepared.sql_bytes).hexdigest()
+    assert prepared.validation.artifact_hash == hashlib.sha256(prepared.sql_bytes).hexdigest()
     assert (prepared.generation.pack, prepared.generation.pack_version) == (
         design.versions.pack_id,
         design.versions.pack_version,
     )
-    assert prepared.generation.target == prepared.validation.target
+    assert prepared.generation.target == prepared.validation.postgres_version
     assert b"CREATE TABLE" in prepared.sql_bytes and b"ADD FOREIGN KEY" in prepared.sql_bytes
-    assert prepared.generation.validation_state == prepared.validation.state == "unverified"
-    assert [s.state for s in prepared.validation.stages] == [
+    assert prepared.generation.validation_state == prepared.validation.status == "unverified"
+    assert [s.status for s in prepared.validation.steps] == [
         "passed",
         "passed",
         "not_run",
@@ -161,7 +168,7 @@ def test_real_junction_and_self_reference_keep_their_sql(tmp_path: Path) -> None
     assert prepared.sql_bytes.count(b"CREATE TABLE") == 3
     assert prepared.sql_bytes.count(b"ADD FOREIGN KEY") == 4
     assert b'"up_eqpm_cd"' in prepared.sql_bytes
-    assert prepared.validation.state == "unverified"
+    assert prepared.validation.status == "unverified"
 
 
 def test_composite_foreign_key_survives_generation_and_precheck() -> None:
@@ -178,7 +185,7 @@ def test_composite_foreign_key_survives_generation_and_precheck() -> None:
         b'FOREIGN KEY ("wrhus_cd", "wrhus_nm") REFERENCES "wrhus" ("wrhus_cd", "wrhus_nm")'
         in prepared.sql_bytes
     )
-    assert prepared.validation.state == "unverified"
+    assert prepared.validation.status == "unverified"
 
 
 @pytest.mark.parametrize("suffix", ["\nCOMMIT;\n", "\nCREATE TABLE (\n"])
@@ -195,10 +202,10 @@ def test_sql_failure_preserves_exact_bytes_and_failed_stage(
     prepared = prepare_ddl(design)
 
     assert prepared.sql_bytes.endswith(suffix.encode())
-    assert prepared.validation.sql_sha256 == hashlib.sha256(prepared.sql_bytes).hexdigest()
-    assert prepared.validation.state == "failed"
-    assert any(s.state == "failed" for s in prepared.validation.stages[:2])
-    assert all(s.state == "not_run" for s in prepared.validation.stages[2:])
+    assert prepared.validation.artifact_hash == hashlib.sha256(prepared.sql_bytes).hexdigest()
+    assert prepared.validation.status == "failed"
+    assert any(s.status == "failed" for s in prepared.validation.steps[:2])
+    assert all(s.status == "not_run" for s in prepared.validation.steps[2:])
 
 
 def test_checker_outage_remains_error(design: DesignState, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -208,10 +215,10 @@ def test_checker_outage_remains_error(design: DesignState, monkeypatch: pytest.M
     monkeypatch.setattr(allowed_sql, "parse_sql", unavailable)
     prepared = prepare_ddl(design)
 
-    assert prepared.validation.state == "error"
-    assert prepared.validation.stages[0].state == "error"
-    assert prepared.validation.stages[0].problems[0].detail == "RuntimeError"
-    assert all(s.state == "not_run" for s in prepared.validation.stages[1:])
+    assert prepared.validation.status == "error"
+    assert prepared.validation.steps[0].status == "error"
+    assert prepared.validation.steps[0].issues[0].message == "RuntimeError"
+    assert all(s.status == "not_run" for s in prepared.validation.steps[1:])
 
 
 def test_generator_error_is_not_made_into_a_validation_result(
@@ -237,12 +244,12 @@ def test_ddl_file_handoff_keeps_checked_bytes_and_current_model(
     item = result.generated
     ref = item["ref"]
     assert (tmp_path / item["storage_ref"]).read_bytes() == result.prepared.sql_bytes
-    assert ref.hash == result.prepared.validation.sql_sha256
+    assert ref.hash == result.prepared.validation.artifact_hash
     assert ref.hash == hashlib.sha256(result.prepared.sql_bytes).hexdigest()
     assert (ref.kind, ref.file_format, ref.revision, ref.approved) == ("ddl", "sql", 2, False)
     assert item["storage_ref"] == f"{design.run_id}/r2/ddl-{ref.hash}.sql"
     assert item["model_hash"] == model_hash(design)
-    assert result.prepared.validation.state == "unverified"
+    assert result.prepared.validation.status == "unverified"
     assert design.model_dump(mode="json") == before
     monkeypatch.setenv("LANGGRAPH_STRICT_MSGPACK", "true")
     packet = {artifact_key(ref): item}
@@ -295,11 +302,11 @@ def test_failed_or_error_sql_is_stored_as_draft_with_its_result(
 
     result = create_ddl_artifact(design, storage_dir=tmp_path)
 
-    assert result.prepared.validation.state == ("error" if failure == "checker" else "failed")
+    assert result.prepared.validation.status == ("error" if failure == "checker" else "failed")
     assert result.generated["ref"].approved is False
     content = (tmp_path / result.generated["storage_ref"]).read_bytes()
     assert content == result.prepared.sql_bytes
-    assert hashlib.sha256(content).hexdigest() == result.prepared.validation.sql_sha256
+    assert hashlib.sha256(content).hexdigest() == result.prepared.validation.artifact_hash
 
 
 @pytest.mark.parametrize(
@@ -333,8 +340,8 @@ def test_invalid_ddl_preparation_creates_no_file(
     else:
         check = ddl_adapter.check_allowed_sql
 
-        def mismatched(sql: bytes) -> allowed_sql.SqlValidation:
-            return check(sql).model_copy(update={"sql_sha256": "0" * 64})
+        def mismatched(sql: bytes) -> SqlValidation:
+            return check(sql).model_copy(update={"artifact_hash": "0" * 64})
 
         monkeypatch.setattr(ddl_adapter, "check_allowed_sql", mismatched)
 

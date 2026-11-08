@@ -10,7 +10,7 @@ from psycopg import Connection
 from psycopg.rows import DictRow
 
 from specton.contracts import RunState
-from specton.persistence.errors import LeaseLostError
+from specton.persistence.errors import LeaseLostError, RunNotFoundError
 
 # 실행자가 없는 대기 상태. 이 상태의 run은 lease를 잡지 않는다 (HITL 대기 중 반납).
 WAITING_STATES = frozenset(
@@ -96,3 +96,13 @@ def check_holder(conn: Connection[DictRow], run_id: UUID, holder: str) -> str | 
         raise LeaseLostError(f"run {run_id}의 lease를 잃어 기록하지 않습니다")
     last: str | None = row["last_checkpoint"]
     return last
+
+
+def lock_for_writer(conn: Connection[DictRow], run_id: UUID, holder: str) -> None:
+    """저장하기 전에 run → job_lease 순서로 잠근다.
+
+    없는 run이면 RunNotFoundError, lease를 잃었으면 LeaseLostError.
+    """
+    if conn.execute("SELECT 1 FROM run WHERE run_id = %s FOR UPDATE", (run_id,)).fetchone() is None:
+        raise RunNotFoundError(str(run_id))
+    check_holder(conn, run_id, holder)
