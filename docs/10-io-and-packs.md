@@ -88,3 +88,6 @@
 ### 출력 manifest
 
 `run_id`, `revision`, `model_hash`, `source_hash`, 팩·프롬프트·생성기 버전, 승인 상태, 파일별 해시. 초안과 승인본의 내용 버전을 섞지 않는다.
+
+- 구현: `specton/codegen/manifest.py` `build_manifest`·`render_manifest`(키 순서를 고정한 JSON, #14). 한 manifest에는 현재 revision·현재 모델·같은 승인 상태의 파일만 넣고, 섞이면 만들지 않는다. 생성기 버전은 모델 정리 규칙 버전·이름 규칙 해시다. 내려받기·승인본 게시에 붙이는 연결은 #17·#13에서 한다.
+- RTM(`specton/codegen/rtm.py`, #14): 시트 「RTM」(원문 ID·원문 위치·요구사항 ID·상위 요구사항·요구사항·유형·기능·엔티티·관계·상태·비고)과 「문서 정보」(기능 명세서와 같은 문서 정보 + 상태별 건수). CSV는 같은 행을 UTF-8(BOM)·CRLF로 쓴다. 상태는 `연결`(기능에 하나라도 연결)·`미연결`·`제외`·`확인(원문 없음)`이고, 연결은 `req_ids` ID 조인만 쓴다. 같은 입력이면 같은 바이트다(xlsx 작성 시각 고정).
