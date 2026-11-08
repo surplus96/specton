@@ -15,6 +15,7 @@ PDF 입력·추출, 최종 PDF 출력, HWPX/HWP 추출에 쓸 라이브러리가
   - 엔진: WeasyPrint(HTML/CSS → PDF) + `mermaid-cli`로 ERD를 SVG로 그려 넣는다. Mermaid는 웹과 같은 11.15.0으로 고정한다(#13, #190). ERD가 깨지면 Playwright 인쇄로 전환한다.
   - 한글 폰트: Noto Sans CJK KR(`fonts-noto-cjk`)을 실행 이미지에 넣고 PDF에 내장한다.
   - 렌더러는 외부 경로·URL 리소스를 가져오지 않는다. 엔진이 만든 SVG·스타일만 쓴다 (docs/10).
+  - Mermaid 설정 보안 (#190 R1 리뷰): 설정은 개발자가 정한 값만 넘기고, `secure` 목록에 `themeCSS`·`fontFamily`·`altFontFamily`·`themeVariables` 등을 넣어 원문 지시문으로 바꾸지 못하게 한다. ERD 생성 코드는 이름에서 지시문 기호를 걸러 낸다. ERD 외 다이어그램과 임의 원문은 그리지 않는다.
   - ERD 구성: 전체 관계 개요(속성 없음) + 업무 영역별 상세도 + 테이블 정의서(전체 속성). 상세도에는 키 속성(PK·FK·UK)만 그리고 `direction LR`로 배치한다. 상세도 글자가 인쇄 용지에서 6pt보다 작으면 그 영역을 더 나누도록 경고한다 (영역 낱말 조정, 상자 약 13개 이하가 기준).
   - 쪽: 용지 크기는 297×210mm. 표지·긴 표는 세로, ERD·넓은 표는 가로. 긴 표는 쪽마다 머리글을 반복한다.
   - 넓은 표(예: CRUD): 열 21개까지 가로 한 장, 넘으면 20열씩 나누고 첫 열(기능 ID)을 반복한다. 글자를 줄여 맞추지 않는다.
@@ -113,5 +114,5 @@ ERD 글자 크기 (297×210mm 가로 용지, 여백 12mm, 제목 자리 14mm, �
 - 좋아지는 점: 표가 많은 문서에 강하고 한글 PDF 출력 경로가 단순하다.
 - 감수할 점: Docling 모델 다운로드·한글 폰트를 컨테이너 이미지에 포함해야 한다.
 - 감수할 점 (PDF 출력): `mermaid-cli`는 Chromium을 포함해 이미지가 크다(실측 이미지 2.28GB, WeasyPrint 쪽 542MB). 배포 이미지(ADR-0013, #25) 크기에 반영한다. WeasyPrint는 Windows에서 GTK가 따로 필요해, PDF 시험은 Docker·CI(리눅스)에서 돌리고 Windows 로컬에서는 건너뛴다.
-- 감수할 점 (Mermaid 11.15.0): `npm audit`에 mermaid 보통 2건(설정 API 프로토타입 오염, CSS 주입)이 있고 11.17.2에서 고쳐졌다. 원문은 서버 코드가 만든 `.mmd`라 설정 지시문·`style` 줄이 들어갈 자리가 없어 위험이 낮다고 보고 고정을 유지한다(#190). 올릴 때는 웹과 mermaid-cli를 함께 올리고 한글 ERD를 다시 실측한다.
+- 감수할 점 (Mermaid 11.15.0): `npm audit`에 mermaid 보통 2건(설정 API 프로토타입 오염, CSS 주입)이 있고 11.17.2에서 고쳐졌다. 팀 결정(#13)대로 고정을 유지하되, `securityLevel: 'strict'`와 「서버가 만든 원문」만으로는 막히지 않는다(#190 R1 실험: 별칭 따옴표 안의 `init` 지시문 `themeCSS`가 strict에서도 인식됨). 그래서 위 「Mermaid 설정 보안」을 웹과 PDF 모두에 적용한다. 올릴 때는 웹과 mermaid-cli를 함께 올리고 한글 ERD를 다시 실측한다.
 - 관련 문서: [10 문서 입출력](../10-io-and-packs.md), [11 배포](../11-deployment-security.md)
