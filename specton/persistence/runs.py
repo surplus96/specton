@@ -30,6 +30,7 @@ from specton.contracts import (
     SseEventType,
     VersionInfo,
 )
+from specton.persistence import validations
 from specton.persistence.errors import (
     BlockingFindingsError,
     EventReplayExpiredError,
@@ -310,13 +311,22 @@ _AFTER_REVIEW: Mapping[str, RunState | None] = {
 
 
 def answer_interrupt(
-    conn: Connection[DictRow], run_id: UUID, owner_ref: str, request: ResumeRequest
+    conn: Connection[DictRow],
+    run_id: UUID,
+    owner_ref: str,
+    request: ResumeRequest,
+    *,
+    require_sql_validation: bool = False,
 ) -> tuple[RunState, list[SseEvent]]:
     """사람 확인 응답을 받아 실행을 재개한다 (06 문서 `resume`).
 
     같은 확인 요청에는 한 번만 답할 수 있다. 오래되었거나 이미 답한 요청이면 InterruptStaleError,
     revision이 다르면 RevisionConflictError. 답을 받으면 실행 가능한 상태로 바꿔 실행기가
     lease를 잡아 이어 간다. 보류(hold)는 기록만 하고 계속 기다린다.
+
+    최종 승인은 그 revision의 산출물마다 승인한 파일 해시를 `approval_basis`에 남긴다.
+    `require_sql_validation`이면 SQL 검증 통과를 먼저 확인하고(UnverifiedSqlError), 근거에
+    그 검증 시도를 연결한다 (#167, #195).
     """
     response = request.response
     with conn.transaction():
@@ -333,6 +343,7 @@ def answer_interrupt(
         if interrupt["kind"] != response.kind:
             raise ResponseMismatchError(f"{interrupt['kind']} 확인에 {response.kind} 응답")
         payload: dict[str, Any] = {}
+        checked: validations.StoredValidation | None = None
         if response.kind == "extraction":
             confirmed = _check_extraction(conn, run_id, response)
             if response.confirmed:  # 확인한 review 블록을 남긴다 (#95 결론, #130)
@@ -352,11 +363,14 @@ def answer_interrupt(
             new, decision = _AFTER_REVIEW[response.decision], response.decision
             if decision == "approve" and _has_blocking_findings(conn, run_id, current["revision"]):
                 raise BlockingFindingsError(str(run_id))
+            if decision == "approve" and require_sql_validation:
+                checked = validations.require_passed(conn, run_id, current["revision"])
         if new is None:
             events = _append_events(
                 conn, run_id, current["revision"], [NewEvent(SseEventType.STATUS, "보류했습니다")]
             )
             return current["status"], events
+        approval_id = uuid4()
         conn.execute(
             """
             INSERT INTO approval (approval_id, run_id, snapshot_id, interrupt_id, actor_ref,
@@ -365,10 +379,15 @@ def answer_interrupt(
                              WHERE run_id = %s AND revision = %s), %s, %s, %s, %s, %s)
             """,
             (
-                uuid4(), run_id, run_id, current["revision"], request.interrupt_id, owner_ref,
+                approval_id, run_id, run_id, current["revision"], request.interrupt_id, owner_ref,
                 decision, getattr(response, "feedback", ""), _json(response),
             ),
         )  # fmt: skip
+        if decision == "approve":
+            _record_basis(
+                conn, run_id, current["revision"], approval_id,
+                None if checked is None else checked.validation_id,
+            )  # fmt: skip
         conn.execute(
             "UPDATE run SET status = %s, interrupt = NULL, updated_at = now() WHERE run_id = %s",
             (new, run_id),
@@ -381,6 +400,26 @@ def answer_interrupt(
             )
         events = _append_events(conn, run_id, current["revision"], [event])
     return new, events
+
+
+def _record_basis(
+    conn: Connection[DictRow],
+    run_id: UUID,
+    revision: int,
+    approval_id: UUID,
+    validation_id: UUID | None,
+) -> None:
+    """최종 승인한 revision의 산출물마다 파일 해시를 남긴다. 검증 시도는 SQL에만 붙인다."""
+    conn.execute(
+        """
+        INSERT INTO approval_basis (approval_id, artifact_id, artifact_hash, validation_id)
+        SELECT %s, a.artifact_id, a.hash,
+            CASE WHEN a.kind = 'ddl' AND a.file_format = 'sql' THEN %s::uuid END
+        FROM artifact a JOIN model_snapshot s USING (snapshot_id)
+        WHERE s.run_id = %s AND s.revision = %s
+        """,
+        (approval_id, validation_id, run_id, revision),
+    )
 
 
 def events_after(
