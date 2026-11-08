@@ -102,6 +102,38 @@ CREATE TABLE IF NOT EXISTS artifact (
     UNIQUE (snapshot_id, kind, file_format)
 );
 
+-- SQL 검증 시도 기록 (#167, #194). 시도마다 한 행이고 지우지 않는다(이력).
+-- 같은 SQL·버전이어도 새로 검증하면 새 행이다. 그래서 조회 칸 묶음에 UNIQUE를 두지 않는다.
+CREATE TABLE IF NOT EXISTS artifact_validation (
+    validation_id     uuid PRIMARY KEY,  -- 검증 시도 ID. 실행기가 붙이고 체크포인트에 같이 둔다
+    artifact_id       uuid NOT NULL REFERENCES artifact ON DELETE CASCADE,
+    artifact_hash     text NOT NULL,  -- 검증한 SQL 바이트의 해시. 저장 때 artifact.hash와 같다
+    model_hash        text NOT NULL,  -- SQL을 만든 모델. 저장 때 스냅샷 model_hash와 같다
+    status            text NOT NULL CHECK (status IN ('passed', 'failed', 'error', 'unverified')),
+    steps             jsonb NOT NULL,  -- SqlValidation.steps
+    validator_version text NOT NULL,
+    policy_version    text NOT NULL,
+    postgres_version  text NOT NULL,
+    validated_at      timestamptz NOT NULL,  -- 검증 시각. 재저장으로 바꾸지 않는다
+    -- 처음 저장한 순서. 검증 시각이 같을 때 나중 시도를 고른다. 같은 run의 저장은 run 잠금으로
+    -- 차례로 일어나고, 재저장은 행을 새로 넣지 않아 바뀌지 않는다
+    saved_order       bigint GENERATED ALWAYS AS IDENTITY
+);
+CREATE INDEX IF NOT EXISTS artifact_validation_latest ON artifact_validation (
+    artifact_id, artifact_hash, model_hash, validator_version, policy_version, postgres_version,
+    validated_at DESC, saved_order DESC
+);
+
+-- 승인 근거 (#167, #195). 최종 승인 때 그 revision의 산출물마다 승인한 파일 해시를 남긴다.
+-- export·승인본 게시는 이 해시와 같은지 확인한다. 과거 승인에는 근거를 만들어 넣지 않는다.
+CREATE TABLE IF NOT EXISTS approval_basis (
+    approval_id   uuid NOT NULL REFERENCES approval ON DELETE CASCADE,
+    artifact_id   uuid NOT NULL REFERENCES artifact ON DELETE CASCADE,
+    artifact_hash text NOT NULL,
+    validation_id uuid REFERENCES artifact_validation,  -- 검사를 통과한 SQL의 근거 시도. 그 외 NULL
+    PRIMARY KEY (approval_id, artifact_id)
+);
+
 CREATE TABLE IF NOT EXISTS run_event (
     run_id     uuid NOT NULL REFERENCES run ON DELETE CASCADE,
     event_id   bigint NOT NULL CHECK (event_id >= 1),

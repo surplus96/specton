@@ -102,7 +102,10 @@ def create_run(
         )
     pack_version = _pack_version(settings, pack)
     run_id, document_id = uuid4(), uuid4()
-    stored = save_upload(file, settings.storage_dir, run_id, document_id, max_bytes)
+    stored = save_upload(
+        file, settings.storage_dir, run_id, document_id, max_bytes,
+        settings.max_unzipped_mb * 1024 * 1024,
+    )  # fmt: skip
     try:
         with pool.connection() as conn, conn.transaction():
             status = runs.create_run(
@@ -146,9 +149,13 @@ def get_run(run_id: RunId, owner: OwnerRef, conn: ConnDep) -> RunStatus:
 
 
 @router.post("/{id}/resume", status_code=202, operation_id="resumeRun")
-def resume_run(run_id: RunId, owner: OwnerRef, conn: ConnDep, body: ResumeRequest) -> RunStatus:
+def resume_run(
+    run_id: RunId, owner: OwnerRef, conn: ConnDep, settings: SettingsDep, body: ResumeRequest
+) -> RunStatus:
     """사람 확인 응답. 같은 요청에 두 번 답하거나 오래된 요청에 답하면 409."""
-    runs.answer_interrupt(conn, run_id, owner, body)
+    runs.answer_interrupt(
+        conn, run_id, owner, body, require_sql_validation=settings.require_sql_validation
+    )
     return runs.get_run(conn, run_id, owner)
 
 

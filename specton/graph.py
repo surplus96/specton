@@ -33,6 +33,7 @@ from specton.contracts import (
     Requirement,
     RequirementsResponse,
     RunState,
+    ValidationStatus,
 )
 from specton.contracts.base import ExtractionStatus, TargetStage, UserDecision
 from specton.contracts.findings import FindingSource, Severity
@@ -45,6 +46,7 @@ from specton.review.rework import (
     decide_rework,
     resolve_with_router,
 )
+from specton.validation_attempts import ValidationAttempt, merge_validation_attempts
 
 GENERATORS = ("ddl", "erd", "rtm")  # 같은 고정 모델을 읽는 코드 작업 (병렬)
 REVIEWERS = ("A05", "A06", "A07", "A08")  # 검토 관점 = 리뷰 가지 이름 (병렬)
@@ -133,6 +135,8 @@ class GraphState(TypedDict, total=False):
     ]  # 방금 끝난 노드가 남긴 안내. 실행기는 노드 결과(update)에서만 읽는다
     branches: Annotated[dict[str, BranchResult], _merge_branches]
     generated_artifacts: Annotated[dict[str, GeneratedArtifact], _merge_artifacts]
+    validation_attempts: Annotated[dict[str, ValidationAttempt], merge_validation_attempts]
+    ddl_validation_status: ValidationStatus | None
     rule_findings: tuple[Finding, ...]  # 규칙 검사(#15) 결과
     normalization_failed: bool  # 정리 실패이면 생성·LLM 검토를 건너뛴다
     requires_manual_review: bool  # 사전·명명 규칙 등 자동 수정으로 해결할 수 없는 문제
@@ -160,6 +164,8 @@ def initial_state(design: DesignState, documents: tuple[DocumentRef, ...] = ()) 
         documents=documents,
         branches={},
         generated_artifacts={},
+        validation_attempts={},
+        ddl_validation_status=None,
         rule_findings=(),
         normalization_failed=False,
         requires_manual_review=False,
@@ -194,6 +200,8 @@ def build_graph(
     _add(g, "generate", _with_status(_noop, RunState.GENERATING))
     _add(g, "merge", _merge)
     _add(g, "normalization_failure", _normalization_failure)
+    _add(g, "generation_result", _with_status(_noop, RunState.GENERATING))
+    _add(g, "validation_failure", _with_status(_validation_failure, RunState.REVIEWING))
     _add(g, "route", _route(limit))
     _add(g, "route_router", _route_router)
     _add(g, "wait_review", _waiting(RunState.AWAITING_REVIEW))
@@ -209,7 +217,9 @@ def build_graph(
     g.add_edge("normalization_failure", "route")
     for name in GENERATORS:
         g.add_edge("generate", name)
-    g.add_edge(list(GENERATORS), "rules")
+    g.add_edge(list(GENERATORS), "generation_result")
+    g.add_conditional_edges("generation_result", _next_after_generation)
+    g.add_edge("validation_failure", "route")
     for name in REVIEWERS:
         g.add_edge("rules", name)
     _chain(g, list(REVIEWERS), "merge", "route")
@@ -241,6 +251,27 @@ def _noop(state: GraphState) -> Mapping[str, Any]:
 
 def _next_after_normalization(state: GraphState) -> str:
     return "normalization_failure" if state.get("normalization_failed") else "generate"
+
+
+def _sql_blocks_approval(state: GraphState) -> bool:
+    return state.get("ddl_validation_status") not in (None, ValidationStatus.PASSED)
+
+
+def _next_after_generation(state: GraphState) -> str:
+    return "validation_failure" if _sql_blocks_approval(state) else "rules"
+
+
+def _validation_failure(state: GraphState) -> dict[str, Any]:
+    # 검증기의 상태 분류를 그대로 소비한다. failed의 RULE-07 지적은 ddl_node가 채운다.
+    # 실행하지 않은 후속 리뷰를 실패한 리뷰로 기록하지 않는다.
+    return {
+        "design": state["design"].evolve(
+            findings=state.get("rule_findings", ()), branch_results={}
+        ),
+        "requires_manual_review": True,
+        "failed_branches": (),
+        "notes": ({"message": "SQL 검증을 통과하지 못해 사람의 확인이 필요합니다", "payload": {}},),
+    }
 
 
 def _normalization_failure(state: GraphState) -> dict[str, Any]:
@@ -458,8 +489,8 @@ def _ask_review(state: GraphState) -> dict[str, Any]:
     )
     decision = response.get("decision")
     update: dict[str, Any] = {"review_response": response, "revising": decision == "revise"}
-    if decision == "approve" and state.get("normalization_failed"):
-        return update  # API 밖에서 직접 재개해도 정리 실패를 승인·내보내기 할 수 없다
+    if decision == "approve" and (state.get("normalization_failed") or _sql_blocks_approval(state)):
+        return update  # API 밖에서 직접 재개해도 정리·SQL 검증 실패를 승인·내보내기 할 수 없다
     if decision in REVIEW_STATUS:
         update["design"] = state["design"].evolve(status=REVIEW_STATUS[decision])
     return update
@@ -541,7 +572,10 @@ def _apply(state: GraphState, decision: ReworkDecision, *, counted: bool = True)
             revision=design.revision + 1, iteration=design.iteration + 1, normalized=None
         )
         update["rework_count"] = state.get("rework_count", 0) + (1 if counted else 0)
-        update.update(normalization_failed=False, requires_manual_review=False, rule_findings=())
+        update.update(
+            normalization_failed=False, requires_manual_review=False, rule_findings=(),
+            ddl_validation_status=None,
+        )  # fmt: skip
     return update
 
 
@@ -557,7 +591,11 @@ def _next_after_route(state: GraphState) -> str:
 
 def _next_after_review(state: GraphState) -> str:
     decision = state.get("review_response", {}).get("decision")
-    if decision == "approve" and not state.get("normalization_failed"):
+    if (
+        decision == "approve"
+        and not state.get("normalization_failed")
+        and not _sql_blocks_approval(state)
+    ):
         return "export"
     if decision == "revise":
         return "a09"

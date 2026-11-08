@@ -3,6 +3,8 @@
 실행기(#17)는 없으므로, 실행기가 할 진행 기록은 저장 함수로 직접 만든다.
 """
 
+import io
+import zipfile
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -15,9 +17,16 @@ from psycopg.types.json import Jsonb
 from specton.api.main import create_app
 from specton.api.session import SESSION_COOKIE
 from specton.config import Settings
-from specton.contracts import ArtifactRef, DesignState, Interrupt, ResumeRequest, SseEventType
+from specton.contracts import (
+    VALIDATION_STEPS,
+    ArtifactRef,
+    DesignState,
+    Interrupt,
+    ResumeRequest,
+    SseEventType,
+)
 from specton.contracts import RunState as S
-from specton.persistence import lease, runs
+from specton.persistence import lease, runs, validations
 from specton.persistence.db import Pool
 from specton.persistence.runs import NewEvent, answer_interrupt, events_after, record_progress
 from specton.persistence.snapshots import add_artifact, save_model
@@ -25,12 +34,28 @@ from specton.persistence.snapshots import add_artifact, save_model
 pytestmark = pytest.mark.db
 
 StateFactory = Callable[[str, str], DesignState]
-XLSX = ("req.xlsx", b"PK\x03\x04 fake workbook", "application/octet-stream")
+
+
+def _zip(entries: dict[str, bytes]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, data in entries.items():
+            archive.writestr(name, data)
+    return buffer.getvalue()
+
+
+# 실행기가 없어 파서는 돌지 않는다. 업로드 내용 검사(zip인지)만 통과하면 된다 (#21)
+XLSX = ("req.xlsx", _zip({"[Content_Types].xml": b"<Types/>"}), "application/octet-stream")
 
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
-    return Settings(_env_file=None, storage_dir=tmp_path / "storage", sse_poll_seconds=0.01)
+    return Settings(
+        _env_file=None,
+        require_sql_validation=False,
+        storage_dir=tmp_path / "storage",
+        sse_poll_seconds=0.01,
+    )
 
 
 @pytest.fixture
@@ -132,6 +157,51 @@ def test_too_large_upload_is_413_and_leaves_no_file(settings: Settings, pool: Po
     assert not any(settings.storage_dir.rglob("*"))  # 빈 run 폴더도 남기지 않는다
 
 
+@pytest.mark.parametrize(
+    ("file", "message"),
+    [
+        (("req.xlsx", b"not a workbook", "application/octet-stream"), "형식이 아닙니다"),
+        (("req.hwpx", b"<hwpml/>", "application/octet-stream"), "형식이 아닙니다"),
+        (("req.csv", b"id,text\n1,\x00\x01", "text/csv"), "텍스트가 아닙니다"),
+    ],
+)
+def test_content_that_does_not_match_the_extension_is_415(
+    client: TestClient, settings: Settings, file: tuple[str, bytes, str], message: str
+) -> None:
+    """확장자만 바꾼 파일을 파서에 넘기지 않는다 (#21, TC-N03)."""
+    response = _create(client, file)
+
+    assert _error(response) == (415, "UNSUPPORTED_MEDIA_TYPE")
+    assert message in response.json()["message"]
+    assert not any(p.is_file() for p in settings.storage_dir.rglob("*"))
+
+
+def test_zip_that_unpacks_beyond_the_limit_is_413(settings: Settings, pool: Pool) -> None:
+    """압축 폭탄: 올린 크기는 작아도 압축을 푼 크기가 한도를 넘으면 막는다 (#21, TC-N05)."""
+    small = settings.model_copy(update={"max_unzipped_mb": 1})
+    bomb = _zip({"xl/worksheets/sheet1.xml": b"0" * (2 * 1024 * 1024)})
+    assert len(bomb) < 64 * 1024
+    with TestClient(create_app(small, pool)) as client:
+        response = _create(client, ("req.xlsx", bomb, "application/octet-stream"))
+
+    assert _error(response) == (413, "UPLOAD_TOO_LARGE")
+    assert "압축을 푼 크기" in response.json()["message"]
+    assert not any(p.is_file() for p in settings.storage_dir.rglob("*"))
+
+
+@pytest.mark.parametrize("secure", [False, True])
+def test_session_cookie_is_secure_only_when_configured(
+    settings: Settings, pool: Pool, secure: bool
+) -> None:
+    """HTTPS 배포에서는 세션 쿠키에 Secure를 붙인다 (#21, PR #108 리뷰)."""
+    app = create_app(settings.model_copy(update={"session_cookie_secure": secure}), pool)
+    with TestClient(app) as client:
+        cookie = client.get("/runs").headers["set-cookie"]
+
+    assert "HttpOnly" in cookie and "SameSite=lax" in cookie
+    assert ("Secure" in cookie) is secure
+
+
 def test_missing_field_is_invalid_request(client: TestClient) -> None:
     response = client.post("/runs", data={"pack": "inventory"})
 
@@ -156,6 +226,8 @@ def test_runs_are_visible_only_to_their_owner(
         404,
         "RUN_NOT_FOUND",
     )
+    # 확인 응답도 다른 세션이면 실행이 없는 것과 같다 (#21, TC-N03)
+    assert _error(_resume(other, run_id, "int-x", ANSWERS)) == (404, "RUN_NOT_FOUND")
 
 
 def test_unknown_run_is_404_with_run_id(client: TestClient) -> None:
@@ -565,6 +637,189 @@ def test_review_hold_keeps_waiting_and_approve_is_blocked_by_critical(
     assert hold.json()["status"] == "awaiting_review"
     assert _error(approve) == (422, "INVALID_RESPONSE")
     assert revise.json()["status"] == "designing"
+
+
+# 최종 승인의 SQL 검증 확인·승인 근거 (#195, #167)
+
+SQL_HASH = "a" * 64
+OLD_VERSIONS = {**validations.REQUIRED_VERSIONS, "validator_version": "sql-validator-v0"}
+APPROVE = {"kind": "review", "decision": "approve", "feedback": ""}
+
+
+def _steps(status: str) -> list[dict[str, Any]]:
+    """전체 상태가 `status`가 되는 다섯 단계 (실패·장애는 execute, 미검증은 뒤 세 단계 미실행)."""
+    names = [n.value for n in VALIDATION_STEPS]
+    if status == "passed":
+        return [{"name": n, "status": "passed", "issues": []} for n in names]
+    if status == "unverified":
+        return [
+            {"name": n, "status": "passed" if i < 2 else "not_run", "issues": []}
+            for i, n in enumerate(names)
+        ]
+    issue = [{"code": "x", "message": None, "statement_index": None, "sqlstate": None}]
+    return [
+        {"name": n, "status": status if n == "execute" else "passed",
+         "issues": issue if n == "execute" else []}
+        for n in names
+    ]  # fmt: skip
+
+
+def _review_with_sql(
+    pool: Pool, run_id: str, attempts: list[tuple[str, dict[str, str]]], *, sql: bool = True
+) -> dict[str, UUID]:
+    """revision 0 스냅샷에 ERD와 (선택) SQL 산출물, 검증 시도들을 넣는다.
+
+    시도는 넣은 순서대로 검증 시각이 1분씩 늦다.
+    """
+    ids: dict[str, UUID] = {}
+    with pool.connection() as conn:
+        snapshot = uuid4()
+        conn.execute(
+            "INSERT INTO model_snapshot (snapshot_id, run_id, revision, normalized_model, "
+            "model_hash) VALUES (%s, %s, 0, '{}', 'm')",
+            (snapshot, run_id),
+        )
+        kinds = [("erd", "mmd", "e" * 64)] + ([("ddl", "sql", SQL_HASH)] if sql else [])
+        for kind, file_format, digest in kinds:
+            ids[kind] = uuid4()
+            conn.execute(
+                "INSERT INTO artifact (artifact_id, snapshot_id, kind, file_format, hash, "
+                "storage_ref) VALUES (%s, %s, %s, %s, %s, 'x')",
+                (ids[kind], snapshot, kind, file_format, digest),
+            )
+        for i, (status, versions) in enumerate(attempts):
+            ids[f"attempt-{i}"] = uuid4()
+            conn.execute(
+                "INSERT INTO artifact_validation (validation_id, artifact_id, artifact_hash, "
+                "model_hash, status, steps, validator_version, policy_version, postgres_version, "
+                "validated_at) VALUES (%s, %s, %s, 'm', %s, %s, %s, %s, %s, "
+                "'2026-11-08T09:00:00Z'::timestamptz + %s * interval '1 minute')",
+                (
+                    ids[f"attempt-{i}"], ids["ddl"], SQL_HASH, status, Jsonb(_steps(status)),
+                    versions["validator_version"], versions["policy_version"],
+                    versions["postgres_version"], i,
+                ),
+            )  # fmt: skip
+    return ids
+
+
+@pytest.fixture
+def checked_client(settings: Settings, pool: Pool) -> Iterator[TestClient]:
+    """최종 승인 때 SQL 검증 통과를 요구하는 앱."""
+    with TestClient(
+        create_app(settings.model_copy(update={"require_sql_validation": True}), pool)
+    ) as c:
+        yield c
+
+
+def _basis(pool: Pool, run_id: str) -> dict[UUID, UUID | None]:
+    with pool.connection() as conn:
+        rows = conn.execute(
+            "SELECT b.artifact_id, b.validation_id FROM approval_basis b JOIN approval a "
+            "USING (approval_id) WHERE a.run_id = %s",
+            (run_id,),
+        ).fetchall()
+    return {r["artifact_id"]: r["validation_id"] for r in rows}
+
+
+def test_approve_with_a_passed_sql_records_the_basis(
+    checked_client: TestClient, pool: Pool
+) -> None:
+    run_id = _create(checked_client).json()["run_id"]
+    interrupt_id = _wait(pool, run_id, "review", S.AWAITING_REVIEW)
+    ids = _review_with_sql(pool, run_id, [("passed", validations.REQUIRED_VERSIONS)])
+
+    response = _resume(checked_client, run_id, interrupt_id, APPROVE)
+
+    assert response.status_code == 202
+    assert _basis(pool, run_id) == {ids["erd"]: None, ids["ddl"]: ids["attempt-0"]}
+
+
+@pytest.mark.parametrize(
+    ("attempts", "sql", "message"),
+    [
+        ([], False, "승인할 SQL 산출물이 없습니다."),
+        ([], True, "검증을 통과하지 않은 SQL"),  # 기록 없음 = unverified
+        ([("unverified", validations.REQUIRED_VERSIONS)], True, "검증을 통과하지 않은 SQL"),
+        ([("failed", validations.REQUIRED_VERSIONS)], True, "검증을 통과하지 않은 SQL"),
+        ([("error", validations.REQUIRED_VERSIONS)], True, "검증을 통과하지 않은 SQL"),
+        # 새 시도가 실패면 이전 통과로 돌아가지 않는다
+        (
+            [("passed", validations.REQUIRED_VERSIONS), ("failed", validations.REQUIRED_VERSIONS)],
+            True,
+            "검증을 통과하지 않은 SQL",
+        ),
+        # 지금 요구하는 버전의 시도가 없으면 이전 버전 통과를 쓰지 않는다
+        ([("passed", OLD_VERSIONS)], True, "검증을 통과하지 않은 SQL"),
+    ],
+)
+def test_approve_is_rejected_without_a_current_passed_sql(
+    checked_client: TestClient,
+    pool: Pool,
+    attempts: list[tuple[str, dict[str, str]]],
+    sql: bool,
+    message: str,
+) -> None:
+    run_id = _create(checked_client).json()["run_id"]
+    interrupt_id = _wait(pool, run_id, "review", S.AWAITING_REVIEW)
+    _review_with_sql(pool, run_id, attempts, sql=sql)
+
+    response = _resume(checked_client, run_id, interrupt_id, APPROVE)
+
+    assert _error(response) == (422, "INVALID_RESPONSE")
+    assert message in response.json()["message"]
+    status = checked_client.get(f"/runs/{run_id}").json()
+    assert (status["status"], status["interrupt"]["interrupt_id"]) == (
+        "awaiting_review",
+        interrupt_id,
+    )
+    assert _basis(pool, run_id) == {}
+    with pool.connection() as conn:
+        assert (
+            conn.execute("SELECT 1 FROM approval WHERE run_id = %s", (run_id,)).fetchone() is None
+        )
+
+
+def test_without_the_setting_approve_skips_the_check_but_keeps_the_basis(
+    client: TestClient, pool: Pool
+) -> None:
+    """연결 전(기본값)에는 지금처럼 승인하고, SQL 근거에 검증 시도를 붙이지 않는다."""
+    run_id = _create(client).json()["run_id"]
+    interrupt_id = _wait(pool, run_id, "review", S.AWAITING_REVIEW)
+    ids = _review_with_sql(pool, run_id, [("failed", validations.REQUIRED_VERSIONS)])
+
+    response = _resume(client, run_id, interrupt_id, APPROVE)
+
+    assert response.status_code == 202
+    assert _basis(pool, run_id) == {ids["erd"]: None, ids["ddl"]: None}
+
+
+def test_view_shows_the_current_sql_validation(client: TestClient, pool: Pool) -> None:
+    run_id = _create(client).json()["run_id"]
+    _wait(pool, run_id, "review", S.AWAITING_REVIEW)
+    _review_with_sql(
+        pool, run_id, [("passed", OLD_VERSIONS), ("failed", validations.REQUIRED_VERSIONS)]
+    )
+
+    artifacts = client.get(f"/runs/{run_id}/view", params={"section": "design"}).json()["artifacts"]
+
+    by_kind = {a["kind"]: a for a in artifacts}
+    assert "validation" not in by_kind["erd"]
+    assert by_kind["ddl"]["validation"] == {
+        "status": "failed",
+        "validated_at": "2026-11-08T09:01:00+00:00",
+    }
+
+
+def test_view_shows_unverified_when_no_record_matches(client: TestClient, pool: Pool) -> None:
+    run_id = _create(client).json()["run_id"]
+    _wait(pool, run_id, "review", S.AWAITING_REVIEW)
+    _review_with_sql(pool, run_id, [("passed", OLD_VERSIONS)])
+
+    artifacts = client.get(f"/runs/{run_id}/view", params={"section": "design"}).json()["artifacts"]
+
+    sql = next(a for a in artifacts if a["kind"] == "ddl")
+    assert sql["validation"] == {"status": "unverified", "validated_at": None}
 
 
 # SSE (GET /runs/{id}/events)

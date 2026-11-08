@@ -5,7 +5,7 @@
 - lease는 노드와 별개로 `lease_renew_seconds`마다 갱신한다.
   잃으면 그 실행을 멈추고 더 저장하지 않는다.
 - 노드가 끝날 때마다 체크포인트 기준으로 `runs.record_progress`에 저장한다(멱등).
-  같은 트랜잭션에서 `snapshots.save_model`로 모델·지적을 남겨 화면용 조회가 읽는다(#113).
+  같은 트랜잭션에서 모델·지적, 산출물 게시, SQL 검증 시도 순서로 저장한다(#113, #167).
   노드는 DB에 쓰지 않는다.
 - 사람 확인에서 멈추면 대기 상태와 interrupt를 저장하고 lease를 반납한다.
   답은 approval에서 읽어 재개한다.
@@ -19,7 +19,7 @@ import socket
 import threading
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from langchain_core.runnables import RunnableConfig
@@ -36,6 +36,7 @@ from specton.contracts import (
     InterruptKind,
     RunState,
     RunStatus,
+    ValidationStatus,
 )
 from specton.contracts import SseEventType as E
 from specton.graph import (
@@ -52,6 +53,8 @@ from specton.persistence.db import Pool
 from specton.persistence.errors import InvalidTransitionError, LeaseLostError
 from specton.persistence.lease import WAITING_STATES
 from specton.persistence.runs import NewEvent
+from specton.persistence.validation_attempts import publish_validation_attempts
+from specton.validation_attempts import SqlValidationExecutionError, ValidationAttempt
 
 logger = logging.getLogger(__name__)
 S = RunState
@@ -228,11 +231,26 @@ class _Job:
             if self.status is S.CANCEL_REQUESTED:
                 raise _Cancelled
             start = self._start_input()
-            for chunk in graph.stream(start, self.config, stream_mode="updates", durability="sync"):
+            notes: list[RunNote] = []
+            pending = False
+            for event in graph.stream(
+                start, self.config, stream_mode=["updates", "checkpoints"], durability="sync"
+            ):
+                mode, chunk = cast(tuple[str, dict[str, Any]], event)
+                if mode == "updates":
+                    notes.extend(_notes(chunk))
+                    pending = True
+                    continue
+                if not pending:
+                    continue  # 시작·재개의 기존 체크포인트는 _start_input에서 대조했다
                 self._at_boundary()
-                snapshot = graph.get_state(self.config)
+                # updates는 해당 step의 체크포인트 저장 전에도 나온다. 뒤따르는 확정
+                # 체크포인트를 지정해 읽어 SQL 교체 전 검증 시도를 먼저 게시한다.
+                snapshot = graph.get_state(chunk["config"])
                 if not snapshot.interrupts:
-                    self._save(snapshot, _notes(chunk))
+                    self._save(snapshot, notes)
+                notes.clear()
+                pending = False
                 if self.runner.stopping:
                     raise _Stop  # 서버 종료: 끝난 노드까지 저장하고 멈춘다
             self._settle(graph.get_state(self.config))
@@ -243,7 +261,70 @@ class _Job:
         except LeaseLostError:
             raise
         except Exception as exc:
+            try:
+                if not isinstance(exc, SqlValidationExecutionError):
+                    self._save_completed_sql()
+            except _Stop:
+                return
+            except _Cancelled:
+                self._end(
+                    S.CANCELLED, NewEvent(E.CANCELLED, "실행을 취소했습니다", stage="cancelled")
+                )
+                return
+            except LeaseLostError:
+                raise
+            except Exception:
+                logger.exception("run %s의 완료된 SQL 검증 결과를 복구하지 못했습니다", self.run_id)
             self._fail(exc)
+
+    def _save_completed_sql(self) -> None:
+        """다른 병렬 가지의 예외로 step이 끝나지 못해도 완료된 SQL·시도는 보존한다.
+
+        get_state(latest)는 성공한 노드의 pending writes를 반영한다. 실패한 가지의 산출물을
+        꾸며 넣지 않고 현재 revision의 검증 결과가 남은 SQL만 기존 외부 트랜잭션으로 게시한다.
+        """
+        snapshot = self.runner.graph.get_state(self.config)
+        if not snapshot.values:
+            return
+        design: DesignState = snapshot.values["design"]
+        generated = {
+            key: item
+            for key, item in snapshot.values.get("generated_artifacts", {}).items()
+            if (item["ref"].kind, item["ref"].file_format, item["ref"].revision)
+            == ("ddl", "sql", design.revision)
+        }
+        if not generated:
+            return
+        (sql,) = generated.values()
+        attempts: Mapping[str, ValidationAttempt] = snapshot.values.get("validation_attempts", {})
+        current = [
+            key
+            for key, attempt in attempts.items()
+            if attempt["run_id"] == design.run_id
+            and attempt["artifact"]["ref"].revision == design.revision
+            and attempt["artifact"]["ref"].hash == sql["ref"].hash
+            and attempt["artifact"]["model_hash"] == sql["model_hash"]
+        ]
+        if not current:
+            return
+        with self.runner.pool.connection() as conn:
+            saved = conn.execute(
+                "SELECT 1 FROM artifact_validation v JOIN artifact a USING (artifact_id) "
+                "JOIN model_snapshot s USING (snapshot_id) "
+                "WHERE s.run_id = %s AND v.validation_id = %s",
+                (self.run_id, UUID(current[-1])),
+            ).fetchone()
+        if saved is not None:
+            return
+        self._at_boundary()
+        self._record(
+            f"sql-complete:{_checkpoint_id(snapshot)}:{current[-1]}",
+            design,
+            events=[],
+            generated=generated,
+            attempts=attempts,
+            validation_status=None,  # 원래 가지 예외를 보존하고 아래 _fail에서 종료한다
+        )
 
     def _at_boundary(self) -> None:
         """노드 경계 확인. lease를 잃었거나 취소 요청이면 이 노드 결과를 저장하지 않는다."""
@@ -311,6 +392,8 @@ class _Job:
             design,
             events=events,
             generated=snapshot.values.get("generated_artifacts", {}),
+            attempts=snapshot.values.get("validation_attempts", {}),
+            validation_status=snapshot.values.get("ddl_validation_status"),
         )
 
     def _pause(self, snapshot: StateSnapshot) -> None:
@@ -335,6 +418,8 @@ class _Job:
             interrupt=interrupt,
             events=events,
             generated=snapshot.values.get("generated_artifacts", {}),
+            attempts=snapshot.values.get("validation_attempts", {}),
+            validation_status=snapshot.values.get("ddl_validation_status"),
         )
 
     def _status_events(self, status: RunState) -> list[NewEvent]:
@@ -354,8 +439,10 @@ class _Job:
         interrupt: Interrupt | None = None,
         events: list[NewEvent],
         generated: Mapping[str, GeneratedArtifact],
+        attempts: Mapping[str, ValidationAttempt],
+        validation_status: ValidationStatus | None,
     ) -> None:
-        """진행과 모델을 한 트랜잭션으로 저장한다.
+        """진행·모델·산출물·검증 시도를 한 트랜잭션으로 저장한다.
 
         사람 확인에서 멈출 때도 여기를 거치므로, 확인 요청 전에 그 revision 모델이 저장된다.
         resume API의 approve가 이 모델에 연결되고 차단 오류를 검사한다.
@@ -383,11 +470,15 @@ class _Job:
                         generated,
                         self.runner.settings.storage_dir,
                     )
+                    publish_validation_attempts(conn, self.runner.holder, design, attempts)
         except InvalidTransitionError:
             if self._load().status is S.CANCEL_REQUESTED:
                 raise _Cancelled from None  # 저장 직전에 취소 요청이 들어왔다
             raise
         self.status = design.status
+        if validation_status == ValidationStatus.ERROR:
+            # 동일 SQL과 안전한 검증 기록을 먼저 commit한 뒤 기존 실패 기록 경로로 넘긴다.
+            raise SqlValidationExecutionError("SQL 검증을 완료하지 못했습니다")
 
     def _fail(self, exc: Exception) -> None:
         logger.error("run %s 실패", self.run_id, exc_info=exc)

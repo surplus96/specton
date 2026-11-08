@@ -20,6 +20,7 @@ from specton.contracts import (
     SourceRef,
     SseEventType,
     UserDecision,
+    ValidationStatus,
 )
 
 SCHEMA = files("specton.persistence").joinpath("schema.sql").read_text(encoding="utf-8")
@@ -52,6 +53,7 @@ def _check_values(table: str, column: str) -> set[str]:
             "file_format",
             set(get_args(SourceRef.model_fields["file_format"].annotation)),
         ),
+        ("artifact_validation", "status", {s.value for s in ValidationStatus}),
     ],
 )
 def test_schema_checks_match_contracts(table: str, column: str, expected: set[str]) -> None:

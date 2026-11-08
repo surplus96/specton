@@ -92,6 +92,9 @@ class _Pipeline:
         with monkeypatch.context() as patch:
             patch.setattr(api_main, "openai_agent_nodes", lambda settings: nodes)
             patch.setattr(api_main, "erd_node", self._erd_node)
+            patch.setattr(api_main, "ddl_node", lambda settings: nodes["ddl"])
+            patch.setattr(api_main, "document_node", lambda root: nodes["rtm"])
+            patch.setattr(api_main, "export_node", lambda root: nodes["export"])
             self.graph = api_main.create_graph(settings, create_checkpointer(pool))
         self.runner = Runner(pool, self.graph, settings)
 
@@ -157,7 +160,12 @@ def pipeline(
     root = tmp_path / "packs"
     for pack in ("common", "maintenance"):
         shutil.copytree(DEFAULT_ROOT / pack, root / pack)
-    settings = Settings(_env_file=None, pack_root=root, storage_dir=tmp_path / "storage")
+    settings = Settings(
+        _env_file=None,
+        require_sql_validation=False,
+        pack_root=root,
+        storage_dir=tmp_path / "storage",
+    )
     worlds: list[_Pipeline] = []
     events: list[SerdeEvent] = []
     unregister = register_serde_event_listener(events.append)

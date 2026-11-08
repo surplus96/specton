@@ -137,7 +137,18 @@ class TestGrounding:
     def test_rejects_quote_not_in_requirement(self) -> None:
         finding = _finding(1, evidence=[{"req_id": "REQ-01", "quote": "품목은 삭제할 수 없다"}])
 
-        assert self._rejected(finding) == [("quote_not_found", "REQ-01: 품목은 삭제할 수 없다")]
+        # 인용문 원문은 로그·기록에 남기지 않고 길이만 남긴다 (#21)
+        assert self._rejected(finding) == [("quote_not_found", "REQ-01: 인용 12자")]
+
+    def test_rejected_quote_text_is_not_logged(self, caplog: pytest.LogCaptureFixture) -> None:
+        """인용문은 원문 일부일 수 있어 로그에 나오지 않는다 (REQ-23, TC-N03, #21)."""
+        finding = _finding(1, evidence=[{"req_id": "REQ-01", "quote": "품목은 삭제할 수 없다"}])
+
+        with caplog.at_level("WARNING", logger="specton.review.merge"):
+            self._rejected(finding)
+
+        assert "근거 확인 실패" in caplog.text
+        assert "품목은 삭제할 수 없다" not in caplog.text
 
     @staticmethod
     def _edited_state() -> DesignState:
