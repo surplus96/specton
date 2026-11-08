@@ -378,6 +378,39 @@ def test_a_usable_physical_name_is_kept_even_when_an_earlier_table_needs_a_repla
     assert _declared(render_erd(_two_tables("1table", "t001"), rels))["둘째"] == "t001"
 
 
+@pytest.mark.parametrize(
+    "physical", ["style", "class", "classdef", "erdiagram", "one", "many", "to"]
+)
+def test_mermaid_keywords_use_unique_replacements_and_edges_keep_their_tables(
+    physical: str,
+) -> None:
+    rels = (_rel("REL-01", "ENT-1", "ENT-2"),)
+    text = render_erd(_two_tables(physical, "t001"), rels)
+    declared = _declared(text)
+    assert declared["첫째"] != physical
+    assert declared["둘째"] == "t001"
+    assert len(set(declared.values())) == 2
+    assert _edge_lines(text) == [(declared["첫째"], "||", "..", "o{", "t001", "REL-01")]
+
+
+@pytest.mark.parametrize("physical", ["style_table", "class_code", "direction"])
+def test_names_that_are_not_mermaid_keywords_keep_their_physical_name(physical: str) -> None:
+    text = render_erd(_two_tables(physical, "child"), (_rel("REL-01", "ENT-1", "ENT-2"),))
+    assert _declared(text)["첫째"] == physical
+
+
+@pytest.mark.parametrize("logical", ["-코드", "(코드)", "[코드]", ")코드", "]코드", "1코드"])
+def test_attribute_names_start_with_a_valid_character_and_keep_the_original(logical: str) -> None:
+    model = _two_tables("parent", "child")
+    table = model.tables[0]
+    column = table.columns[0].model_copy(update={"name": logical})
+    model = model.model_copy(
+        update={"tables": (table.model_copy(update={"columns": (column,)}), model.tables[1])}
+    )
+    text = render_erd(model, (_rel("REL-01", "ENT-1", "ENT-2"),))
+    assert f'        varchar(20) _{logical} PK "frst_cd · {logical}"' in text
+
+
 def test_aliases_and_comments_never_contain_double_quotes() -> None:
     model = MODEL.model_copy(
         update={
