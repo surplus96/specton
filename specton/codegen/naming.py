@@ -206,8 +206,10 @@ def load_naming_rules(root: Path = DEFAULT_PACK_ROOT) -> NamingRules:
     무시하지 않고 멈춘다. 기존 키가 없어도 멈추고, 새 키 두 개만 없어도 된다(`_naming_value`).
     값 이름 목록의 기준은 팩 로더 모델(specton/packs/loader.py
     `_TermRule`·`_TableRule`·`_ColumnRule`)이다.
-    `column.self_reference_prefix`는 사전 단어(예: `상위`)를 그대로 읽는다. 사전에 없는 단어면
-    모델 정리가 이름 없음(D5) 문제로 돌려준다.
+    `column.self_reference_prefix`는 사전 단어(예: `상위`)를 읽는다. 팩 로더(`_Strict`의
+    `str_strip_whitespace`)처럼 앞뒤 공백을 지우고, 공백만 있으면 미정이다. 사전에 없는 단어면
+    모델 정리가 이름 없음(D5) 문제로 돌려준다. 값 이름 칸은 로더도 공백 붙은 값을 거절하므로
+    공백을 지우지 않는다.
     """
     naming = read_yaml(root / "common" / "naming.yaml")
     physical = naming["physical_name"]
@@ -227,6 +229,8 @@ def load_naming_rules(root: Path = DEFAULT_PACK_ROOT) -> NamingRules:
     prefix = _naming_value(naming, "column", "self_reference_prefix")
     if prefix is not None and not isinstance(prefix, str):
         raise ValueError(f"naming.yaml column.self_reference_prefix는 사전 단어여야 함: {prefix!r}")
+    if prefix is not None:
+        prefix = prefix.strip() or None
     return NamingRules(
         max_bytes=physical["max_bytes"],
         reserved_words=reserved_words(naming["reserved_words_source"]),

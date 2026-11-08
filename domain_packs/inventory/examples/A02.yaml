@@ -28,3 +28,98 @@ examples:
       priority_source: unspecified
       priority_rationale: null
       req_ids: [REQ-01, REQ-02, REQ-03]
+# A02.yaml의 examples: 목록 맨 끝(기존 첫 예시 INV-001,INV-002,INV-012 뒤)에 그대로 붙인다.
+# 입력 requirements는 합성 퓨샷용 엑셀(「요구사항 정의서」)을 실제 A01이 나눈 결과의 text·type·nfr_category를
+# 고치지 않고 옮긴 것이다. id만 예시 안에서 REQ-01부터 다시 매겼다.
+# SFR-203(실행 id REQ-14∼21 → REQ-01∼08): 처리(자동 최적화)·조회(시각화)·편집(수동 조정)은 성격이 달라 기능을 나눈다.
+#   REQ-01(알고리즘 추천·제안, NFR other)은 제안사에게 하는 요청이라 연결할 업무 기능이 없다.
+#   억지로 기능을 만들거나 붙이지 않는다(A02 프롬프트 「연결할 수 없는 요구사항은 억지로 기능을 만들어 붙이지 않는다」).
+- source_id: SFR-203
+  input:
+    requirements:
+    - id: REQ-01
+      type: NFR
+      nfr_category: other
+      text: 경로 최적화에 사용할 알고리즘을 추천·제안하는 작업이며, 예시로 VRP 계열이 제시되어 있다.
+    - id: REQ-02
+      type: FR
+      nfr_category: null
+      text: 배송 유형이 정해진 운송 오더에 라우팅 알고리즘을 적용하여 집하 단계에서 같은 권역 판매자의 픽업 오더 경로와 순서를 최적화해야 한다.
+    - id: REQ-03
+      type: FR
+      nfr_category: null
+      text: 배송 유형이 정해진 운송 오더에 라우팅 알고리즘을 적용하여 간선 운송 단계에서 센터의 입출고 물량 계획을 바탕으로 운송 요구 시간, 경로, 물량(파렛트 수)을 고려해 상차 계획과 적재율을 최적화해야 한다.
+    - id: REQ-04
+      type: FR
+      nfr_category: null
+      text: 배송 유형이 정해진 운송 오더에 라우팅 알고리즘을 적용하여 배송 단계에서 구매자 배송 경로, 순서, 희망 시간을 고려해 최적화해야 한다.
+    - id: REQ-05
+      type: FR
+      nfr_category: null
+      text: 확정된 최적 경로 정보를 목록과 지도에 시각화해 제공해야 한다.
+    - id: REQ-06
+      type: FR
+      nfr_category: null
+      text: 자동 최적화 외에 경로를 직접 설정할 수 있어야 한다.
+    - id: REQ-07
+      type: FR
+      nfr_category: null
+      text: 주문을 강제로 배정할 수 있어야 한다.
+    - id: REQ-08
+      type: FR
+      nfr_category: null
+      text: 경로를 변경·편집할 수 있어야 한다.
+  output:
+    functions:
+    - name: 단계별 운송 경로 최적화
+      description: 배송 유형이 정해진 운송 오더에 라우팅 알고리즘을 적용해 집하(픽업 경로·순서), 간선 운송(상차 계획·적재율), 배송(경로·순서·희망 시간) 단계별로 경로를 최적화한다.
+      priority: null
+      priority_source: unspecified
+      priority_rationale: null
+      req_ids: [REQ-02, REQ-03, REQ-04]
+    - name: 최적 경로 조회
+      description: 확정된 최적 경로 정보를 목록과 지도로 보여 준다.
+      priority: null
+      priority_source: unspecified
+      priority_rationale: null
+      req_ids: [REQ-05]
+    - name: 운송 경로 수동 조정
+      description: 자동 최적화와 별도로 담당자가 경로를 직접 설정하고, 주문을 강제로 배정하거나 경로를 변경·편집한다.
+      priority: null
+      priority_source: unspecified
+      priority_rationale: null
+      req_ids: [REQ-06, REQ-07, REQ-08]
+# PER-201(실행 id REQ-38∼42 → REQ-01∼05): 기능 요구는 REQ-04(API 호출 오류·예외 처리) 하나다.
+#   성능(REQ-01∼03)과 확장 구조(REQ-05) 비기능은 따로 기능을 만들지 않고, 그 요구가 제약하는
+#   API 연계 기능의 description에 조건으로 쓰고 req_ids에 함께 적는다.
+- source_id: PER-201
+  input:
+    requirements:
+    - id: REQ-01
+      type: NFR
+      nfr_category: performance
+      text: REST API로 데이터를 연계할 때 처리 성능이 안정적이어야 한다.
+    - id: REQ-02
+      type: NFR
+      nfr_category: performance
+      text: API 호출이 늘어도 응답 속도가 안정적이어야 한다.
+    - id: REQ-03
+      type: NFR
+      nfr_category: performance
+      text: JSON 데이터 송수신 처리 성능을 최적화해야 한다.
+    - id: REQ-04
+      type: FR
+      nfr_category: null
+      text: API 호출 오류와 예외를 처리할 수 있어야 한다.
+    - id: REQ-05
+      type: NFR
+      nfr_category: other
+      text: 앞으로 설비와 IoT 연계를 고려한 인터페이스 구조를 적용해야 한다.
+  output:
+    functions:
+    - name: API 연계 오류·예외 처리
+      description: 외부 시스템과 REST API로 JSON 데이터를 주고받을 때 호출 오류와 예외를 처리한다. 호출이 늘어도 처리 성능과 응답 속도가 안정적이어야 하고, 설비·IoT 연계를 고려한 인터페이스 구조를 따른다.
+      priority: null
+      priority_source: unspecified
+      priority_rationale: null
+      req_ids: [REQ-01, REQ-02, REQ-03, REQ-04, REQ-05]
