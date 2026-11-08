@@ -81,8 +81,8 @@
 | 검토 보고서 | Markdown (중간) | source별 지적·근거·수정 이력·검증/승인 상태 |
 
 - PDF는 승인 시점에 최종 Markdown·Mermaid를 변환해 1회 만든다 (확정).
-- PDF 엔진 제안: WeasyPrint(HTML/CSS → PDF) + `mermaid-cli`(SVG). ERD가 깨지면 Playwright 인쇄로 전환 (ADR-0004).
-- 한글 폰트·긴 표 페이지 분할·머리글 반복·ERD 배율을 샘플로 점검한다.
+- PDF 엔진: WeasyPrint(HTML/CSS → PDF) + `mermaid-cli`(SVG), Mermaid 11.15.0. 기능 명세서와 ERD가 같은 엔진을 쓴다. ERD가 깨지면 Playwright 인쇄로 전환 (ADR-0004 승인).
+- 한글 폰트(Noto Sans CJK KR)·긴 표 페이지 분할·머리글 반복·ERD 배율은 실측으로 확인했다. ERD는 개요 + 영역별 상세도(키 속성만) + 테이블 정의서로 나누고, 넓은 표는 가로 쪽에 두되 넘치면 열을 나눈다 (ADR-0004 「PDF 출력 실측」).
 - 렌더러가 외부 경로·URL 리소스를 가져오지 못하게 제한한다.
 
 ### 출력 manifest
