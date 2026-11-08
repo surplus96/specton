@@ -684,3 +684,81 @@ def test_manifest_lists_final_reviewer_versions_and_rejects_a_stale_file_list(
     }
     with pytest.raises(ValueError, match="manifest"):
         export_node(w.settings.storage_dir)(state)
+
+
+def test_manifest_checkpoint_recovers_after_its_publication_transaction_rolls_back(
+    world: Callable[..., _World], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import specton.runner as runner_module
+
+    first = world()
+    publish = runner_module.publish_artifacts
+
+    def crash(*args: Any, **kwargs: Any) -> None:
+        publish(*args, **kwargs)
+        if any(a["ref"].kind == "manifest" for a in args[3].values()):
+            first.runner.request_stop()
+            raise runner_module._Stop
+
+    monkeypatch.setattr(runner_module, "publish_artifacts", crash)
+    run_id = first.create()
+    first.prepare(run_id, final="reviewing")
+    assert len(first.artifacts(run_id)) == 5
+    snapshot = first.graph.get_state({"configurable": {"thread_id": run_id}}).values
+    (candidate,) = [
+        a for a in snapshot["generated_artifacts"].values() if a["ref"].kind == "manifest"
+    ]
+    monkeypatch.setattr(runner_module, "publish_artifacts", publish)
+    restarted = world(previous=first)
+    restarted.runner.run_pending()
+    assert restarted.status(run_id)["status"] == "awaiting_review"
+    assert restarted.generated == [] and len(restarted.artifacts(run_id)) == 6
+    (stored,) = [a for a in restarted.artifacts(run_id) if a["kind"] == "manifest"]
+    assert stored["hash"] == candidate["ref"].hash
+    assert restarted.review(run_id, "approve").status_code == 202
+    restarted.runner.run_pending()
+    response = restarted.download(run_id, "manifest", "json")
+    assert response.status_code == 200
+    assert hashlib.sha256(response.content).hexdigest() == candidate["ref"].hash
+    with first.pool.connection() as conn:
+        events = runs.events_after(conn, UUID(run_id), first.client.cookies[SESSION_COOKIE], 0)
+    assert (
+        sum(
+            e.event == "artifact"
+            and e.data.payload.get("kind") == "manifest"
+            and not e.data.payload.get("approved")
+            for e in events
+        )
+        == 1
+    )
+
+
+@pytest.mark.parametrize("boundary", ["cancel", "lease"])
+def test_late_manifest_candidate_is_not_published_after_cancel_or_lease_loss(
+    world: Callable[..., _World], monkeypatch: pytest.MonkeyPatch, boundary: str
+) -> None:
+    original = main.manifest_node
+
+    def factory(root: Path) -> Callable[[GraphState], Mapping[str, Any]]:
+        prepare = original(root)
+
+        def late(state: GraphState) -> Mapping[str, Any]:
+            result = prepare(state)
+            with w.pool.connection() as conn:
+                if boundary == "cancel":
+                    runs.request_cancel(conn, UUID(run_id), w.client.cookies[SESSION_COOKIE], 0)
+                else:
+                    conn.execute(
+                        "UPDATE job_lease SET lease_until=now() WHERE run_id=%s", (UUID(run_id),)
+                    )
+                    assert lease.acquire(conn, UUID(run_id), "other-worker", 60)
+            return result
+
+        return late
+
+    monkeypatch.setattr(main, "manifest_node", factory)
+    w = world()
+    run_id = w.create()
+    w.prepare(run_id, final="cancelled" if boundary == "cancel" else "reviewing")
+    assert all(a["kind"] != "manifest" for a in w.artifacts(run_id))
+    assert w.download(run_id, "manifest", "json").status_code == 409
