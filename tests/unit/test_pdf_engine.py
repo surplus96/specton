@@ -506,27 +506,32 @@ def test_a_render_ending_while_another_logs_does_not_hide_its_missing_glyphs(
     """#209 R1 두 번째 재현: 깨지는 문서의 경고를 로거가 핸들러에 넘기는 도중 정상 문서 렌더링이
     끝나도 깨지는 문서는 PdfError다. 렌더링마다 핸들러를 떼던 예전 코드는 로거가 도는 핸들러 목록이
     바뀌어 깨지는 문서 쪽 핸들러를 건너뛰고 PDF가 성공으로 나왔다.
-    emit은 원래 동작을 그대로 부르고 Event로 순서만 맞춘다."""
+    `handle`·`emit`은 원래 동작을 그대로 부르고 Event로 순서만 맞춘다.
+
+    멈추는 곳은 핸들러 잠금(`Handler.handle`이 `emit` 전에 잡는다) 바깥이다. 잠금 안에서 멈추면
+    정상 문서가 그 사이 남기는 WeasyPrint 경고(CI의 HarfBuzz-Subset 안내 등)가 잠금에서 기다려
+    시험이 멈춘다. 그 경우도 시험하려고 정상 문서가 경고 하나를 직접 남긴다."""
     weasyprint = _weasyprint()
     original_render = weasyprint.HTML.render
-    original_emit = pdf._MissingGlyphs.emit
+    original_handle = pdf._MissingGlyphs.handle
     ascii_ready, ascii_go = threading.Event(), threading.Event()
-    broken_in_emit, broken_go = threading.Event(), threading.Event()
+    broken_in_handler, broken_go = threading.Event(), threading.Event()
 
     def render(self: Any, *args: Any, **kwargs: Any) -> Any:
         if threading.current_thread().name == "ascii":
             ascii_ready.set()
             assert ascii_go.wait(30)
+            logging.getLogger("weasyprint").warning("정상 문서 쪽 경고")  # 글자 깨짐과 무관
         return original_render(self, *args, **kwargs)
 
-    def emit(self: Any, record: logging.LogRecord) -> None:
-        if threading.current_thread().name == "broken" and not broken_in_emit.is_set():
-            broken_in_emit.set()  # 로거가 첫 핸들러를 처리하는 중
+    def handle(self: Any, record: logging.LogRecord) -> Any:
+        if threading.current_thread().name == "broken" and not broken_in_handler.is_set():
+            broken_in_handler.set()  # 로거가 첫 핸들러를 처리하는 중
             assert broken_go.wait(30)
-        original_emit(self, record)
+        return original_handle(self, record)
 
     monkeypatch.setattr(weasyprint.HTML, "render", render)
-    monkeypatch.setattr(pdf._MissingGlyphs, "emit", emit)
+    monkeypatch.setattr(pdf._MissingGlyphs, "handle", handle)
     results: dict[str, Any] = {}
     ascii_doc = threading.Thread(
         target=_run_into, args=(results, "ascii", "<p>plain ascii</p>"), name="ascii"
@@ -537,11 +542,14 @@ def test_a_render_ending_while_another_logs_does_not_hide_its_missing_glyphs(
     ascii_doc.start()
     assert ascii_ready.wait(30)  # 정상 문서가 먼저 시작
     broken_doc.start()
-    assert broken_in_emit.wait(30)  # 깨지는 문서의 경고가 핸들러에 넘어가는 중
+    assert broken_in_handler.wait(30)  # 깨지는 문서의 경고가 핸들러에 넘어가는 중
     ascii_go.set()
     ascii_doc.join(30)  # 그 사이 정상 문서는 끝까지 (예전 코드는 여기서 핸들러를 뗐다)
+    ascii_finished = not ascii_doc.is_alive()
     broken_go.set()
     broken_doc.join(30)
+
+    assert ascii_finished, "정상 문서가 깨지는 문서의 경고 처리를 기다리며 멈췄다"
 
     assert isinstance(results["ascii"], pdf.PdfResult), results["ascii"]
     assert isinstance(results["broken"], PdfError), results["broken"]
