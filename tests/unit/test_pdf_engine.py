@@ -12,10 +12,12 @@ WeasyPrint가 필요한 시험은 WeasyPrint를 불러올 수 없는 곳(Windows
 """
 
 import json
+import logging
 import os
 import re
 import shutil
 import subprocess
+import threading
 import zlib
 from pathlib import Path
 from typing import Any
@@ -425,3 +427,63 @@ def test_real_mermaid_cli_draws_every_section() -> None:
         # 상자 글자가 PDF에 남도록 HTML 조각 없이 SVG 글자로 그려진다
         assert "<foreignObject" not in svg and "<text" in svg
         assert "창고" in svg or "입고" in svg or "거래처" in svg
+
+
+# ── 동시 렌더링 (#209 R1 리뷰: 다른 렌더링의 글자 깨짐 경고가 섞이지 않음) ─────
+
+
+_NOTDEF = '.notdef glyph rendered for Unicode string unsupported by fonts: "{}"'
+
+
+def test_missing_glyph_handler_ignores_warnings_from_other_threads() -> None:
+    """핸들러는 자신을 만든 스레드(지금 렌더링)의 경고만 모은다. WeasyPrint 없이도 돈다."""
+    logger = logging.getLogger("weasyprint")
+    handler = pdf._MissingGlyphs()
+    logger.addHandler(handler)
+    try:
+        other = threading.Thread(target=lambda: logger.warning(_NOTDEF.format("가")))
+        other.start()
+        other.join()
+        assert handler.chars == set()  # 다른 스레드 경고는 무시
+        logger.warning(_NOTDEF.format("나"))
+        assert handler.chars == {"나"}  # 이 스레드 경고는 모은다
+    finally:
+        logger.removeHandler(handler)
+
+
+def test_concurrent_renders_fail_only_the_document_with_missing_glyphs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """정상 문서 렌더링이 핸들러를 건 뒤 멈춘 사이 다른 스레드가 깨지는 문서를 렌더링해도
+    정상 문서는 PDF가 나오고, 깨지는 문서만 PdfError다 (R1 재현 순서 그대로)."""
+    weasyprint = _weasyprint()
+    original = weasyprint.HTML.render
+    ascii_ready, release = threading.Event(), threading.Event()
+
+    def render(self: Any, *args: Any, **kwargs: Any) -> Any:
+        if threading.current_thread().name == "ascii":
+            ascii_ready.set()  # 핸들러 등록을 마치고 렌더링 직전
+            assert release.wait(30)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(weasyprint.HTML, "render", render)
+    results: dict[str, Any] = {}
+
+    def run(name: str, document: str) -> None:
+        try:
+            results[name] = pdf.html_to_pdf(document)
+        except PdfError as exc:
+            results[name] = exc
+
+    ascii_doc = threading.Thread(target=run, args=("ascii", "<p>plain ascii</p>"), name="ascii")
+    ascii_doc.start()
+    assert ascii_ready.wait(30)
+    run("broken", "<p>\U0010fffd</p>")  # 어떤 폰트에도 없는 글자, 이 스레드에서 끝까지 렌더링
+    release.set()
+    ascii_doc.join(30)
+
+    assert isinstance(results["broken"], PdfError)
+    assert isinstance(results["ascii"], pdf.PdfResult), results["ascii"]
+    assert results["ascii"].pdf.startswith(b"%PDF")
+    handlers = logging.getLogger("weasyprint").handlers
+    assert not any(isinstance(h, pdf._MissingGlyphs) for h in handlers)  # 두 경로 모두 제거됨

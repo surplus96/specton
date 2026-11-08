@@ -29,6 +29,7 @@ import logging
 import re
 import subprocess
 import tempfile
+import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -425,7 +426,13 @@ def _esc(text: str) -> str:
 
 
 class _MissingGlyphs(logging.Handler):
-    """WeasyPrint가 폰트에 없는 글자를 □(.notdef)로 그렸다는 경고를 모은다."""
+    """WeasyPrint가 폰트에 없는 글자를 □(.notdef)로 그렸다는 경고를 모은다.
+
+    `weasyprint` 로거는 프로세스 전체가 함께 쓴다. 실행기가 PDF 여러 개를 동시에 만들 때
+    (`run_concurrency`) 다른 렌더링의 경고가 섞이지 않게, 이 핸들러를 만든 스레드의 기록만 모은다
+    (#209 R1 리뷰: 한 문서의 깨진 글자 때문에 동시에 만들던 정상 문서까지 실패하던 결함).
+    WeasyPrint의 `render`·`write_pdf`는 부른 스레드에서 그대로 돈다.
+    """
 
     _PATTERN = re.compile(
         r"\.notdef glyph rendered for Unicode string unsupported by fonts: " r'"(.*)"'
@@ -434,8 +441,11 @@ class _MissingGlyphs(logging.Handler):
     def __init__(self) -> None:
         super().__init__(level=logging.WARNING)
         self.chars: set[str] = set()
+        self._thread = threading.get_ident()
 
     def emit(self, record: logging.LogRecord) -> None:
+        if record.thread != self._thread:
+            return  # 다른 렌더링(다른 스레드)의 경고
         match = self._PATTERN.search(record.getMessage())
         if match:
             self.chars.update(match.group(1))
