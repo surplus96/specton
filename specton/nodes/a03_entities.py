@@ -287,8 +287,8 @@ def load_pack_context(pack: str, *, root: Path = DEFAULT_ROOT) -> PackContext:
     도메인마다 두 PostgreSQL 매핑(strict·pg_native) 중 어느 쪽을 쓸지는 공통 팩
     `naming.yaml`의 `type_profile` 값으로 고른다. 그 값이 "strict"인 동안 출력은
     옛 구현(YAML 직접 읽기·strict 고정)과 같다. 로더가 팩 전체(words·patterns 포함)를
-    검증하므로, 팩 파일이 깨지면 예전과 달리 여기서 PackError가 난다. 팩 위치(`root`)를
-    실행 설정에서 넘겨받는 연결은 아직 없다(호출부는 기본 위치를 쓴다, #11 남은 것).
+    검증하므로, 팩 파일이 깨지면 예전과 달리 여기서 PackError가 난다.
+    실행 노드는 Settings.pack_root를 넘겨 예시와 같은 위치의 팩을 읽는다.
     """
     loaded = load_pack(pack, root=root)
     # 임시(#11): 프로필은 naming.yaml의 type_profile에서 온다 (ADR-0009 미확정).
@@ -335,7 +335,7 @@ def run(
         raise ValueError("A03: 엔티티를 설계할 요구사항이 없습니다")
     if not state.functions:
         raise ValueError("A03: 엔티티를 설계할 기능이 없습니다")
-    context = load_pack_context(pack)
+    context = load_pack_context(pack, root=settings.pack_root)
     request = build_request(
         settings,
         role="design",
@@ -343,7 +343,7 @@ def run(
         prompt_version=PROMPT_VERSION,
         system=SYSTEM_PROMPT,
         data=input_data(state, terms=context.terms, exemption_reasons=context.exemption_reasons),
-        examples=load_examples(pack, "A03", A03Output),
+        examples=load_examples(pack, "A03", A03Output, root=settings.pack_root),
     )
     output_model = _checked_against(
         {f.id for f in state.functions},
