@@ -10,8 +10,10 @@
 #   빌드: docker build -t specton-api .   (마지막 단계 release = runtime, 테스트 파일 없음)
 #   검사: docker build --target check .   (PDF·ERD 테스트를 이미지 안에서 돌린다)
 
-ARG PYTHON_IMAGE=python:3.12-slim-bookworm
-ARG NODE_IMAGE=node:22-bookworm-slim
+# 바탕 이미지는 다이제스트로 고정한다 (#226 리뷰). apt 패키지(Chromium·Pango)는 빌드 시점 판이므로,
+# 배포는 한 번 만든 이미지를 그대로 옮겨 「로컬과 AWS가 같은 이미지」를 지킨다 (#25).
+ARG PYTHON_IMAGE=python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d
 ARG MERMAID_CLI_IMAGE=minlag/mermaid-cli:11.16.1@sha256:d98fe54c22e78e65335589fc17d5419f698f915cebca48ea21fee633aff8b258
 
 # ── mermaid-cli: 고정 이미지의 설치 파일·잠금 파일로 다시 설치 ─────────────
@@ -41,10 +43,12 @@ RUN uv sync --locked --no-dev
 FROM ${PYTHON_IMAGE} AS runtime
 # Pango: WeasyPrint. fonts-noto-cjk: "Noto Sans CJK KR"(specton/export/pdf.py FONT_FAMILY).
 # chromium: mermaid-cli가 SVG를 그린다. libstdc++6: node 실행 파일.
+# tini: PID 1로 끝난 자식 프로세스를 회수한다. 없으면 mmdc가 남긴 Chromium 보조 프로세스가
+# 좀비로 쌓인다(#226 리뷰 재현: ERD 3번에 좀비 12개 → tini로 0개).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 \
-      fonts-noto-cjk chromium libstdc++6 ca-certificates \
+      fonts-noto-cjk chromium libstdc++6 ca-certificates tini \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=mermaid /usr/local/bin/node /usr/local/bin/node
@@ -67,6 +71,7 @@ ENV PATH="/app/.venv/bin:/opt/mermaid-cli/node_modules/.bin:${PATH}" \
 
 USER specton
 EXPOSE 8000
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["uvicorn", "specton.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 # ── 검사용: 이미지 안에서 PDF·ERD 테스트 (배포 이미지에는 들어가지 않는다) ──────
@@ -79,7 +84,8 @@ RUN UV_PYTHON_DOWNLOADS=never uv sync --locked \
  && chown -R specton:specton /app
 USER specton
 ENV SPECTON_MMDC_PUPPETEER=/app/config/puppeteer.json
-RUN pytest -q -rs tests/unit/test_pdf_engine.py tests/unit/test_pdf_adapter.py \
+# mmdc가 PATH에 없으면 실제 mermaid-cli 시험이 건너뛰기로 끝나므로 먼저 막는다 (#226 리뷰).
+RUN mmdc --version && pytest -q -rs tests/unit/test_pdf_engine.py tests/unit/test_pdf_adapter.py \
       tests/unit/test_erd.py tests/unit/test_erd_areas.py tests/unit/test_erd_node.py
 
 # ── 기본 빌드 대상: 실행 이미지 (마지막 단계가 기본이라 check 뒤에 둔다) ─────
