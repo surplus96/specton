@@ -13,6 +13,9 @@
 | 파일 저장소 | 원문·추출본·출력 | `storage_ref`로 접근, 파일명을 경로로 쓰지 않음 |
 
 - 로컬: `docker compose up -d db` (PostgreSQL 18, 127.0.0.1에만 노출). 초기화 스크립트는 `docker/postgres/init/`.
+  - 초기화 스크립트는 DB 볼륨을 처음 만들 때만 돈다. 격리 DB(`specton_sandbox`)를 만드는 `01_sandbox.sh`는 #171(2026-11-08)에서 들어왔으므로, 그 전에 만든 개발 DB 볼륨에는 격리 DB·역할이 없어 SQL 검증이 연결 오류(`error`)로 끝나고 실행이 실패한다. 볼륨을 지우고 다시 만들면(`docker compose down -v` 뒤 `up -d db`, 개발 DB 내용은 사라짐) 생긴다.
+  - `*.sh`는 `.gitattributes`로 LF를 쓴다(#171). 그 전에 받은 Windows 작업 폴더는 `01_sandbox.sh`가 CRLF로 남아 bash가 실패할 수 있다. 파일을 지우고 `git checkout -- docker/postgres/init/01_sandbox.sh`로 다시 받으면 LF가 된다.
+  - Windows Docker Desktop에서는 DB 주소를 `localhost`가 아닌 `127.0.0.1`로 쓴다(`.env.example` 기본값). 아래 「격리 DB (sandbox)」의 IPv6 설명과 같은 원인이다.
 - 로컬과 AWS는 같은 컨테이너 이미지를 쓴다. PDF 렌더러 의존성·한글 폰트·모델 다운로드를 이미지에 포함한다.
 - 배포 구성 (#25): `compose.deploy.yml`이 db·api(`Dockerfile`)·web(`frontend/Dockerfile`, Caddy)을 띄운다.
   밖으로 여는 포트는 web의 80·443뿐이고 db·api는 내부 네트워크에만 둔다. web이 `/runs`·`/health`를 api로 넘기고
