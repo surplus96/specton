@@ -101,3 +101,16 @@ def test_implemented_query_params_match_the_openapi_draft() -> None:
 
     for op_id, names in generated.items():
         assert names == draft[op_id], op_id
+
+
+@pytest.mark.parametrize("name", ["kind", "file_format"])
+def test_artifact_download_enums_match_the_documented_contract(name: str) -> None:
+    path = "/runs/{id}/artifacts/{kind}"
+    generated = create_app(Settings(_env_file=None)).openapi()["paths"][path]
+    implemented = next(p for p in generated["get"]["parameters"] if p["name"] == name)
+    documented = next(
+        p
+        for p in (*DRAFT["paths"][path]["parameters"], *DRAFT["paths"][path]["get"]["parameters"])
+        if p["name"] == name
+    )
+    assert implemented["schema"]["enum"] == documented["schema"]["enum"]

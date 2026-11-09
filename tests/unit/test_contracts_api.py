@@ -149,6 +149,21 @@ def test_error_example_uses_documented_shape() -> None:
     assert error.model_dump()["code"] == "RUN_REVISION_CONFLICT"
 
 
+def test_error_detail_is_optional_and_not_blank() -> None:
+    """「자세히 보기」 문장은 선택이다. 있으면 빈 문장이 아니다 (#19)."""
+    base = {
+        "code": ErrorCode.EXTRACTION_FAILED,
+        "message": "문서를 읽지 못했어요.",
+        "retryable": False,
+    }
+
+    assert Error.model_validate(base).detail is None
+    detailed = Error.model_validate({**base, "detail": "표 머리글을 찾지 못했어요."})
+    assert detailed.model_dump()["detail"] == "표 머리글을 찾지 못했어요."
+    with pytest.raises(ValidationError):
+        Error.model_validate({**base, "detail": " "})
+
+
 def test_run_summary_requires_created_at() -> None:
     with pytest.raises(ValidationError):
         RunSummary.model_validate({"run_id": str(uuid4()), "status": "queued", "revision": 0})

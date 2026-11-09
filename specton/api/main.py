@@ -19,6 +19,7 @@ from specton.document_node import document_node
 from specton.erd_node import erd_node
 from specton.export_node import export_node
 from specton.graph import GraphState, build_graph
+from specton.manifest_node import manifest_node
 from specton.normalization_node import normalization_node
 from specton.parse_node import parse_node
 from specton.pdf_adapter import erd_pdf_renderer
@@ -49,6 +50,7 @@ def create_graph(
         "erd": erd,
         "ddl": ddl_node(settings),
         "rtm": document_node(settings.storage_dir),
+        "wait_review": manifest_node(settings.storage_dir),
         "export": export_node(settings.storage_dir),
     }
     return build_graph(nodes, checkpointer=checkpointer)

@@ -49,8 +49,8 @@ class ArtifactRef(Contract):
     `approved`는 승인본 여부다. 초안과 승인본을 구분한다 (05 문서 플랫폼 저장 모델).
     """
 
-    kind: Literal["requirements", "functions", "erd", "ddl", "rtm", "review"]
-    file_format: Literal["md", "pdf", "mmd", "sql", "xlsx", "csv"]
+    kind: Literal["requirements", "functions", "erd", "ddl", "rtm", "review", "manifest"]
+    file_format: Literal["md", "pdf", "mmd", "sql", "xlsx", "csv", "json"]
     revision: int = Field(ge=0)
     hash: NonEmptyText
     approved: bool = False
