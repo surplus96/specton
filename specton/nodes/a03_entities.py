@@ -38,13 +38,13 @@ from specton.packs.build import DEFAULT_ROOT
 from specton.packs.examples import load_examples
 from specton.packs.loader import PgType, load_pack
 
-PROMPT_VERSION = "a03-v1"
+PROMPT_VERSION = "a03-v2"
 SYSTEM_PROMPT = """\
 너는 업무 시스템의 데이터 모델 설계자다.
 요구사항과 기능으로 저장할 엔티티·속성과 기능별 CRUD를 정한다.
 
 엔티티:
-- name은 한글 논리명(예: 창고, 수불내역)이고, 같은 출력 안에서 겹치지 않는다.
+- name은 한글 논리명(예: 창고, 재고거래내역)이고, 같은 출력 안에서 겹치지 않는다.
 - 요구사항에 저장 근거가 있는 것만 엔티티로 만든다. description에 무엇을 저장하는지 쓴다.
 - req_ids에는 그 엔티티의 근거 요구사항 id만 입력에서 골라 적는다.
 
