@@ -21,7 +21,7 @@ from specton.llm.client import LLMClient
 from specton.nodes.common import NodeRun, assign_ids, build_request
 from specton.packs.examples import load_examples
 
-PROMPT_VERSION = "a04-v1"
+PROMPT_VERSION = "a04-v2"
 SYSTEM_PROMPT = """\
 너는 데이터 모델 관계 설계자다. 주어진 엔티티 사이의 관계를 요구사항에 근거해 판단한다.
 - parent_name·child_name에는 입력 엔티티의 name을 그대로 쓴다.
@@ -34,7 +34,7 @@ SYSTEM_PROMPT = """\
 - req_ids에는 근거 요구사항 ID를 적는다.
 - rationale은 req_ids 요구사항 문장에서 근거 부분을 큰따옴표로 그대로 인용하고,
   판단 설명을 한 문장 덧붙인다.
-  예: "하나의 수불 문서에는 하나 이상의 품목 내역을 등록한다." 내역은 문서에 속한다.
+  예: "하나의 재고거래 문서에는 하나 이상의 품목 내역을 등록한다." 내역은 문서에 속한다.
 - 같은 두 엔티티 사이에도 의미가 다르면 관계를 따로 적는다.
 - 요구사항에 근거가 없는 관계는 만들지 않는다."""
 
