@@ -14,6 +14,7 @@ import {
   nameIndex,
   problems,
   reviewNotices,
+  severityGroups,
   sortFindings,
   sourceText,
   targetText,
@@ -221,4 +222,27 @@ describe('서버(mock)와 같은 결과', () => {
     const findings = (await getView(run.run_id, 'review')).items as Finding[]
     return { run, findings }
   }
+})
+
+describe('검토가 필요한 항목 요약', () => {
+  const f = (id: string, severity: Finding['severity'], ...targets: string[]) =>
+    ({ id, severity, targets: targets.map((t) => ({ kind: 'entity', id: t })) }) as unknown as Finding
+  const names = new Map([
+    ['ENT-1', '입고'],
+    ['ENT-2', '창고'],
+  ])
+
+  it('심각도마다 건수와 대표 대상, 없는 심각도는 빼고 차단 → 주요 → 참고 순서', () => {
+    const groups = severityGroups([f('F3', 'minor', 'ENT-2'), f('F1', 'critical', 'ENT-1', 'ENT-2'), f('F2', 'critical', 'ENT-1')], names)
+    expect(groups).toEqual([
+      { severity: 'critical', count: 2, sample: '입고 외 1개' },
+      { severity: 'minor', count: 1, sample: '창고' },
+    ])
+  })
+
+  it('이름을 모르면 ID, 대상이 없으면 「대상 없음」, 지적이 없으면 빈 목록', () => {
+    expect(severityGroups([f('F1', 'major', 'ENT-9')], names)[0].sample).toBe('ENT-9')
+    expect(severityGroups([f('F1', 'major')], names)[0].sample).toBe('대상 없음')
+    expect(severityGroups([], names)).toEqual([])
+  })
 })

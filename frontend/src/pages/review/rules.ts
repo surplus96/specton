@@ -25,6 +25,25 @@ export function countBySeverity(findings: readonly Finding[]): Record<Severity, 
   return counts
 }
 
+export type SeverityGroup = { severity: Severity; count: number; sample: string }
+
+/**
+ * 「검토가 필요한 항목」 요약: 심각도마다 건수와 대표 대상(첫 지적의 첫 대상 이름, 나머지는 「외 n개」).
+ * 지적이 없는 심각도는 뺀다. 차단 → 주요 → 참고 순서.
+ */
+export function severityGroups(findings: readonly Finding[], names: Map<string, string>): SeverityGroup[] {
+  const groups: SeverityGroup[] = []
+  for (const severity of ['critical', 'major', 'minor'] as const) {
+    const mine = findings.filter((f) => f.severity === severity)
+    if (mine.length === 0) continue
+    const targets = mine.flatMap((f) => f.targets.map((t) => names.get(t.id) ?? t.id))
+    const unique = [...new Set(targets)]
+    const sample = unique.length === 0 ? '대상 없음' : unique.length === 1 ? unique[0] : `${unique[0]} 외 ${unique.length - 1}개`
+    groups.push({ severity, count: mine.length, sample })
+  }
+  return groups
+}
+
 /** 승인 가능 여부 (ADR-0010: 차단 오류가 남아 있으면 승인 불가) */
 export function canApprove(findings: readonly Finding[]): boolean {
   return !findings.some((f) => f.severity === 'critical')
