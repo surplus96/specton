@@ -95,7 +95,8 @@ ENV SPECTON_MMDC_PUPPETEER=/app/config/puppeteer.json
 # mmdc가 PATH에 없으면 실제 mermaid-cli 시험이 건너뛰기로 끝나므로 먼저 막는다 (#226 리뷰).
 # libfreetype 선로드가 빠지면 rhwp import가 실패하므로 여기서 막는다 (#25 R1 요청).
 RUN mmdc --version && python -c "import rhwp" && pytest -q -rs tests/unit/test_pdf_engine.py tests/unit/test_pdf_adapter.py \
-      tests/unit/test_erd.py tests/unit/test_erd_areas.py tests/unit/test_erd_node.py
+      tests/unit/test_erd.py tests/unit/test_erd_areas.py tests/unit/test_erd_node.py \
+      tests/unit/test_pdf_scale.py
 
 # ── 기본 빌드 대상: 실행 이미지 (마지막 단계가 기본이라 check 뒤에 둔다) ─────
 FROM runtime AS release
