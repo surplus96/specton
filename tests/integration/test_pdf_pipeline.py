@@ -80,7 +80,11 @@ def _a03(state: GraphState) -> dict[str, Any]:
                 ),
             )
         )
-    return {"design": design.evolve(entities=(entity,))}
+    functions = tuple(
+        f.evolve(entity_ops=({"entity_id": entity.id, "operations": ("C", "R")},))
+        for f in design.functions
+    )
+    return {"design": design.evolve(entities=(entity,), functions=functions)}
 
 
 def _a02(state: GraphState) -> dict[str, Any]:

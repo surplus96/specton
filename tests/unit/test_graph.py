@@ -155,6 +155,25 @@ def test_runs_every_stage_and_completes_after_approval() -> None:
     assert run.visited[-2:] == ["rules", "export"]
 
 
+@pytest.mark.parametrize("code", ["RULE-02", "RULE-06"])
+def test_direct_graph_approval_cannot_export_unresolved_critical_rules(code: str) -> None:
+    finding = Finding(
+        id=f"{code}-1-1", source="rule", rule_code=code, kind="unlinked",
+        severity="critical", targets=({"kind": "requirement", "id": "REQ-01"},),
+        evidence=({"quote": "기능 연결이 없습니다"},), suggestion="연결을 수정한다",
+        fingerprint=f"{code}-critical", iteration=1,
+    )  # fmt: skip
+    run = _Run({"rules": lambda state: {"rule_findings": (finding,)}}, max_rework=0)
+    run.start()
+    before = run.resume(REQUIREMENTS_OK)
+    assert _interrupt(before)["kind"] == "review"
+    after = run.resume(APPROVE)
+    assert _interrupt(after)["kind"] == "review"
+    assert after["design"].status == "awaiting_review"
+    assert after["design"].findings == (finding,)
+    assert "export" not in run.visited
+
+
 def test_generation_branches_join_before_rule_check() -> None:
     run = _Run()
     run.start()

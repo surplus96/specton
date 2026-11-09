@@ -101,11 +101,14 @@ flowchart TD
 
 API의 `create_graph`는 실제 정리 노드와 #15 실패 변환기를 등록한다. 둘 다 `settings.pack_root`를 사용하며 규칙 심각도는 그래프를 만들 때 공통 팩에서 읽는다. #168의 `unsupported_relationship` 구분에 따라 설계 규칙 위반(D8)은 자동 재작업하고, 자기참조 N:M의 지원 부족(D4)은 바로 사람 확인으로 보낸다. 실제 API 경로에서 성공 모델 저장·재작업·재시작·승인 차단을 검증한다.
 
-ERD 가지는 `specton.erd_node`를 등록한다. 저장된 `DesignState.normalized`와 같은 설계의 관계로 상세 Mermaid 원문을 만들고, UTF-8 바이트를 `write_artifact()`로 초안 `.mmd` 파일에 저장한다. 노드는 파일·모델 해시와 현재 revision을 담은 `GeneratedArtifact`만 기존 채널로 반환하며, 실행기가 모델·진행·산출물·이벤트를 같은 트랜잭션으로 게시한다. 정리 실패 시 ERD도 건너뛰며, 생성·저장 오류는 실행 오류로 전달한다. 후속 전체 규칙의 실제 노드 등록은 후속 범위다.
+ERD 가지는 `specton.erd_node`를 등록한다. 저장된 `DesignState.normalized`와 같은 설계의 관계로 상세 Mermaid 원문을 만들고, UTF-8 바이트를 `write_artifact()`로 초안 `.mmd` 파일에 저장한다. 노드는 파일·모델 해시와 현재 revision을 담은 `GeneratedArtifact`만 기존 채널로 반환하며, 실행기가 모델·진행·산출물·이벤트를 같은 트랜잭션으로 게시한다. 정리 실패 시 ERD도 건너뛰며, 생성·저장 오류는 실행 오류로 전달한다.
+
+API의 `rules` 노드에는 `specton.design_rules_node`를 등록한다 (#225·#17). 생성·SQL 검증을 통과한 설계에 RULE-02(미연결 FR)·RULE-06(CRUD 정합성)을 적용하고 기존 규칙 지적을 보존해 `merge_review`로 넘긴다. 심각도와 CRUD 면제는 `settings.pack_root`의 공통 팩에서 읽는다. 지정된 복귀 단계는 자동 재작업하고, 복귀 단계가 없는 비기능 요구 전용 미사용 엔티티는 A09가 판단한다. 반복·상한은 HITL 2로 전환하며 미해결 critical은 API 승인과 그래프 직접 재개의 내보내기를 모두 차단한다. 정리·SQL 실패 시에는 이 노드와 LLM 검토를 건너뛰는 기존 경로를 유지한다. SC-01~06은 후속 인계 범위다.
 
 기존 `rtm` 가지에는 `specton.document_node`를 등록한다. #213 기능 명세 Markdown과 #215
 RTM Excel·CSV 생성기를 순서대로 호출하고 세 파일을 같은 고정 모델·revision의 초안으로
 반환한다. 성공한 정리 결과와 실행의 팩·버전이 일치해야 하며, 정리 실패 시 이 가지도 건너뛴다.
+기능이 0건이면 빈 명세서 대신 RTM만 만들고, 미연결 FR을 후속 RULE-02에서 지적해 재작업한다.
 체크포인트 노드 구성은 유지한다. 노드는 DB에 쓰지 않고, 실행기가 기존 채널의
 `GeneratedArtifact`를 모델·진행·이벤트와 같은 트랜잭션으로 게시한다. 문서 생성 예외에는
 일부 문서의 성공 기록을 만들지 않으며, 다른 가지에서 완료한 SQL·검증 기록의 복구는 유지한다.

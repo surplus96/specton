@@ -18,6 +18,7 @@ from specton.contracts import (
     VALIDATION_STEPS,
     BranchResult,
     Entity,
+    Function,
     Requirement,
     SqlValidation,
     ValidationIssue,
@@ -58,7 +59,17 @@ def _entities(state: GraphState) -> dict[str, Any]:
             "is_key": True, "nullable": False, "req_ids": ["REQ-01"],
         }],
     })  # fmt: skip
-    return {"design": state["design"].evolve(entities=(entity,))}
+    return _with_entities(state, (entity,))
+
+
+def _with_entities(state: GraphState, entities: tuple[Entity, ...]) -> dict[str, Any]:
+    """DDL 정상 시험도 최종 규칙을 통과하는 기능·CRUD 연결을 갖춘다."""
+    function = Function(
+        id="FUNC-01", name="등록·조회", description="대상을 등록하고 조회한다",
+        req_ids=tuple(r.id for r in state["design"].requirements),
+        entity_ops=tuple({"entity_id": e.id, "operations": ("C", "R")} for e in entities),
+    )  # fmt: skip
+    return {"design": state["design"].evolve(entities=entities, functions=(function,))}
 
 
 SECOND_ENTITY = {"inventory": ("품목", "품목코드"), "maintenance": ("부품", "부품코드")}
@@ -92,7 +103,7 @@ def _two_entities(state: GraphState) -> dict[str, Any]:
         )
         for i, (name, key) in enumerate(pairs, start=1)
     )
-    return {"design": state["design"].evolve(entities=entities)}
+    return _with_entities(state, entities)
 
 
 def _result(sql: bytes, status: str) -> SqlValidation:
