@@ -1,6 +1,6 @@
 """FastAPI 앱 진입점."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -19,7 +19,7 @@ from specton.design_rules_node import design_rules_node
 from specton.document_node import document_node
 from specton.erd_node import erd_node
 from specton.export_node import export_node
-from specton.graph import GraphState, build_graph
+from specton.graph import GraphState, Node, build_graph
 from specton.manifest_node import manifest_node
 from specton.normalization_node import normalization_node
 from specton.parse_node import parse_node
@@ -35,9 +35,15 @@ class HealthResponse(BaseModel):
 
 
 def create_graph(
-    settings: Settings, checkpointer: BaseCheckpointSaver[Any]
+    settings: Settings,
+    checkpointer: BaseCheckpointSaver[Any],
+    agent_nodes: Mapping[str, Node] | None = None,
 ) -> CompiledStateGraph[GraphState, None, GraphState, GraphState]:
-    """문서·에이전트·정리·생성·SQL 검증·RULE-02·06을 연결한다. SC는 후속 범위다."""
+    """문서·에이전트·정리·생성·SQL 검증·RULE-02·06을 연결한다. SC는 후속 범위다.
+
+    `agent_nodes`(A01~A09)를 주지 않으면 실제 OpenAI client 노드를 쓴다. 시험은 고정 규칙 LLM
+    노드를 넣어 나머지 실제 노드를 그대로 끝까지 돌린다 (#19 기본 흐름 검증).
+    """
     mapper = failure_mapper(rule_severities(root=settings.pack_root))
     erd = (
         erd_node(settings.storage_dir, pdf=erd_pdf_renderer(settings))
@@ -45,7 +51,7 @@ def create_graph(
         else erd_node(settings.storage_dir)
     )
     nodes = {
-        **openai_agent_nodes(settings),
+        **(agent_nodes if agent_nodes is not None else openai_agent_nodes(settings)),
         "parse": parse_node(settings.storage_dir),
         "normalize": normalization_node(mapper, root=settings.pack_root),
         "erd": erd,
