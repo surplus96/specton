@@ -1,10 +1,35 @@
-// 화면 구성 라이브러리(ADR-0005) 결정 전 자리표시. 화면 흐름은 docs/07 및 상위 기획 문서 07을 따른다.
+import { Navigate, Route, Routes, useSearchParams } from 'react-router'
+import AppLayout from './layout/AppLayout.tsx'
+import HomePage from './pages/HomePage.tsx'
+import UploadPage from './pages/UploadPage.tsx'
+import RunPage from './pages/RunPage.tsx'
+import NotFoundPage from './pages/NotFoundPage.tsx'
+
+// 주소 → 화면 연결표 (docs/09-ui-flow.md, 구현 가이드 강의 04·09)
+//   /             첫 화면: 팀·프로젝트 소개
+//   /start        UI-01 실행 시작(업로드)
+//   /?run=<id>    실행 하나의 화면. UI-02~07 중 무엇을 보일지는 실행 상태로 정한다.
+//                 실행 ID가 주소에 있어 새로고침해도 같은 실행으로 돌아온다 (TC-F19)
+//   /intro        예전 소개 주소 → / 로 보낸다
+//   그 밖         없는 주소 안내
+// 주의: /runs 로 시작하는 주소는 API용이다(vite.config.ts 프록시). 화면 주소에 쓰지 않는다.
+function StartPage() {
+  const [params] = useSearchParams()
+  const runId = params.get('run')
+  // key: 실행 ID가 바뀌면 화면 상태를 새로 시작한다
+  return runId ? <RunPage key={runId} runId={runId} /> : <HomePage />
+}
+
 function App() {
   return (
-    <main>
-      <h1>Specton</h1>
-      <p>요구사항 문서 업로드 → 확인·승인 → 결과 보기 화면을 구현할 예정입니다.</p>
-    </main>
+    <Routes>
+      <Route element={<AppLayout />}>
+        <Route index element={<StartPage />} />
+        <Route path="start" element={<UploadPage />} />
+        <Route path="intro" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Route>
+    </Routes>
   )
 }
 
