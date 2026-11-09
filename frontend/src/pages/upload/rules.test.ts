@@ -12,16 +12,12 @@ const MB = 1024 * 1024
 const named = (name: string, size = 10) => ({ name, size })
 
 describe('checkFile: 미리 검사', () => {
-  it.each(['요구사항.xlsx', '요구사항.CSV'])('%s는 통과', (name) => {
+  it.each(['요구사항.xlsx', '요구사항.CSV', '정의서.hwpx', '정의서.HWP'])('%s는 통과 (한글은 #24)', (name) => {
     expect(checkFile(named(name))).toBeNull()
   })
 
-  it.each(['정의서.hwp', '정의서.hwpx'])('%s는 엑셀·CSV로 저장 안내 (HWPX 읽기 #24 전)', (name) => {
-    expect(checkFile(named(name))).toBe('한글 문서는 아직 지원하지 않습니다. 엑셀(.xlsx)이나 CSV로 저장해 올려 주세요.')
-  })
-
   it.each(['설비.pdf', '메모.txt', '확장자없음'])('%s는 지원 형식 안내', (name) => {
-    expect(checkFile(named(name))).toBe('지원하는 형식은 .xlsx, .csv입니다.')
+    expect(checkFile(named(name))).toBe('지원하는 형식은 .xlsx, .csv, .hwpx, .hwp입니다.')
   })
 
   it('빈 파일', () => {
@@ -85,11 +81,12 @@ describe('서버(mock)와 같은 결과', () => {
     throw new Error('거절되어야 합니다')
   }
 
-  // 형식은 화면이 서버보다 좁게 받아 문구가 다르다. 서버가 거절해도 같은 자리(파일 칸)에 보이는지만 본다.
-  it.each(['정의서.hwp', '설비.pdf'])('%s는 서버가 거절해도 파일 칸', async (name) => {
+  // 화면과 서버가 같은 형식을 받으므로(#24) 서버가 거절한 문구도 미리 검사 문구와 같고 파일 칸에 보인다.
+  it.each(['메모.docx', '설비.pdf'])('%s는 서버가 거절해도 같은 문구로 파일 칸', async (name) => {
     const file = new File(['내용'], name)
-    expect(checkFile(file)).not.toBeNull()
-    expect((await serverResult(file)).place).toBe('file')
+    const result = await serverResult(file)
+    expect(result.place).toBe('file')
+    expect(result.message).toBe(checkFile(file))
   })
 
   it('빈 파일', async () => {

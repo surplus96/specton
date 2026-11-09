@@ -133,9 +133,46 @@ def test_create_returns_queued_run_and_issues_a_session(
     assert "req.xlsx" not in str(stored[0])  # 사용자 파일명을 경로로 쓰지 않는다
 
 
+HWP = ("정의서.hwp", bytes.fromhex("d0cf11e0a1b11ae1") + b"\x00" * 504, "application/x-hwp")
+
+
+def test_hwp_upload_is_stored_as_hwp_without_conversion(
+    client: TestClient, settings: Settings, pool: Pool
+) -> None:
+    """.hwp는 HWPX 변환 안내 없이 받아 hwp로 기록한다 (#24). 문서 표의 형식 CHECK를 거친다."""
+    response = _create(client, HWP)
+
+    assert response.status_code == 202
+    run_id = response.json()["run_id"]
+    assert [p.suffix for p in (settings.storage_dir / run_id).iterdir()] == [".hwp"]
+    with pool.connection() as conn:
+        row = conn.execute(
+            "SELECT file_format FROM document WHERE run_id = %s", (run_id,)
+        ).fetchone()
+    assert row is not None and row["file_format"] == "hwp"
+
+
+def test_schema_widens_the_document_format_check_of_an_older_database(
+    client: TestClient, pool: Pool
+) -> None:
+    """#24 이전 DB(CHECK에 hwp 없음)도 schema를 다시 적용하면 .hwp를 받는다. 두 번 적용해도 같다."""
+    from specton.persistence.db import apply_schema
+
+    with pool.connection() as conn:
+        conn.execute("ALTER TABLE document DROP CONSTRAINT document_file_format_check")
+        conn.execute(
+            "ALTER TABLE document ADD CONSTRAINT document_file_format_check CHECK "
+            "(file_format IN ('xlsx','csv','pdf','hwpx'))"
+        )
+    apply_schema(pool)
+    apply_schema(pool)
+
+    assert _create(client, HWP).status_code == 202
+
+
 @pytest.mark.parametrize(
     ("name", "expected"),
-    [("req.hwp", "HWPX"), ("req.pdf", ".xlsx"), ("req.docx", ".xlsx")],
+    [("req.pdf", ".hwp"), ("req.docx", ".xlsx")],
 )
 def test_unsupported_formats_are_415(client: TestClient, name: str, expected: str) -> None:
     response = _create(client, (name, b"data", "application/octet-stream"))
@@ -162,6 +199,7 @@ def test_too_large_upload_is_413_and_leaves_no_file(settings: Settings, pool: Po
     [
         (("req.xlsx", b"not a workbook", "application/octet-stream"), "형식이 아닙니다"),
         (("req.hwpx", b"<hwpml/>", "application/octet-stream"), "형식이 아닙니다"),
+        (("req.hwp", b"<hwpml/>", "application/octet-stream"), "형식이 아닙니다"),
         (("req.csv", b"id,text\n1,\x00\x01", "text/csv"), "텍스트가 아닙니다"),
     ],
 )

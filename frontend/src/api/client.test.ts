@@ -66,8 +66,7 @@ describe('실행 만들기 (UI-01)', () => {
   })
 
   it.each([
-    ['문서.pdf', 415, 'UNSUPPORTED_MEDIA_TYPE', '지원하는 형식은 .xlsx, .csv, .hwpx입니다.'],
-    ['문서.hwp', 415, 'UNSUPPORTED_MEDIA_TYPE', 'HWP는 지원하지 않습니다. 한글에서 HWPX로 저장해 다시 올려 주세요.'],
+    ['문서.pdf', 415, 'UNSUPPORTED_MEDIA_TYPE', '지원하는 형식은 .xlsx, .csv, .hwpx, .hwp입니다.'],
   ])('%s는 %i로 거절하고 서버 문구를 그대로 보여 준다', async (name, status, code, message) => {
     const err = await rejection(createRun(csv(name), 'inventory'))
     expect(err.status).toBe(status)

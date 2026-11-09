@@ -55,7 +55,7 @@ const FALLBACK_MESSAGES: Record<ErrorCode, string> = {
   ARTIFACT_NOT_READY: '파일이 아직 만들어지지 않았습니다.',
   ARTIFACT_FORMAT_UNSUPPORTED: '이 형식으로는 내려받을 수 없습니다.',
   UPLOAD_TOO_LARGE: '파일이 너무 큽니다.',
-  UNSUPPORTED_MEDIA_TYPE: '지원하는 형식은 .xlsx, .csv, .hwpx입니다.',
+  UNSUPPORTED_MEDIA_TYPE: '지원하는 형식은 .xlsx, .csv, .hwpx, .hwp입니다.',
   PACK_UNSUPPORTED: '지원하지 않는 도메인 팩입니다.',
   INVALID_RESPONSE: '답변 내용을 확인해 주세요.',
   INVALID_REQUEST: '요청 내용을 확인해 주세요.',

@@ -105,6 +105,25 @@ def test_zip_with_a_broken_central_directory_is_415(tmp_path: Path) -> None:
     assert _rejected("req.xlsx", bytes(data), tmp_path).status == 415
 
 
+def test_hwp_with_the_ole_signature_is_accepted(tmp_path: Path) -> None:
+    """.hwp(HWP 5.0)는 OLE 복합 문서다. 안의 내용(암호·배포용 등)은 파서가 판정한다 (#24)."""
+    data = bytes.fromhex("d0cf11e0a1b11ae1") + b"\x00" * 504
+
+    stored = _save("정의서.HWP", data, tmp_path)
+
+    assert stored.file_format == "hwp"
+    assert stored.storage_ref.endswith(".hwp")
+
+
+@pytest.mark.parametrize("data", [b"<hwpml/>", b"PK\x03\x04" + b"\x00" * 26, b"d0cf11e0"])
+def test_hwp_without_the_ole_signature_is_415(tmp_path: Path, data: bytes) -> None:
+    """확장자만 .hwp로 바꾼 파일(HWPX·텍스트 등)을 파서에 넘기지 않는다."""
+    error = _rejected("req.hwp", data, tmp_path)
+
+    assert error.status == 415
+    assert ".hwp 형식이 아닙니다" in error.message
+
+
 def test_valid_zip_within_the_limit_is_accepted(tmp_path: Path) -> None:
     data = _zip({"[Content_Types].xml": b"<Types/>", "xl/workbook.xml": b"<workbook/>" * 100})
 
