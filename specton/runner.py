@@ -489,12 +489,13 @@ class _Job:
         error = Error(
             code=code.value,
             message=extraction.notice if extraction else _ERROR_MESSAGES[code],
+            detail=(extraction.detail.strip() or None) if extraction else None,
             run_id=str(self.run_id),
             retryable=code in _RETRYABLE,
         )
         payload: dict[str, Any] = {"code": code.value, "retryable": error.retryable}
-        if extraction and extraction.detail:
-            payload["detail"] = extraction.detail
+        if error.detail is not None:
+            payload["detail"] = error.detail
         event = NewEvent(E.ERROR, error.message, stage="failed", payload=payload)
         self._end(S.FAILED, event, error)
 
