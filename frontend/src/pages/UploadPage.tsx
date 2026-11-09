@@ -10,7 +10,7 @@ import WithActivity from '../layout/WithActivity.tsx'
 import ActivityPanel from './run/ActivityPanel.tsx'
 import {
   ACCEPT_ATTR,
-  ACCEPTED_FORMATS,
+  FORMATS_LABEL,
   MAX_UPLOAD_MB,
   PACK_LABELS,
   PACK_OPTIONS,
@@ -74,7 +74,6 @@ function UploadPage() {
     }
   }
 
-  const formats = ACCEPTED_FORMATS.map((f) => `.${f}`).join(' · ')
 
   return (
     <Flex vertical gap={24}>
@@ -92,14 +91,14 @@ function UploadPage() {
       >
         <PageCard
           title="요구사항 문서 올리기"
-          subtitle="요구사항 정의서(.xlsx · .csv)를 올리면 기능 명세·ERD·DDL·RTM을 만듭니다."
+          subtitle={`요구사항 정의서(${FORMATS_LABEL})를 올리면 기능 명세·ERD·DDL·RTM을 만듭니다.`}
         >
           <Form layout="vertical" onFinish={submit} disabled={submitting}>
             <Form.Item
               label="요구사항 문서"
               required
               validateStatus={fileError ? 'error' : undefined}
-              help={fileError ?? `${formats} · 최대 ${MAX_UPLOAD_MB}MB · 파일 1개`}
+              help={fileError ?? `${FORMATS_LABEL} · 최대 ${MAX_UPLOAD_MB}MB · 파일 1개`}
             >
               <Upload.Dragger
                 accept={ACCEPT_ATTR}
@@ -116,7 +115,7 @@ function UploadPage() {
               >
                 <Typography.Paragraph>파일을 끌어다 놓거나 눌러서 고르세요</Typography.Paragraph>
                 <Typography.Text type="secondary">
-                  한글(HWP·HWPX)·PDF 문서는 엑셀이나 CSV로 저장해 올려 주세요.
+                  한글 문서는 요구사항 상세표를 읽습니다. PDF는 엑셀이나 CSV로 저장해 올려 주세요.
                 </Typography.Text>
               </Upload.Dragger>
             </Form.Item>
