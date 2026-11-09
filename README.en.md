@@ -19,7 +19,7 @@ The design reference documents (Korean) live in [docs/](docs/README.md), and dec
 | Web | React (`frontend/`) |
 | Quality | ruff, mypy, pytest |
 
-Undecided: PDF extraction (ADR-0004; PDF output is approved and the HWP/HWPX engine was adopted on 2026-11-08), UI library (ADR-0005), AWS setup (ADR-0013).
+Undecided: PDF extraction (ADR-0004; PDF output is approved and the HWP/HWPX engine was adopted on 2026-11-08), UI library (ADR-0005). The AWS setup was approved on 2026-11-09 as one EC2 instance with Docker Compose (ADR-0013).
 
 ## Getting started
 

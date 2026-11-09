@@ -1,6 +1,6 @@
 # 배포·운영·보안
 
-> 상태: **초안** (AWS 구성은 회의 결정 전)
+> 상태: **초안** (AWS 구성은 ADR-0013 승인, 2026-11-09)
 
 ## 실행 환경
 
@@ -22,7 +22,7 @@
 - 같은 이미지 보장 (#226 리뷰): 이미지는 한 곳에서 한 번 빌드해 레지스트리에 올리고(`compose build`·`push`), 서버는
   `pull` 뒤 `up -d --no-build`로 받은 이미지를 그대로 쓴다. 서버에서 다시 빌드하지 않는다. 이름·태그는
   `SPECTON_API_IMAGE`·`SPECTON_WEB_IMAGE`(예: `ghcr.io/<owner>/specton-api:<커밋>`). 서버가 x86_64면 amd64로 빌드한다.
-- AWS 제안: EC2 또는 Lightsail 1대 + Docker Compose, IP 제한·HTTPS, 키는 환경 변수 주입, 예산 알림 (ADR-0013). App Runner는 신규 고객을 받지 않아 제외.
+- AWS (ADR-0013 승인): EC2 1대(서울) + Docker Compose, 키는 환경 변수 주입, 예산 알림. 보안 그룹은 80번 전체 공개(Caddy 인증서 발급·HTTPS로 넘기기만), 443번은 팀·시연 장소 IP만, 22번은 팀 IP만 또는 닫고 SSM. HTTPS에는 도메인(`SPECTON_SITE_ADDRESS`)이 필요하다. App Runner는 신규 고객을 받지 않아 제외.
 - 배포 전 할 일: compose의 DB 기본 비밀번호를 없애고 환경 변수를 필수로 받는다. → 배포 구성(`compose.deploy.yml`)에 반영 (#25)
 
 ### 배포 절차 주의 (#25, #228 리뷰)
