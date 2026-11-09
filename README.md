@@ -19,7 +19,7 @@
 | 웹 | React (`frontend/`) |
 | 품질 | ruff, mypy, pytest |
 
-미정: PDF 추출(ADR-0004, PDF 출력은 승인, HWP·HWPX 엔진은 2026-11-08 채택), 화면 라이브러리(ADR-0005), AWS 구성(ADR-0013).
+미정: PDF 추출(ADR-0004, PDF 출력은 승인, HWP·HWPX 엔진은 2026-11-08 채택), 화면 라이브러리(ADR-0005). AWS 구성은 EC2 1대 + Docker Compose로 승인(ADR-0013, 2026-11-09).
 
 ## 시작하기
 

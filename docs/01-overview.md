@@ -26,7 +26,7 @@
 | 입력 양식 | 기준 5열 + 선택 "관련 요구사항" 열 제안 | 미정 (ADR-0003) |
 | 산출물 | 중간: Markdown. 최종: 기능 명세서(Markdown·PDF), ERD(Mermaid·PDF), DDL(SQL), RTM(Excel·CSV), 검토 보고서(Markdown) | PDF는 승인 시점에 1회 생성 (확정) |
 | 웹 | React. 업로드 → 확인·승인 → 결과 보기 화면 3개 제안 | 화면 라이브러리 미정 (ADR-0005) |
-| 배포 | 로컬 Docker PostgreSQL 개발, AWS Docker 컨테이너 배포 | 구성 미정 (ADR-0013) |
+| 배포 | 로컬 Docker PostgreSQL 개발, AWS Docker 컨테이너 배포 | EC2 1대 + Docker Compose, 443번 IP 제한·HTTPS (ADR-0013 승인) |
 
 축소 후보: REQ-19 웹(화면 3개), REQ-25 한도(타임아웃만), REQ-27 HWPX·HWP(stretch). 범위를 줄이면 [02 요구사항](02-requirements.md)과 RTM에 바로 반영한다.
 
