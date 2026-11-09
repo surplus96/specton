@@ -1,6 +1,6 @@
 # ADR-0010: 검토 심각도
 
-- 날짜: 2026-10-23 (승인 2026-10-27)
+- 날짜: 2026-10-23 (승인 2026-10-27, SC 예외 추가 2026-11-09)
 - 상태: 승인
 - 결정자: 팀 설계로 (#9 착수 시 R1 승인)
 
@@ -13,6 +13,7 @@
 - 규칙 위반은 `critical`(차단). LLM 지적은 `major`/`minor`.
 - 자동 재작업은 `critical`과 `major`만. `minor`는 참고 의견으로 HITL 2에 표시한다.
 - 미해결 `critical`이 있으면 승인 완료로 표시하지 않는다.
+- 예외 (#15, 2026-11-09): 표준 준수 지적 SC-01~06은 규칙 지적(`source=rule`)이지만 `critical`을 쓰지 않는다. 심각도는 `domain_packs/common/rules.yaml`에서 읽는다(SC-01·02 `minor` 참고, SC-03·06 `major` 데이터 설계 재작업, SC-04 금칙어·SC-05 `major` 사람 조치). 값은 #247 리뷰에서 R1이 확정했다. SC-04 이음동의어는 아직 지적하지 않으며, 금칙어와 나눌 심각도 칸 형식은 #11 common 팩 고정 때 정한다. `rules.yaml`에 SC `critical`이 들어오면 읽을 때 거절한다. 표준 고시는 적용이 어려우면 선별 적용을 허용한다(제8조⑤·제10조⑤, `common/RATIONALE.md`).
 - 구현: 자동 재작업 기준은 `specton/review/rework.py`의 `AUTO_REWORK_SEVERITIES`(#9). LLM 출력(`FindingDraft`)은 `critical`을 거절하고, `Finding`은 규칙 지적만 `critical`을 허용한다(#68).
 
 ## 검토한 대안
