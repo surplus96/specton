@@ -167,7 +167,7 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 | `ARTIFACT_NOT_READY` | 산출물이 아직 생성되지 않음 | 409 | 예 |
 | `ARTIFACT_FORMAT_UNSUPPORTED` | 허용하지 않는 kind·file_format 조합 | 422 | 아니오 |
 | `UPLOAD_TOO_LARGE` | 파일 크기 한도 초과, xlsx·hwpx 압축을 푼 크기 한도 초과 (#21) | 413 | 아니오 |
-| `UNSUPPORTED_MEDIA_TYPE` | 지원하지 않는 파일 형식, 내용이 확장자와 다름(xlsx·hwpx가 zip이 아님, csv에 NUL 바이트) (#21) | 415 | 아니오 |
+| `UNSUPPORTED_MEDIA_TYPE` | 지원하지 않는 파일 형식, 내용이 확장자와 다름: xlsx·hwpx는 zip 구조 손상·선언 크기와 실제 크기 불일치·지원하지 않는 압축 방식·파일명 인코딩·해제 버전, csv는 NUL 바이트(BOM 있는 UTF-16은 해독되면 통과) (#21, docs/11 「업로드 내용 검사」) | 415 | 아니오 |
 | `PACK_UNSUPPORTED` | 없는 도메인 팩 선택 | 422 | 아니오 |
 | `INVALID_RESPONSE` | resume 답변 형식이 틀림, 확인 요청과 응답 종류가 다름, 차단 오류가 남은 채 approve, SQL 검증을 통과하지 않은 채 approve(설정을 켠 경우) | 422 | 아니오 |
 | `INVALID_REQUEST` | 그 밖의 요청 형식이 틀림 (조회 조건·취소 본문 등). 없는 경로는 404, 허용하지 않는 메서드는 405 | 422 / 404 / 405 | 아니오 |

@@ -100,6 +100,18 @@ class _Words:
         "종료일시": "END_DT",
         "작업내용": "JOB_CN",
         "적용시급": "APLCN_HRWG",
+        # 재고 A08 예시 SFR-206. 실제 재고 팩 사전이 만드는 물리명을 대문자로 적었다
+        "거래처": "CNPT",
+        "거래처번호": "CNPT_NO",
+        "거래처명": "CNPT_NM",
+        "거래처사업자등록번호": "CNPT_BRNO",
+        "거래처변경이력": "CNPT_CHG_HSTRY",
+        "이력번호": "HSTRY_NO",
+        "변경일시": "CHG_DT",
+        "변경사유": "CHG_RSN",
+        "변경이전내용": "CHG_BFR_CN",
+        "변경이후내용": "CHG_AFTR_CN",
+        "변경사용자아이디": "CHG_USER_ID",
     }
 
     def term(self, logical_name: str) -> TermInfo | None:
@@ -401,13 +413,28 @@ def test_example_does_not_put_parent_keys_in_child_attributes(pack: str, example
         assert not inherited & attribute_names[table["entity_id"]], table["name"]
 
 
-def test_inventory_line_example_shows_the_inherited_key_in_its_primary_key() -> None:
-    """수불내역 PK = 문서번호(식별 관계 REL-01에서 옴) + 내역순번(자기 키)."""
-    _, line_example = load_examples("inventory", "A08", ReviewOutput)
-    [line] = [t for t in line_example.input["normalized"]["tables"] if t["name"] == "수불내역"]
-    by_id = {c["id"]: c for c in line["columns"]}
+def test_inventory_history_example_keeps_the_parent_key_as_a_plain_fk_column() -> None:
+    """거래처변경이력: 부모 키 거래처번호는 비식별 관계 REL-01에서 온 FK 칸이고 PK가 아니다.
+
+    PK는 자기 키 이력번호(ATTR-04)뿐이고, FK는 그 칸 하나로 거래처 PK를 가리킨다. 지적은 없다.
+    """
+    [example] = load_examples("inventory", "A08", ReviewOutput)
+    view = example.input["normalized"]
+    tables = {t["name"]: t for t in view["tables"]}
+    history, partner = tables["거래처변경이력"], tables["거래처"]
+    by_id = {c["id"]: c for c in history["columns"]}
     assert [
         (by_id[c]["name"], by_id[c].get("relationship_id") or by_id[c].get("attribute_id"))
-        for c in line["primary_key"]
-    ] == [("문서번호", "REL-01"), ("내역순번", "ATTR-03")]
-    assert line_example.output.findings == ()
+        for c in history["primary_key"]
+    ] == [("이력번호", "ATTR-04")]
+    [fk] = view["foreign_keys"]
+    assert (fk["relationship_id"], fk["table_id"], fk["parent_table_id"]) == (
+        "REL-01",
+        history["id"],
+        partner["id"],
+    )
+    assert [(by_id[c]["name"], by_id[c].get("relationship_id")) for c in fk["columns"]] == [
+        ("거래처번호", "REL-01")
+    ]
+    assert fk["parent_columns"] == partner["primary_key"]
+    assert example.output.findings == ()

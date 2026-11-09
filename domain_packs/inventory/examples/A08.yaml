@@ -1,136 +1,94 @@
 # few-shot 예시 (inventory · A08 normalization_review). 사람이 작성하는 입력 파일이다.
 # - 입력은 개발용 세트(비공개, 저장소에 올리지 않음)에서만 가져오고 source_id에 원문 ID를 적는다. 평가용 세트 문서는 넣지 않는다.
 # - output은 해당 노드의 LLM 출력 모델과 같은 모양이어야 한다. load_examples가 그 모델로 검증한다 (docs/04 "노드 작성 규칙").
-# - 요구사항 문장은 개발용 세트(INV-005)의 것이고, 검토 대상 엔티티·관계는 예시를 위해 만든 가상 설계다.
+# - 요구사항 문장은 합성 퓨샷용 세트(SFR-206)의 것이다. 실제 A01 실행 결과(REQ-32∼34)의 text·type·nfr_category를 그대로 옮기고 예시 안에서 번호만 다시 붙였다.
+#   검토 대상 엔티티·관계는 A03 SFR-206 예시 설계의 일부다(ID는 예시용 ENT·ATTR·REL 번호).
 # - A08 입력은 requirements·entities·relationships·normalized다 (#12). 부모 키는 A03 속성에 넣지 않고
-#   A04 관계로 나타내며, normalized는 그 설계를 모델 정리 코드로 정리한 결과의 요약이다
-#   (tests/unit/test_review_a08.py가 같은 결과인지 다시 계산해 확인한다). ID는 정리 코드가 계산한 값이다.
+#   A04 관계로 나타내며, normalized는 그 설계를 모델 정리 코드로 정리한 결과의 요약이다. ID는 정리 코드가 계산한 값이다.
+# - tests/unit/test_review_a08.py의 test_example_input_matches_the_real_normalization이 이 예시를 통과하려면
+#   테스트용 사전 _Words.words에 다음 11개를 더해야 한다(값은 실제 팩 사전이 만드는 물리명의 대문자):
+#   "거래처": "CNPT", "거래처번호": "CNPT_NO", "거래처명": "CNPT_NM", "거래처사업자등록번호": "CNPT_BRNO",
+#   "거래처변경이력": "CNPT_CHG_HSTRY", "이력번호": "HSTRY_NO", "변경일시": "CHG_DT", "변경사유": "CHG_RSN",
+#   "변경이전내용": "CHG_BFR_CN", "변경이후내용": "CHG_AFTR_CN", "변경사용자아이디": "CHG_USER_ID"
 agent: A08
 role: normalization_review
 status: draft
 examples:
-- source_id: INV-005
+# 지적 없음 예시: 거래처사업자등록번호가 같으면 같은 업체라 거래처명을 정하는 것처럼 보이지만(checklist 4),
+# 요구사항은 같은 번호의 거래처를 찾아 하나로 묶고 통합하는 일이다. 통합 전에는 같은 번호가 여러 거래처에 있는 것이 정비 대상인
+# 원래 데이터이고, 번호가 없거나 불명확한 거래처도 있어 번호를 키나 결정자로 둘 수 없다. 그래서 정규화 문제로 지적하지 않는다.
+# 거래처변경이력의 변경 전후 내용은 요구사항이 남기라고 한 병합 이력이라 중복으로 지적하지 않는다 (false_positive_guards 1).
+- source_id: SFR-206
   input:
     requirements:
     - id: REQ-01
       type: FR
       nfr_category: null
-      text: 하나의 수불 문서에는 하나 이상의 품목 내역을 등록한다.
+      text: 사업자등록번호가 같은 거래처를 1차로 매칭하고, 번호가 없거나 불명확한 거래처는 2차로 AI 텍스트 유사도 분석을 통해 영문 표기 차이, 오타, 기업명 약칭을 찾아 같은 업체로 묶어야 한다.
     - id: REQ-02
       type: FR
       nfr_category: null
-      text: 각 내역은 한 품목과 수량을 가지며 수량은 0보다 크고 소수 셋째 자리까지 허용한다.
+      text: 병합 규칙을 적용하여 통합 과정의 데이터 충돌을 미리 해소해야 한다.
+    - id: REQ-03
+      type: NFR
+      nfr_category: audit
+      text: 데이터 병합 이력을 추적·관리할 수 있어야 한다.
     entities:
     - id: ENT-01
       pack: inventory
-      name: 수불문서
-      description: 품목 내역을 묶는 수불 문서
+      name: 거래처
+      description: 거래하는 업체의 기준 정보. 같은 업체로 묶인 거래처는 하나로 통합한다
       req_ids: [REQ-01, REQ-02]
       crud_exemptions: []
       attributes:
-      - {id: ATTR-01, name: 문서번호, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-01]}
-      - {id: ATTR-02, name: 품목코드목록, description: 문서의 품목 코드를 쉼표로 구분해 저장, data_type: varchar, length: 200, req_ids: [REQ-01]}
-    relationships: []
-    normalized:
-      tables:
-      - id: TBL-baacc078da43921e
-        name: 수불문서
-        entity_id: ENT-01
-        columns:
-        - {id: COL-5f2ff79ce614166e, name: 문서번호, attribute_id: ATTR-01}
-        - {id: COL-f8cd7b2bc89a3402, name: 품목코드목록, attribute_id: ATTR-02}
-        primary_key: [COL-5f2ff79ce614166e]
-        unique_keys: []
-      foreign_keys: []
-  output:
-    findings:
-    - kind: multi_valued_attribute
-      severity: major
-      targets:
-      - {kind: attribute, id: ATTR-02}
-      evidence:
-      - req_id: REQ-01
-        quote: 하나의 수불 문서에는 하나 이상의 품목 내역을 등록한다.
-      suggestion: 한 문서가 품목 내역을 여러 개 가지는데 품목코드목록 한 칸에 쉼표로 담고 있어 품목 하나를 고칠 때 문자열 전체를 고쳐야 한다. 내역마다 한 행을 두는 별도 엔티티로 나눈다.
-      target_stage: data_model
-- source_id: INV-005
-  input:
-    requirements:
-    - id: REQ-01
-      type: FR
-      nfr_category: null
-      text: 하나의 수불 문서에는 하나 이상의 품목 내역을 등록한다.
-    - id: REQ-02
-      type: FR
-      nfr_category: null
-      text: 각 내역은 한 품목과 수량을 가지며 수량은 0보다 크고 소수 셋째 자리까지 허용한다.
-    entities:
-    - id: ENT-01
-      pack: inventory
-      name: 수불문서
-      description: 품목 내역을 묶는 수불 문서
-      req_ids: [REQ-01]
-      crud_exemptions: []
-      attributes:
-      - {id: ATTR-01, name: 문서번호, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-01, name: 거래처번호, data_type: varchar, length: 50, is_key: true, nullable: false, req_ids: [REQ-01]}
+      - {id: ATTR-02, name: 거래처명, description: 영문 표기·약칭이 섞일 수 있는 업체 이름, data_type: varchar, length: 100, req_ids: [REQ-01]}
+      - {id: ATTR-03, name: 거래처사업자등록번호, description: 1차 매칭 기준. 번호가 없거나 불명확한 거래처가 있다, data_type: char, length: 10, req_ids: [REQ-01]}
     - id: ENT-02
       pack: inventory
-      name: 품목
-      description: 내역이 가리키는 품목
-      req_ids: [REQ-02]
+      name: 거래처변경이력
+      description: 거래처를 통합할 때마다 남기는 데이터 병합 이력
+      req_ids: [REQ-02, REQ-03]
       crud_exemptions: []
       attributes:
-      - {id: ATTR-02, name: 품목코드, data_type: varchar, length: 10, is_key: true, nullable: false, req_ids: [REQ-02]}
-    - id: ENT-03
-      pack: inventory
-      name: 수불내역
-      description: 수불 문서에 등록하는 품목별 내역
-      req_ids: [REQ-01, REQ-02]
-      crud_exemptions: []
-      attributes:
-      - {id: ATTR-03, name: 내역순번, data_type: integer, is_key: true, nullable: false, req_ids: [REQ-01]}
-      - {id: ATTR-04, name: 수량, data_type: numeric, precision: 10, scale: 3, req_ids: [REQ-02]}
+      - {id: ATTR-04, name: 이력번호, data_type: varchar, length: 20, is_key: true, nullable: false, req_ids: [REQ-03]}
+      - {id: ATTR-05, name: 변경일시, data_type: timestamp, req_ids: [REQ-03]}
+      - {id: ATTR-06, name: 변경사유, description: 적용한 병합 규칙과 데이터 충돌 해소 내용, data_type: varchar, length: 4000, req_ids: [REQ-02, REQ-03]}
+      - {id: ATTR-07, name: 변경이전내용, description: 통합 전 거래처 정보, data_type: varchar, length: 4000, req_ids: [REQ-03]}
+      - {id: ATTR-08, name: 변경이후내용, description: 통합 후 거래처 정보, data_type: varchar, length: 4000, req_ids: [REQ-03]}
+      - {id: ATTR-09, name: 변경사용자아이디, data_type: varchar, length: 20, req_ids: [REQ-03]}
     relationships:
-    - {id: REL-01, parent: ENT-01, child: ENT-03, cardinality: '1:N', optional: false, identifying: true, rationale: '"하나의 수불 문서에는 하나 이상의 품목 내역을 등록한다."', req_ids: [REQ-01]}
-    - {id: REL-02, parent: ENT-02, child: ENT-03, cardinality: '1:N', optional: false, identifying: false, rationale: '"각 내역은 한 품목과 수량을 가지며"', req_ids: [REQ-02]}
+    - {id: REL-01, parent: ENT-01, child: ENT-02, cardinality: '1:N', optional: false, identifying: false, rationale: '"데이터 병합 이력을 추적·관리할 수 있어야 한다."', req_ids: [REQ-03]}
     normalized:
       tables:
       - id: TBL-baacc078da43921e
-        name: 수불문서
+        name: 거래처
         entity_id: ENT-01
         columns:
-        - {id: COL-5f2ff79ce614166e, name: 문서번호, attribute_id: ATTR-01}
+        - {id: COL-5f2ff79ce614166e, name: 거래처번호, attribute_id: ATTR-01}
+        - {id: COL-f8cd7b2bc89a3402, name: 거래처명, attribute_id: ATTR-02}
+        - {id: COL-4d03e5a0f2f92f69, name: 거래처사업자등록번호, attribute_id: ATTR-03}
         primary_key: [COL-5f2ff79ce614166e]
         unique_keys: []
-      - id: TBL-ddc1f6c6071dd2f3
-        name: 수불내역
-        entity_id: ENT-03
-        columns:
-        - {id: COL-4d03e5a0f2f92f69, name: 내역순번, attribute_id: ATTR-03}
-        - {id: COL-05dc404db9a6f875, name: 수량, attribute_id: ATTR-04}
-        - {id: COL-ce8ab77a017ba833, name: 문서번호, relationship_id: REL-01}
-        - {id: COL-ba4716db236aa058, name: 품목코드, relationship_id: REL-02}
-        primary_key: [COL-ce8ab77a017ba833, COL-4d03e5a0f2f92f69]
-        unique_keys: []
       - id: TBL-efa24e70897cffcf
-        name: 품목
+        name: 거래처변경이력
         entity_id: ENT-02
         columns:
-        - {id: COL-f8cd7b2bc89a3402, name: 품목코드, attribute_id: ATTR-02}
-        primary_key: [COL-f8cd7b2bc89a3402]
+        - {id: COL-05dc404db9a6f875, name: 이력번호, attribute_id: ATTR-04}
+        - {id: COL-6e9925dfdb25a6ca, name: 변경일시, attribute_id: ATTR-05}
+        - {id: COL-fa29f07f11c692f9, name: 변경사유, attribute_id: ATTR-06}
+        - {id: COL-edb7cc1e021eb9e2, name: 변경이전내용, attribute_id: ATTR-07}
+        - {id: COL-7297de3cd6183ab8, name: 변경이후내용, attribute_id: ATTR-08}
+        - {id: COL-986fd267d3e19fdc, name: 변경사용자아이디, attribute_id: ATTR-09}
+        - {id: COL-ce8ab77a017ba833, name: 거래처번호, relationship_id: REL-01}
+        primary_key: [COL-05dc404db9a6f875]
         unique_keys: []
       foreign_keys:
       - id: FK-c962effd07827664
         relationship_id: REL-01
-        table_id: TBL-ddc1f6c6071dd2f3
+        table_id: TBL-efa24e70897cffcf
         columns: [COL-ce8ab77a017ba833]
         parent_table_id: TBL-baacc078da43921e
         parent_columns: [COL-5f2ff79ce614166e]
-      - id: FK-dae1e2ea4412e36e
-        relationship_id: REL-02
-        table_id: TBL-ddc1f6c6071dd2f3
-        columns: [COL-ba4716db236aa058]
-        parent_table_id: TBL-efa24e70897cffcf
-        parent_columns: [COL-f8cd7b2bc89a3402]
   output:
     findings: []
