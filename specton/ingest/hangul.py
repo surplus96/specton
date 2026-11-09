@@ -31,6 +31,7 @@
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from specton.contracts.base import ExtractionStatus, SourceRef
 from specton.contracts.requirements import SourceRequirement
@@ -110,7 +111,17 @@ def _column_letters(col: int) -> str:
     return letters
 
 
-def _source_ref(table: HangulTable, index: int, cell: HangulCell) -> SourceRef:
+HangulFormat = Literal["hwp", "hwpx"]
+
+
+def _hangul_format(path: Path) -> HangulFormat:
+    """원문 위치에 적을 형식. .hwp는 변환하지 않고 읽으므로 `hwp`로 적는다 (#24)."""
+    return "hwp" if path.suffix.lower() == ".hwp" else "hwpx"
+
+
+def _source_ref(
+    table: HangulTable, index: int, cell: HangulCell, file_format: HangulFormat
+) -> SourceRef:
     """원문 위치를 만든다.
 
     `paragraph`에는 엔진의 para_idx(문서 B의 347·359처럼 표가 든 맨 위 문단 번호, 표 안 문단은
@@ -121,7 +132,7 @@ def _source_ref(table: HangulTable, index: int, cell: HangulCell) -> SourceRef:
     """
     address = f"{_column_letters(cell.col)}{cell.row + 1}"
     return SourceRef(
-        file_format="hwpx",
+        file_format=file_format,
         section=table.section,
         paragraph=table.paragraph,
         table=index,
@@ -190,7 +201,11 @@ def _location_id(table: HangulTable) -> str:
 
 
 def _build_detail(
-    detail: _Detail, document_id: str, block_id: str, duplicated: bool
+    detail: _Detail,
+    document_id: str,
+    block_id: str,
+    duplicated: bool,
+    file_format: HangulFormat,
 ) -> SourceRequirement:
     """상세표 1개 → 원문 한 건. 판정 이유는 이유마다 한 줄이다."""
     table, values = detail.table, detail.values
@@ -226,7 +241,7 @@ def _build_detail(
         document_id=document_id,
         block_id=block_id,
         source_id=source_id,
-        source_ref=_source_ref(table, detail.index, ref_cell),
+        source_ref=_source_ref(table, detail.index, ref_cell, file_format),
         source_text=text,
         source_acceptance_level=_text(values.get("level")) or None,
         # 「관련 요구사항」 칸 원문. 비어 있으면 None(엑셀 읽기와 같음)
@@ -238,7 +253,10 @@ def _build_detail(
 
 
 def _list_only(
-    tables: list[tuple[HangulTable, int]], detail_ids: set[str], document_id: str
+    tables: list[tuple[HangulTable, int]],
+    detail_ids: set[str],
+    document_id: str,
+    file_format: HangulFormat,
 ) -> list[tuple[SourceRequirement, str | None]]:
     """목록표에만 있는 고유번호 → 이름만으로 review 블록. (블록, 고유번호) 쌍을 돌려준다."""
     out: list[tuple[SourceRequirement, str | None]] = []
@@ -263,7 +281,7 @@ def _list_only(
                         document_id=document_id,
                         block_id=source_id,
                         source_id=source_id,
-                        source_ref=_source_ref(table, index, id_cell),
+                        source_ref=_source_ref(table, index, id_cell, file_format),
                         source_text=name or None,
                         extraction_status=ExtractionStatus.REVIEW,
                         notice=NOTICE_LIST_ONLY if name else NOTICE_EMPTY,
@@ -314,7 +332,7 @@ def read_hangul(path: Path, document_id: str) -> TabularResult:
         ) from exc
 
     try:
-        return _read_tables(document.tables, document_id)
+        return _read_tables(document.tables, document_id, _hangul_format(path))
     except UnsupportedInput:
         raise
     except (ValueError, KeyError, IndexError, TypeError) as exc:
@@ -325,7 +343,9 @@ def read_hangul(path: Path, document_id: str) -> TabularResult:
         ) from exc
 
 
-def _read_tables(tables: tuple[HangulTable, ...], document_id: str) -> TabularResult:
+def _read_tables(
+    tables: tuple[HangulTable, ...], document_id: str, file_format: HangulFormat
+) -> TabularResult:
     """표 목록(문서 순서)에서 상세표를 모아 원문으로 만든다."""
     # 구역 안 표 순번(0부터)을 문서 순서로 매긴다
     per_section: Counter[int] = Counter()
@@ -353,9 +373,9 @@ def _read_tables(tables: tuple[HangulTable, ...], document_id: str) -> TabularRe
         duplicated = bool(source_id) and counts[source_id] > 1
         # 같은 고유번호가 두 번 이상이면 block_id가 겹치므로 위치 형식을 쓴다
         block_id = source_id if source_id and not duplicated else _location_id(detail.table)
-        requirements.append(_build_detail(detail, document_id, block_id, duplicated))
+        requirements.append(_build_detail(detail, document_id, block_id, duplicated, file_format))
 
-    only = _list_only(list_tables, set(counts), document_id)
+    only = _list_only(list_tables, set(counts), document_id, file_format)
     only_counts = Counter(sid for _, sid in only)
     for req, sid in only:
         if sid is not None and only_counts[sid] > 1:  # 목록표에서 같은 고유번호가 반복됨

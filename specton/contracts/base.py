@@ -144,10 +144,10 @@ class SourceRef(Contract):
     - xlsx: sheet, row
     - csv: row
     - pdf: page, block
-    - hwpx: section, paragraph (표 안이면 table, cell도)
+    - hwp·hwpx: section, paragraph (표 안이면 table, cell도). .hwp는 변환 없이 바로 읽는다 (#24)
     """
 
-    file_format: Literal["xlsx", "csv", "pdf", "hwpx"]
+    file_format: Literal["xlsx", "csv", "pdf", "hwp", "hwpx"]
     sheet: str | None = None
     row: int | None = Field(default=None, ge=1)
     page: int | None = Field(default=None, ge=1)
@@ -163,6 +163,7 @@ class SourceRef(Contract):
             "xlsx": ("sheet", "row"),
             "csv": ("row",),
             "pdf": ("page", "block"),
+            "hwp": ("section", "paragraph"),
             "hwpx": ("section", "paragraph"),
         }
         missing = [f for f in required[self.file_format] if getattr(self, f) is None]
@@ -183,7 +184,7 @@ class SourceRef(Contract):
                 return f"{self.row}행"
             case "pdf":
                 return f"{self.page}쪽 블록{self.block}"
-            case "hwpx":
+            case "hwp" | "hwpx":
                 where = f"구역{self.section} 문단{self.paragraph}"
                 if self.table is not None:
                     where += f" 표{self.table} {self.cell}"

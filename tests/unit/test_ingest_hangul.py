@@ -124,13 +124,35 @@ def _list_with_head(
     return _table(para, cells)
 
 
-def _read(monkeypatch: pytest.MonkeyPatch, *tables: HangulTable) -> TabularResult:
+def _read(
+    monkeypatch: pytest.MonkeyPatch, *tables: HangulTable, name: str = "가짜.hwpx"
+) -> TabularResult:
     """가짜 표들로 `read_hangul`을 돌린다(엔진 대신 자료형을 넣는다)."""
     monkeypatch.setattr(hangul, "read_blocks", lambda path: HangulDocument(tuple(tables)))
-    return read_hangul(Path("가짜.hwpx"), "doc-1")
+    return read_hangul(Path(name), "doc-1")
 
 
 class TestRules:
+    def test_hwp_file_is_recorded_as_hwp_without_conversion(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """.hwp는 HWPX로 바꾸지 않고 읽으므로 원문 위치 형식도 hwp다 (#24). 목록표 블록도 같다."""
+        tables = (
+            _detail_b(359, "SFR-003"),
+            _list_table(10, [("SFR-003", "명칭"), ("SFR-009", "목록만")]),
+        )
+
+        hwp = _read(monkeypatch, *tables, name="정의서.HWP").requirements
+        hwpx = _read(monkeypatch, *tables, name="정의서.hwpx").requirements
+
+        assert [r.source_id for r in hwp] == ["SFR-009", "SFR-003"]  # 목록표만 1건 + 상세표 1건
+        assert {r.source_ref.file_format for r in hwp} == {"hwp"}
+        assert {r.source_ref.file_format for r in hwpx} == {"hwpx"}
+        # 형식 말고 위치는 같다
+        assert [r.source_ref.model_dump(exclude={"file_format"}) for r in hwp] == [
+            r.source_ref.model_dump(exclude={"file_format"}) for r in hwpx
+        ]
+
     def test_shape_b_reads_pair_and_location(self, monkeypatch: pytest.MonkeyPatch) -> None:
         [req] = _read(monkeypatch, _detail_b(359, "SFR-003")).requirements
 

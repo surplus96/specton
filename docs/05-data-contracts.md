@@ -30,6 +30,7 @@
 | #176 | SQL 검증 결과 공용 계약 `SqlValidation`·`ValidationStep`·`ValidationIssue` 추가 (#167). 저장·승인 검사는 후속 |
 | #204 | `Error.detail`(「자세히 보기」 문장, 없으면 null) 추가 (#19). `GET /runs/{id}`의 `error`에서도 다시 받을 수 있다 |
 | #222 | `ArtifactRef.kind`에 `manifest`, `file_format`에 `json` 추가. manifest JSON은 승인 전 비공개 후보로 저장하고 승인 근거와 같은 바이트를 공개 |
+| #250 | `SourceRef.file_format`에 `hwp` 추가(#24). .hwp는 HWPX로 변환하지 않고 읽어 위치 칸은 `hwpx`와 같다 |
 
 남은 작업: FK 파생·참조 키 (#12), 값 범위 제약 (#15)
 
@@ -74,12 +75,12 @@
 | `xlsx` | `sheet`, `row` | | `sheet`는 시트 이름, `row`는 엑셀에 보이는 행 번호 (1부터, 머리글 행 포함) |
 | `csv` | `row` | | 파일의 행 번호 (1부터, 머리글 행 포함) |
 | `pdf` | `page`, `block` | | `page`는 1부터, `block`은 페이지 안 추출 순서로 0부터 |
-| `hwpx` | `section`, `paragraph` | `table`+`cell` (표 안일 때 함께) | `section`·`paragraph`·`table`은 문서 순서로 0부터, `cell`은 엑셀 셀 주소 형식 (열 문자+행 번호) |
+| `hwp`·`hwpx` | `section`, `paragraph` | `table`+`cell` (표 안일 때 함께) | `section`은 0부터, `paragraph`는 표가 든 맨 위 문단 번호(엔진 순서, 0부터), `table`은 그 구역 안 표 순번(0부터), `cell`은 엑셀 셀 주소 형식 (열 문자+행 번호) |
 
 - 사람이 원본 파일에서 바로 찾는 번호(행·쪽)는 1부터, 파서가 매기는 순서(블록·구역·문단·표)는 0부터다.
 - 화면 표기는 `SourceRef.display()`가 만든다. 저장·비교는 구조체로 한다.
 - 엑셀·CSV는 **요구사항 1건 = 1행**을 전제로 한다. 한 요구사항이 여러 행에 걸치는 양식은 입력 양식 결정(ADR-0003)에서 다룬다.
-- HWP 5.0 파일은 HWPX로 변환한 뒤 추출한다. 그래서 `file_format`에 `hwp`는 없고 위치는 `hwpx` 기준으로 기록한다. 변환 방법은 ADR-0004·#24에서 정한다.
+- HWP 5.0 파일은 HWPX로 변환하지 않고 같은 엔진으로 바로 읽는다(ADR-0004, #24). 위치 칸은 HWPX와 같고 `file_format`만 `hwp`로 기록해 원본 형식을 남긴다.
 
 ### LLM 출력 모델과 저장 모델
 

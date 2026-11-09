@@ -7,12 +7,13 @@ from typing import Any
 
 import pytest
 
+from specton.codegen.function_spec import render_function_spec
 from specton.codegen.normalize_step import normalize_design
 from specton.config import Settings
-from specton.contracts import DesignState, Entity, Normalized, Requirement, VersionInfo
+from specton.contracts import DesignState, Entity, Function, Normalized, Requirement, VersionInfo
 from specton.model_hash import model_hash
 from specton.packs.build import DEFAULT_ROOT, read_yaml
-from specton.pdf_adapter import create_pdf_candidate, erd_pdf_renderer
+from specton.pdf_adapter import create_pdf_candidate, erd_pdf_renderer, function_spec_pdf_renderer
 
 
 @dataclass(frozen=True)
@@ -188,3 +189,77 @@ def test_custom_pack_root_is_used_without_default_fallback(
 
     with pytest.raises(PackError):
         erd_pdf_renderer(Settings(_env_file=None, pack_root=tmp_path))(design)
+
+
+# ── 기능 명세서 PDF (#13 엔진 #243, R1 연결 #17) ─────────────────────
+
+
+def _with_function(design: DesignState) -> DesignState:
+    function = Function(
+        id="FUNC-01",
+        name="창고 등록",
+        description="창고를 등록한다",
+        req_ids=("REQ-01",),
+        entity_ops=({"entity_id": "ENT-01", "operations": ("C", "R")},),
+    )
+    return design.evolve(functions=(function,))
+
+
+def test_function_spec_candidate_is_private_under_its_own_kind(
+    design: DesignState, tmp_path: Path
+) -> None:
+    result = _Pdf()
+    candidate = create_pdf_candidate(
+        design, storage_dir=tmp_path, render=lambda state: result, kind="functions"
+    )
+    ref = candidate.generated["ref"]
+    assert (ref.kind, ref.file_format, ref.approved) == ("functions", "pdf", False)
+    assert ref.hash == hashlib.sha256(result.pdf).hexdigest()
+
+
+def test_function_spec_bridge_renders_the_stored_markdown_with_the_recorded_cover(
+    design: DesignState, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PDF는 저장되는 `.md`와 같은 Markdown으로 만들고, 표지에 실행에 기록된 값을 쓴다."""
+    from specton.export import pdf
+
+    spec = _with_function(design)
+    captured: dict[str, Any] = {}
+
+    def render(markdown: str, cover: Any, **kwargs: Any) -> _Pdf:
+        captured.update(markdown=markdown, cover=cover, **kwargs)
+        return _Pdf()
+
+    monkeypatch.setattr(pdf, "render_function_spec_pdf", render)
+    result = function_spec_pdf_renderer(Settings(_env_file=None, storage_dir=tmp_path))(spec)
+    assert result.pdf.startswith(b"%PDF-")
+    assert captured["markdown"] == render_function_spec(spec)
+    cover = captured["cover"]
+    assert (cover.run_id, cover.revision, cover.model_hash) == (
+        spec.run_id,
+        spec.revision,
+        model_hash(spec),
+    )
+    assert (cover.pack, cover.pack_version) == ("inventory", spec.versions.pack_version)
+    assert cover.title == "기능 명세서"
+    assert captured["draft"] is False  # 문서 표식만 정한다. 공개 승인은 DB 기록이 제어한다
+
+
+def test_function_spec_pack_version_change_is_rejected_before_engine_call(
+    design: DesignState, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from specton.export import pdf
+
+    spec = _with_function(design)
+    assert spec.normalized is not None
+    stale = spec.evolve(
+        normalized=spec.normalized.evolve(pack_version="stale"),
+        versions=spec.versions.evolve(pack_version="stale"),
+    )
+
+    def render(*args: Any, **kwargs: Any) -> Any:
+        pytest.fail("버전이 다른 팩으로 PDF를 만들면 안 됩니다")
+
+    monkeypatch.setattr(pdf, "render_function_spec_pdf", render)
+    with pytest.raises(ValueError, match="팩 버전"):
+        function_spec_pdf_renderer(Settings(_env_file=None, storage_dir=tmp_path))(stale)

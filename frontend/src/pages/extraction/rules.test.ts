@@ -45,6 +45,7 @@ describe('표시', () => {
     [{ file_format: 'xlsx', sheet: '요구사항', row: 4 }, '요구사항 시트 4행'],
     [{ file_format: 'csv', row: 7 }, '7행'],
     [{ file_format: 'hwpx', section: 0, paragraph: 12, table: 1 }, '0구역 12문단 · 표 1'],
+    [{ file_format: 'hwp', section: 1, paragraph: 3 }, '1구역 3문단'],
     [{ file_format: 'pdf', page: 3, block: 2 }, '3쪽 2번째 블록'],
   ] as const)('원문 위치 %o → %s', (ref, text) => {
     expect(locationText(ref)).toBe(text)

@@ -159,6 +159,9 @@ class TestSourceRef:
         assert SourceRef(file_format="pdf", page=2, block=0).display() == "2쪽 블록0"
         hwpx = SourceRef(file_format="hwpx", section=0, paragraph=4, table=1, cell="B2")
         assert hwpx.display() == "구역0 문단4 표1 B2"
+        # .hwp는 변환 없이 읽어 위치 칸이 hwpx와 같다 (#24)
+        hwp = SourceRef(file_format="hwp", section=1, paragraph=7)
+        assert hwp.display() == "구역1 문단7"
 
     @pytest.mark.parametrize(
         "kwargs",
@@ -166,6 +169,7 @@ class TestSourceRef:
             {"file_format": "xlsx", "row": 1},
             {"file_format": "pdf", "page": 1},
             {"file_format": "hwpx", "section": 0},
+            {"file_format": "hwp", "paragraph": 0},
             {"file_format": "hwpx", "section": 0, "paragraph": 1, "table": 1},
             {"file_format": "csv", "row": 0},
         ],

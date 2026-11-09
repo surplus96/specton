@@ -39,8 +39,11 @@
 | 유형 | 처리 |
 |---|---|
 | HWPX | 요구사항 상세표를 읽어 구역·문단·표·셀 위치를 `source_ref`로 (`specton/ingest/hangul.py`) |
-| HWP 5.0 | 엔진은 바로 읽을 수 있지만 업로드는 아직 받지 않는다(`.hwp`는 415와 HWPX 변환 안내, `specton/api/uploads.py`) |
-| 배포용·암호화·손상 | 오류와 지원 경계 안내 |
+| HWP 5.0 | 변환 없이 같은 파서로 읽는다. 위치는 HWPX와 같은 칸이고 `file_format`만 `hwp`(#24). 업로드는 OLE 복합 문서 서명만 먼저 확인한다(`specton/api/uploads.py`) |
+| 배포용·암호화·손상 | 파일 단위 안내로 멈춘다(정상 분석으로 진행하지 않음). 암호 걸린 .hwp는 시험함, 배포용 문서는 시험 파일이 없어 미시험 |
+
+- 연결: 업로드(웹·API) → parse 노드(`specton/parse_node.py`의 형식별 파서) → 추출 확인. 한글도 xlsx·csv와 같은 `TabularResult`를 돌려주므로 이후 흐름은 같다(#24).
+- 원문 기호(①·•·가. 등)와 줄바꿈은 고치지 않고 `source_text`에 그대로 둔다(앞뒤 공백만 뺌). 실제 엔진 시험: `tests/unit/test_hangul_input.py`.
 
 - 엔진: HWP 5.0·HWPX 모두 `rhwp-python==0.8.1`(MIT)로 읽는다(2026-11-08 채택, ADR-0004). 엔진 호출은 `specton/ingest/hangul_engine.py` 한 곳이다.
 - 원문 위치는 구역·문단·표·셀로 적고, 렌더링 쪽 번호를 원문 쪽 번호로 쓰지 않는다.

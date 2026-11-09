@@ -54,6 +54,8 @@ services:
       SPECTON_SESSION_COOKIE_SECURE: ${SPECTON_SESSION_COOKIE_SECURE:-true}
       # 실행 이미지에 Pango·한글 폰트·mermaid-cli·Chromium이 있다 (#226).
       SPECTON_ENABLE_ERD_PDF: ${SPECTON_ENABLE_ERD_PDF:-true}
+      # 기능 명세서 PDF는 WeasyPrint·한글 폰트만 쓴다 (#243, #17).
+      SPECTON_ENABLE_FUNCTION_SPEC_PDF: ${SPECTON_ENABLE_FUNCTION_SPEC_PDF:-true}
     volumes:
       - storage:/data/storage
     # 포트를 밖에 열지 않는다. web(Caddy)이 /runs·/health를 넘긴다.
