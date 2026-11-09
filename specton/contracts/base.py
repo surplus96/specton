@@ -122,7 +122,7 @@ class ExtractionStatus(StrEnum):
     """원문 한 건의 추출 판정. `SourceRequirement`와 함께 코드가 채운다.
 
     `review`는 확인하거나 제외하고, `fail`은 제외해야 진행한다 (ADR-0015, #95).
-    `fail`을 정하는 기준은 #24에서 HWP·HWPX를 시험한 뒤 정한다.
+    `fail`을 정하는 기준은 #253에서 HWP·HWPX를 시험한 뒤 정한다 (#24에서 넘김).
     """
 
     PASS = "pass"
