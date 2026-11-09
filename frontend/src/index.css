@@ -1,9 +1,26 @@
-:root {
-  font-family: system-ui, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
-  line-height: 1.5;
-}
-
+/* 기본 여백만 지운다. 색·글꼴은 src/theme.ts에서 정한다. */
 body {
   margin: 0;
-  padding: 2rem;
+  -webkit-font-smoothing: antialiased;
+  word-break: keep-all; /* 한글을 단어 중간에서 끊지 않는다 */
+}
+
+/* 본문 + 서버 작업 패널 (layout/WithActivity.tsx). 좁은 화면은 패널이 본문 아래로 */
+.with-activity {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+@media (min-width: 1100px) {
+  .with-activity {
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
+  /* 넓은 화면: 오른쪽 세로 칸이 스크롤을 따라오고, 기록이 길면 칸 안에서 스크롤 */
+  .with-activity__side {
+    position: sticky;
+    top: 24px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+  }
 }

@@ -102,7 +102,10 @@ def create_run(
         )
     pack_version = _pack_version(settings, pack)
     run_id, document_id = uuid4(), uuid4()
-    stored = save_upload(file, settings.storage_dir, run_id, document_id, max_bytes)
+    stored = save_upload(
+        file, settings.storage_dir, run_id, document_id, max_bytes,
+        settings.max_unzipped_mb * 1024 * 1024,
+    )  # fmt: skip
     try:
         with pool.connection() as conn, conn.transaction():
             status = runs.create_run(

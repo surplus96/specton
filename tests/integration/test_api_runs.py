@@ -3,6 +3,8 @@
 실행기(#17)는 없으므로, 실행기가 할 진행 기록은 저장 함수로 직접 만든다.
 """
 
+import io
+import zipfile
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -32,7 +34,18 @@ from specton.persistence.snapshots import add_artifact, save_model
 pytestmark = pytest.mark.db
 
 StateFactory = Callable[[str, str], DesignState]
-XLSX = ("req.xlsx", b"PK\x03\x04 fake workbook", "application/octet-stream")
+
+
+def _zip(entries: dict[str, bytes]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, data in entries.items():
+            archive.writestr(name, data)
+    return buffer.getvalue()
+
+
+# 실행기가 없어 파서는 돌지 않는다. 업로드 내용 검사(zip인지)만 통과하면 된다 (#21)
+XLSX = ("req.xlsx", _zip({"[Content_Types].xml": b"<Types/>"}), "application/octet-stream")
 
 
 @pytest.fixture
@@ -144,6 +157,51 @@ def test_too_large_upload_is_413_and_leaves_no_file(settings: Settings, pool: Po
     assert not any(settings.storage_dir.rglob("*"))  # 빈 run 폴더도 남기지 않는다
 
 
+@pytest.mark.parametrize(
+    ("file", "message"),
+    [
+        (("req.xlsx", b"not a workbook", "application/octet-stream"), "형식이 아닙니다"),
+        (("req.hwpx", b"<hwpml/>", "application/octet-stream"), "형식이 아닙니다"),
+        (("req.csv", b"id,text\n1,\x00\x01", "text/csv"), "텍스트가 아닙니다"),
+    ],
+)
+def test_content_that_does_not_match_the_extension_is_415(
+    client: TestClient, settings: Settings, file: tuple[str, bytes, str], message: str
+) -> None:
+    """확장자만 바꾼 파일을 파서에 넘기지 않는다 (#21, TC-N03)."""
+    response = _create(client, file)
+
+    assert _error(response) == (415, "UNSUPPORTED_MEDIA_TYPE")
+    assert message in response.json()["message"]
+    assert not any(p.is_file() for p in settings.storage_dir.rglob("*"))
+
+
+def test_zip_that_unpacks_beyond_the_limit_is_413(settings: Settings, pool: Pool) -> None:
+    """압축 폭탄: 올린 크기는 작아도 압축을 푼 크기가 한도를 넘으면 막는다 (#21, TC-N05)."""
+    small = settings.model_copy(update={"max_unzipped_mb": 1})
+    bomb = _zip({"xl/worksheets/sheet1.xml": b"0" * (2 * 1024 * 1024)})
+    assert len(bomb) < 64 * 1024
+    with TestClient(create_app(small, pool)) as client:
+        response = _create(client, ("req.xlsx", bomb, "application/octet-stream"))
+
+    assert _error(response) == (413, "UPLOAD_TOO_LARGE")
+    assert "압축을 푼 크기" in response.json()["message"]
+    assert not any(p.is_file() for p in settings.storage_dir.rglob("*"))
+
+
+@pytest.mark.parametrize("secure", [False, True])
+def test_session_cookie_is_secure_only_when_configured(
+    settings: Settings, pool: Pool, secure: bool
+) -> None:
+    """HTTPS 배포에서는 세션 쿠키에 Secure를 붙인다 (#21, PR #108 리뷰)."""
+    app = create_app(settings.model_copy(update={"session_cookie_secure": secure}), pool)
+    with TestClient(app) as client:
+        cookie = client.get("/runs").headers["set-cookie"]
+
+    assert "HttpOnly" in cookie and "SameSite=lax" in cookie
+    assert ("Secure" in cookie) is secure
+
+
 def test_missing_field_is_invalid_request(client: TestClient) -> None:
     response = client.post("/runs", data={"pack": "inventory"})
 
@@ -168,6 +226,8 @@ def test_runs_are_visible_only_to_their_owner(
         404,
         "RUN_NOT_FOUND",
     )
+    # 확인 응답도 다른 세션이면 실행이 없는 것과 같다 (#21, TC-N03)
+    assert _error(_resume(other, run_id, "int-x", ANSWERS)) == (404, "RUN_NOT_FOUND")
 
 
 def test_unknown_run_is_404_with_run_id(client: TestClient) -> None:

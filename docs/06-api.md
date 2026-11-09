@@ -16,7 +16,7 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 
 | 메서드·경로 | 입력 | 정상 결과 | 주요 오류 |
 |---|---|---|---|
-| `POST /runs` | multipart `file`(.xlsx/.csv/.hwpx), `pack` | 202 `run_id`·`status`·`revision` | 413 한도 초과, 415 형식(.hwp는 HWPX 변환 안내, PDF는 이번 범위 밖), 422 팩/입력 |
+| `POST /runs` | multipart `file`(.xlsx/.csv/.hwpx), `pack` | 202 `run_id`·`status`·`revision` | 413 한도 초과(xlsx·hwpx는 압축을 푼 크기 포함), 415 형식(.hwp는 HWPX 변환 안내, PDF는 이번 범위 밖)·내용이 확장자와 다름, 422 팩/입력 |
 | `GET /runs` | `status`·`limit` 선택 | 200 소유자 실행 목록 | 422 조회 조건 |
 | `GET /runs/{id}` | — | 200 상태·revision·진행·interrupt·요약 오류 | 404 없음/접근 불가 |
 | `GET /runs/{id}/events` | `Last-Event-ID` 선택 | 200 SSE 스트림 | 404, 409 이벤트 재조회 필요 |
@@ -167,8 +167,8 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 | `EVENT_REPLAY_EXPIRED` | SSE 재연결 시 이벤트 보존 범위를 벗어남 | 409 | 상태 조회 후 |
 | `ARTIFACT_NOT_READY` | 산출물이 아직 생성되지 않음 | 409 | 예 |
 | `ARTIFACT_FORMAT_UNSUPPORTED` | 허용하지 않는 kind·file_format 조합 | 422 | 아니오 |
-| `UPLOAD_TOO_LARGE` | 파일 크기 한도 초과 | 413 | 아니오 |
-| `UNSUPPORTED_MEDIA_TYPE` | 지원하지 않는 파일 형식 | 415 | 아니오 |
+| `UPLOAD_TOO_LARGE` | 파일 크기 한도 초과, xlsx·hwpx 압축을 푼 크기 한도 초과 (#21) | 413 | 아니오 |
+| `UNSUPPORTED_MEDIA_TYPE` | 지원하지 않는 파일 형식, 내용이 확장자와 다름: xlsx·hwpx는 zip 구조 손상·선언 크기와 실제 크기 불일치·지원하지 않는 압축 방식·파일명 인코딩·해제 버전, csv는 NUL 바이트(BOM 있는 UTF-16은 해독되면 통과) (#21, docs/11 「업로드 내용 검사」) | 415 | 아니오 |
 | `PACK_UNSUPPORTED` | 없는 도메인 팩 선택 | 422 | 아니오 |
 | `INVALID_RESPONSE` | resume 답변 형식이 틀림, 확인 요청과 응답 종류가 다름, 차단 오류가 남은 채 approve, SQL 검증을 통과하지 않은 채 approve(설정을 켠 경우) | 422 | 아니오 |
 | `INVALID_REQUEST` | 그 밖의 요청 형식이 틀림 (조회 조건·취소 본문 등). 없는 경로는 404, 허용하지 않는 메서드는 405 | 422 / 404 / 405 | 아니오 |
@@ -195,7 +195,13 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 | `review` | md | |
 
 - 다른 조합은 422.
-- 승인 전 파일은 draft 표식·메타데이터를 포함한다.
+- 승인 전 파일은 초안 파일명(`-draft`)·메타데이터(`approved=false`)로 구분한다.
+- 기능 명세 Markdown과 RTM Excel·CSV는 생성 단계에서 같은 모델·revision으로 저장한다.
+  승인 때 각 파일 해시를 `approval_basis`에 기록하고, 내보내기는 재생성 없이 같은 바이트를
+  승인본으로 게시한다. 원문 제외·원문 없음 행도 RTM에 남는다. 기능 명세 PDF와 manifest JSON의 연결은 후속 범위다.
+- ERD PDF 기능을 켜면
+  승인본용 PDF 바이트를 미리 비공개 후보로 저장하되 `approved=false`이며, 승인 전 PDF
+  다운로드는 계속 409다. 승인 근거가 기록한 후보 해시와 같은 바이트만 승인 후 공개한다.
 - 요청 revision의 객체 존재·접근 권한을 확인한 뒤 `Content-Disposition`으로 안전한 파일명을 지정한다.
 - 파일명은 `specton-<kind>-r<revision>.<file_format>`, 승인 전이면 `-draft`를 붙인다. `ETag`는 산출물 해시다.
 - 쿼리 이름은 `ArtifactRef`와 같은 `file_format`이다 (#94 이름 정리, #16).

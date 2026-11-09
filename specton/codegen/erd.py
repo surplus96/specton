@@ -6,26 +6,37 @@ N:M은 정리 단계에서 연결 테이블과 FK 둘로 바뀌어 있으므로 
 
 - 표기 (#13 결정, A안): 엔티티는 물리명을 식별자로, 한글 이름을 별칭으로 둔다.
   속성은 `타입 한글이름 키 "물리명"`이다. 예: `varchar(20) 창고코드 PK "wrhus_cd"`
-- 웹(mermaid JS)·PDF(mermaid-cli)가 같은 원문을 쓴다. 둘 다 Mermaid 11.15.0으로 고정한다.
+- 웹(mermaid JS)·PDF(mermaid-cli)가 같은 원문을 쓴다. 둘 다 Mermaid 11.17.2로 고정한다 (ADR-0004).
 - 같은 입력이면 항상 같은 문자열이다 (테이블·FK는 정리 결과의 ID 순서를 따른다).
 - 이 모듈은 LLM client를 import하지 않는다 (CLAUDE.md, `codegen/` 규칙).
 """
 
 import re
+import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 from specton.contracts.base import Cardinality
 from specton.contracts.design import Relationship
 from specton.contracts.normalized import Column, NormalizedModel, Table
 
-# Mermaid 11.15.0 erDiagram이 받는 속성 이름·타입 글자 (실측, #13 댓글).
+# Mermaid erDiagram이 받는 속성 이름·타입 글자 (11.15.0 실측 #13 댓글, 11.17.2 재실측 #212 검토).
 # 글자·숫자·`_`·`-`·괄호·대괄호를 받되 숫자·`-`·괄호·대괄호로 시작하면 안 된다.
-# 공백·`·`·`/`·`.`·`,`는 파싱 오류다.
+# 공백·`·`·`/`는 파싱 오류다. `.`·`,`는 11.17.2는 받지만 11.15.0에서 오류여서 쓰지 않는다.
 _NAME_BAD = re.compile(r"[^\w\-()\[\]]")
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-# Mermaid 11.15.0 ER 문법의 단독 키워드. PostgreSQL 예약어와 별개이며 대소문자를 구분하지 않는다.
+# Mermaid ER 문법의 단독 키워드 (11.15.0·11.17.2 실측 같음).
+# PostgreSQL 예약어와 별개이며 대소문자를 구분하지 않는다.
 _MERMAID_KEYWORDS = frozenset({"erdiagram", "style", "classdef", "class", "one", "many", "to"})
+
+
+# Mermaid erDiagram 배치 방향
+Direction = Literal["TB", "BT", "LR", "RL"]
+
+
+def _direction_line(direction: Direction | None) -> list[str]:
+    return [f"    direction {direction}"] if direction else []
 
 
 @dataclass(frozen=True)
@@ -74,14 +85,20 @@ def erd_edges(model: NormalizedModel, relationships: Sequence[Relationship]) -> 
 
 
 def render_erd(
-    model: NormalizedModel, relationships: Sequence[Relationship], *, attributes: bool = True
+    model: NormalizedModel,
+    relationships: Sequence[Relationship],
+    *,
+    attributes: bool = True,
+    direction: Direction | None = None,
 ) -> str:
     """Mermaid `erDiagram` 원문.
 
     `attributes=False`면 속성 없이 엔티티와 관계만 그린다 (전체 관계 개요).
+    `direction`을 주면 배치 방향을 정한다 (`LR`: 좌우, ADR-0004 PDF 상세도).
     """
     idents = _identifiers(model.tables)
-    lines = ["erDiagram", f"    %% Specton ERD · {model.pack} {model.pack_version}"]
+    lines = ["erDiagram", *_direction_line(direction)]
+    lines.append(f"    %% Specton ERD · {_alias(model.pack)} {_alias(model.pack_version)}")
     fk_columns = {c for fk in model.foreign_keys for c in fk.columns}
     for table in model.tables:
         head = f'    {idents[table.id]}["{_alias(table.name)}"]'
@@ -125,9 +142,25 @@ def _identifiers(tables: Sequence[Table]) -> dict[str, str]:
     return idents
 
 
+def _breaks_line(ch: str) -> bool:
+    """제어·서식 문자와 줄·문단 구분 문자."""
+    category = unicodedata.category(ch)
+    return category[0] == "C" or category in ("Zl", "Zp")
+
+
 def _alias(name: str) -> str:
-    """엔티티 별칭(한글 이름). 큰따옴표는 Mermaid 파싱 오류라 작은따옴표로 바꾼다."""
-    return name.replace('"', "'")
+    """엔티티 별칭·설명에 넣는 사용자 글자. 따옴표 안이라도 Mermaid가 읽는 기호를 걸러 낸다.
+
+    - 큰따옴표는 Mermaid 파싱 오류라 작은따옴표로 바꾼다.
+    - `%%`는 지시문(`%%{init: ...}%%`)과 주석의 시작이라 `%`로 줄인다. 따옴표 안의 `init` 지시문도
+      strict에서 인식된 것을 R1이 실험으로 확인했다 (#190 리뷰, ADR-0004 「Mermaid 설정 보안」).
+    - 줄바꿈·제어 문자(줄·문단 구분 문자 U+2028·U+2029 포함)는 새 줄로 `style`·`classDef` 같은
+      문장을 끼워 넣을 수 있어 공백으로 바꾼다.
+    """
+    text = "".join(" " if _breaks_line(ch) else ch for ch in name)
+    while "%%" in text:
+        text = text.replace("%%", "%")
+    return text.replace('"', "'")
 
 
 def _attribute(table: Table, col: Column, fk_columns: set[str]) -> str:
@@ -148,7 +181,7 @@ def _attribute(table: Table, col: Column, fk_columns: set[str]) -> str:
         notes.append(type_note)
     if name != col.name:
         notes.append(col.name)
-    comment = " · ".join(notes).replace('"', "'")
+    comment = _alias(" · ".join(notes))
     key_text = f" {','.join(keys)}" if keys else ""
     return f'{data_type} {name}{key_text} "{comment}"'
 
