@@ -57,6 +57,22 @@ TC 37개(기능 `TC-F01`~`F22`, 비기능 `TC-N01`~`N06`, 에이전트 `TC-A01`~
 - F1 = 2PR/(P+R). 분모가 0일 때의 집계 정책을 미리 정하고 사례 수를 함께 보고한다.
 - 목표값은 첫 기준 실행 후 정한다 (ADR-0014). DDL 실행 성공 100%는 승인된 평가 집합에만 적용한다.
 
+## 검토 관점 평가
+
+검토 관점(A05~A08)의 결함 탐지는 생성 결과가 아니라 **고정 설계**로 잰다. 원문만 고쳐서는 설계 단계가 원문대로 맞게 만들면 결함이 심어지지 않기 때문이다 (#40, A05 결정).
+
+- 고정 설계 파일: 관점 하나에 YAML 하나. 사례마다 원문 ID와 그 문장에 대한 설계 한 벌을 둔다. 형식은 합성 예시 `tests/unit/data/review_eval_sample.yaml`.
+  - `reviewer_id`(관점), `set`(평가 세트 이름·버전), `pack`(few-shot 예시를 넣을 팩), `cases`
+  - 사례: `case_id`, `source_id`(근거 원문), `case`(`normal` 정상 · `alt_normal` 같은 요구를 다르게 표현한 정상 · `defect` 결함), `requirements`(`id`·`text`·`type`·`nfr_category`), `functions`(선택), `entities`(`id`·`name`), `relationships`(관점 예시와 같은 칸), `expected`
+  - `expected`: `defect` 사례에만 `{target: 설계 요소 ID, defect: cardinality | direction | optional | identifying}`. 결함은 사례마다 하나씩 심는다.
+  - 파일에 없는 계약 필수 칸(원문 위치·설명·키 속성·관계 근거)은 도구가 중립 값으로 채운다. `description`·`rationale`은 파일에 쓰면 그대로 쓴다.
+- 채점: 지적 대상(`targets`)에 기대 대상 ID가 있으면 맞춘 것이다. 지적 `kind`는 LLM이 정하는 글자라 채점하지 않고 보고서에만 남긴다.
+  - 발견율 = 맞춘 기대 결함 / 기대 결함, 지적 정확도 = 기대 대상을 가리킨 지적 / 전체 지적, 정상 오탐 = `normal`·`alt_normal` 사례의 지적 수
+  - 호출이 실패한 사례는 지적 0건으로 세지 않고 실패로 따로 센다. 지표 계산에서는 뺀다.
+- 실행: `uv run python -m specton.review.eval_fixtures <고정설계.yaml> --out <결과.json>` (`specton/review/eval_fixtures.py`). 사례마다 `review_perspective`로 그 관점만 실제 LLM으로 돌린다(`SPECTON_OPENAI_API_KEY` 필요). 결과 파일에는 사례별 지적·찾은/놓친 대상·지표·프롬프트 버전·모델·토큰이 들어간다.
+- 고정 설계 파일과 결과 파일은 평가 자료다. 공개 저장소에 두지 않는다 (위 「평가 데이터」).
+- 정리 결과(`normalized`)를 입력으로 받는 관점(A08)은 아직 고정 설계로 만들 수 없어 실행 전에 멈춘다. 고정 설계를 정리 코드에 통과시키는 방식은 A08 평가 방식이 정해지면 더한다.
+
 ## 진입·종료 기준
 
 - **진입:** 계약·팩·픽스처 버전 고정, 독립 정답 승인, 실행 환경 확인
