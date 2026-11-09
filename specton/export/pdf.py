@@ -1,7 +1,11 @@
 """PDF 출력 엔진 (#13, ADR-0004 「PDF 출력」 승인 #197).
 
 정리된 모델(`NormalizedModel`)과 설계 관계로 ERD PDF를 만든다. 기능 명세서(#14)도 같은 엔진을
-쓸 수 있게 문서 조립(HTML)과 PDF 변환(WeasyPrint)을 나눠 둔다.
+쓴다: 문서 조립(HTML)과 PDF 변환(WeasyPrint)을 나눠 두었다.
+
+기능 명세서 PDF (`render_function_spec_pdf`): #213 Markdown을 합의한 문법만 HTML로 바꿔
+(`markdown.py`) A4 세로로 찍는다. 열이 많은 표(CRUD 매트릭스)는 가로 쪽에 두고
+기준 열 + 20열씩 나눈다.
 
 ERD PDF 구성 (ADR-0004):
 1. 표지: 실행 정보 표 (#14 출력 manifest와 같은 이름: run_id·revision·model_hash·pack·pack_version)
@@ -40,6 +44,8 @@ from specton.codegen.erd import render_erd
 from specton.codegen.erd_areas import ErdArea, assign_areas, render_area_erd
 from specton.contracts.design import Relationship
 from specton.contracts.normalized import Column, NormalizedModel, Table
+from specton.export.markdown import BulletList, Heading, Paragraph, parse_blocks
+from specton.export.markdown import Table as MarkdownTable
 
 # ── 쪽·글자 기준 (ADR-0004 실측) ──────────────────────────
 
@@ -50,6 +56,7 @@ MIN_PRINT_PT = 6.0  # 이보다 작으면 인쇄해 읽기 어렵다
 MERMAID_TEXT_PX = 16  # Mermaid ER 기본 글자
 PX_MM = 25.4 / 96
 MAX_TABLE_COLUMNS = 20  # 넓은 표: 기준 열 + 20열까지 한 표 (ADR-0004)
+PORTRAIT_TABLE_COLUMNS = 6  # 이보다 열이 많은 표는 가로 쪽에 둔다 (기능 명세서 CRUD 매트릭스)
 
 # 표지 칸: #14 출력 manifest와 같은 이름·표시 이름 (R3 합의, 2026-11-08)
 COVER_FIELDS: tuple[tuple[str, str], ...] = (
@@ -300,6 +307,12 @@ _CSS = """
 html { font-family: FONT; font-size: 9.5pt; color: #1d1d1f; }
 h1 { string-set: doc content(); font-size: 18pt; margin: 0 0 6mm; }
 h2 { font-size: 12pt; margin: 0 0 3mm; break-after: avoid; }
+h3 { font-size: 10.5pt; margin: 4mm 0 2mm; break-after: avoid; }
+p, ul { margin: 0 0 3mm; }
+li { margin: 0 0 .8mm; }
+code { background: #f2f2f2; padding: 0 .6mm; border-radius: .6mm; }
+section.block + section.block { margin-top: 5mm; }
+.wide td + td { white-space: nowrap; }
 .draft-stamp { position: fixed; top: 95mm; left: 20mm; width: 100%; transform: rotate(-30deg);
   font-size: 80pt; font-weight: 700; color: rgba(243, 115, 33, .12); z-index: -1; }
 .wide { page: wide; break-before: page; }
@@ -547,3 +560,69 @@ def render_erd_pdf(
         warnings=document.warnings,
         blocked_urls=result.blocked_urls,
     )
+
+
+# ── 기능 명세서 PDF (#13 공용 엔진, #213 Markdown 입력) ───────────────
+
+
+def build_function_spec_html(markdown: str, cover: CoverInfo, *, draft: bool) -> str:
+    """기능 명세서 Markdown → PDF용 HTML. 문서 정보 표는 Markdown 안에 있어 표지를 따로 두지 않는다.
+
+    열이 `PORTRAIT_TABLE_COLUMNS`보다 많은 표는 바로 앞 제목과 함께 가로 쪽에 두고, 첫 열(기능)을
+    남긴 채 `MAX_TABLE_COLUMNS`열씩 나눈다. 글자를 줄여 맞추지 않는다 (ADR-0004 넓은 표).
+    """
+    blocks = parse_blocks(markdown)
+    parts: list[str] = []
+    i = 0
+    while i < len(blocks):
+        block = blocks[i]
+        following = blocks[i + 1] if i + 1 < len(blocks) else None
+        if isinstance(block, Heading) and _is_wide(following):
+            assert isinstance(following, MarkdownTable)
+            parts.append(_wide_table_html(following, heading=block))
+            i += 2
+            continue
+        if _is_wide(block):
+            assert isinstance(block, MarkdownTable)
+            parts.append(_wide_table_html(block, heading=None))
+        elif isinstance(block, Heading):
+            parts.append(f"<h{block.level}>{block.html}</h{block.level}>")
+        elif isinstance(block, Paragraph):
+            parts.append(f"<p>{block.html}</p>")
+        elif isinstance(block, BulletList):
+            parts.append("<ul>" + "".join(f"<li>{item}</li>" for item in block.items) + "</ul>")
+        else:
+            parts.append(_markdown_table_html(block.header, block.rows))
+        i += 1
+    title = f"Specton {cover.title}"
+    return _page_html(title=title, body="".join(parts), cover=cover, draft=draft)
+
+
+def render_function_spec_pdf(markdown: str, cover: CoverInfo, *, draft: bool) -> PdfResult:
+    """기능 명세서 PDF 바이트. 호출·저장·승인본 게시는 실행 흐름(#17, R1)이 맡는다.
+
+    `markdown`은 `codegen/function_spec.render_function_spec`의 결과다.
+    `cover.title`은 「기능 명세서」로 준다.
+    """
+    return html_to_pdf(build_function_spec_html(markdown, cover, draft=draft))
+
+
+def _is_wide(block: object) -> bool:
+    return isinstance(block, MarkdownTable) and len(block.header) > PORTRAIT_TABLE_COLUMNS
+
+
+def _wide_table_html(table: MarkdownTable, *, heading: Heading | None) -> str:
+    parts = split_columns(table.header, table.rows, keep=1, width=MAX_TABLE_COLUMNS)
+    title = f"<h{heading.level}>{heading.html}</h{heading.level}>" if heading else ""
+    body = []
+    for n, (header, rows) in enumerate(parts, start=1):
+        note = f"<p>열 {n}/{len(parts)}</p>" if len(parts) > 1 else ""
+        body.append(f'<section class="block">{note}{_markdown_table_html(header, rows)}</section>')
+    return f'<section class="wide">{title}{"".join(body)}</section>'
+
+
+def _markdown_table_html(header: Sequence[str], rows: Sequence[Sequence[str]]) -> str:
+    """칸이 이미 이스케이프된 인라인 HTML인 표. 머리글은 쪽마다 반복된다 (`thead`)."""
+    head = "".join(f"<th>{h}</th>" for h in header)
+    body = "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in rows)
+    return f"<table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
