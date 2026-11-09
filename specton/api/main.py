@@ -15,6 +15,7 @@ from specton.api.errors import install_error_handlers
 from specton.api.runs import router as runs_router
 from specton.config import Settings, get_settings
 from specton.ddl_node import ddl_node
+from specton.design_rules_node import design_rules_node
 from specton.document_node import document_node
 from specton.erd_node import erd_node
 from specton.export_node import export_node
@@ -36,7 +37,7 @@ class HealthResponse(BaseModel):
 def create_graph(
     settings: Settings, checkpointer: BaseCheckpointSaver[Any]
 ) -> CompiledStateGraph[GraphState, None, GraphState, GraphState]:
-    """문서·에이전트·정리·DDL 검증·ERD·기능 명세·RTM을 연결한다. 후속 규칙은 빈 노드다."""
+    """문서·에이전트·정리·생성·SQL 검증·RULE-02·06을 연결한다. SC는 후속 범위다."""
     mapper = failure_mapper(rule_severities(root=settings.pack_root))
     erd = (
         erd_node(settings.storage_dir, pdf=erd_pdf_renderer(settings))
@@ -50,10 +51,11 @@ def create_graph(
         "erd": erd,
         "ddl": ddl_node(settings),
         "rtm": document_node(settings.storage_dir),
+        "rules": design_rules_node(root=settings.pack_root),
         "wait_review": manifest_node(settings.storage_dir),
         "export": export_node(settings.storage_dir),
     }
-    return build_graph(nodes, checkpointer=checkpointer)
+    return build_graph(nodes, checkpointer=checkpointer, max_rework=settings.max_rework_iterations)
 
 
 def create_app(settings: Settings | None = None, pool: Pool | None = None) -> FastAPI:

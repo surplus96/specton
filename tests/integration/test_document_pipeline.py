@@ -52,10 +52,12 @@ def _requirements(state: GraphState) -> Mapping[str, Any]:
 
 
 def _functions(state: GraphState) -> Mapping[str, Any]:
+    # 승인 성공용 설계는 두 FR을 모두 연결한다. 미연결 FR의 422·재작업은
+    # test_design_rules_pipeline.py에서 실제 API로 별도 검증한다 (#225).
     name = DOMAINS[state["design"].versions.pack_id][0]
     function = Function(
-        id="FUNC-01", name=f"{name} 등록", description=f"{name}를 등록한다",
-        req_ids=("REQ-01",), priority="Must", priority_source="explicit",
+        id="FUNC-01", name=f"{name} 등록·조회", description=f"{name}를 등록하고 조회한다",
+        req_ids=("REQ-01", "REQ-02"), priority="Must", priority_source="explicit",
         priority_rationale="등록 요구",
     )  # fmt: skip
     return {"design": state["design"].evolve(functions=(function,))}
@@ -301,11 +303,11 @@ def test_documents_trace_sources_and_are_approved_as_identical_bytes(
     rows = list(csv.reader(io.StringIO(content["rtm", "csv"].decode("utf-8-sig"))))
     assert [row[9] for row in rows[1:]] == [
         "연결",
-        "미연결",
+        "연결",
         "제외",
         "확인(원문 없음)",
     ]
-    assert rows[2][6] == "" and rows[3][4:] == [
+    assert rows[2][6] == f"FUNC-01 {DOMAINS[pack][0]} 등록·조회" and rows[3][4:] == [
         "'=1+1",
         "",
         "",

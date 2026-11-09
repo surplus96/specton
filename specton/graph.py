@@ -257,6 +257,14 @@ def _sql_blocks_approval(state: GraphState) -> bool:
     return state.get("ddl_validation_status") not in (None, ValidationStatus.PASSED)
 
 
+def _blocks_approval(state: GraphState) -> bool:
+    return (
+        bool(state.get("normalization_failed"))
+        or _sql_blocks_approval(state)
+        or any(f.severity is Severity.CRITICAL for f in state["design"].findings)
+    )
+
+
 def _next_after_generation(state: GraphState) -> str:
     return "validation_failure" if _sql_blocks_approval(state) else "rules"
 
@@ -490,8 +498,8 @@ def _ask_review(state: GraphState) -> dict[str, Any]:
     )
     decision = response.get("decision")
     update: dict[str, Any] = {"review_response": response, "revising": decision == "revise"}
-    if decision == "approve" and (state.get("normalization_failed") or _sql_blocks_approval(state)):
-        return update  # API 밖에서 직접 재개해도 정리·SQL 검증 실패를 승인·내보내기 할 수 없다
+    if decision == "approve" and _blocks_approval(state):
+        return update  # API 밖에서 직접 재개해도 차단 규칙 지적을 승인·내보내기 할 수 없다
     if decision in REVIEW_STATUS:
         update["design"] = state["design"].evolve(status=REVIEW_STATUS[decision])
     return update
@@ -592,11 +600,7 @@ def _next_after_route(state: GraphState) -> str:
 
 def _next_after_review(state: GraphState) -> str:
     decision = state.get("review_response", {}).get("decision")
-    if (
-        decision == "approve"
-        and not state.get("normalization_failed")
-        and not _sql_blocks_approval(state)
-    ):
+    if decision == "approve" and not _blocks_approval(state):
         return "export"
     if decision == "revise":
         return "a09"

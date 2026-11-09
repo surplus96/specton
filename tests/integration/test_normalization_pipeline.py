@@ -24,11 +24,13 @@ from specton.config import Settings
 from specton.contracts import (
     BranchResult,
     Entity,
+    Function,
     Relationship,
     Requirement,
     RunStatus,
     SseEvent,
 )
+from specton.design_rules_node import design_rules_node
 from specton.erd_node import erd_node
 from specton.graph import REVIEWERS, GraphState, Node
 from specton.packs.build import DEFAULT_ROOT, read_yaml
@@ -87,17 +89,41 @@ class _Pipeline:
         self.pool, self.settings, self.client = pool, settings, client
         self.visited: list[tuple[str, int]] = []
         nodes = {name: self._downstream(name) for name in DOWNSTREAM}
-        nodes.update(a01=_requirement, a03=design, a09=_unexpected)
+
+        def linked_design(state: GraphState) -> Mapping[str, Any]:
+            update = dict(design(state))
+            current = update["design"]
+            if not current.functions:
+                function = Function(
+                    id="FUNC-01", name="설비 조회", description="설비를 조회한다",
+                    req_ids=tuple(r.id for r in current.requirements),
+                    entity_ops=tuple({"entity_id": i, "operations": ("R",)}
+                                     for i in dict.fromkeys(e.id for e in current.entities)),
+                )  # fmt: skip
+                update["design"] = current.evolve(functions=(function,))
+            return update
+
+        nodes.update(a01=_requirement, a03=linked_design, a09=_unexpected)
         # 에이전트·생성기 응답만 대체한다. parse·normalize와 변환기 등록은 서버와 같은 경로다.
         with monkeypatch.context() as patch:
             patch.setattr(api_main, "openai_agent_nodes", lambda settings: nodes)
             patch.setattr(api_main, "erd_node", self._erd_node)
             patch.setattr(api_main, "ddl_node", lambda settings: nodes["ddl"])
             patch.setattr(api_main, "document_node", lambda root: nodes["rtm"])
+            patch.setattr(api_main, "design_rules_node", self._rules_node)
             patch.setattr(api_main, "manifest_node", lambda root: lambda state: {})
             patch.setattr(api_main, "export_node", lambda root: nodes["export"])
             self.graph = api_main.create_graph(settings, create_checkpointer(pool))
         self.runner = Runner(pool, self.graph, settings)
+
+    def _rules_node(self, *, root: Path) -> Node:
+        check = design_rules_node(root=root)
+
+        def node(state: GraphState) -> Mapping[str, Any]:
+            self.visited.append(("rules", state["design"].revision))
+            return check(state)
+
+        return node
 
     def _erd_node(self, storage_dir: Path) -> Node:
         generate = erd_node(storage_dir)

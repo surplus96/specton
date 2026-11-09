@@ -16,6 +16,7 @@ from specton.config import Settings
 from specton.contracts import (
     DesignState,
     Entity,
+    Function,
     Normalized,
     Relationship,
     Requirement,
@@ -145,6 +146,10 @@ def test_api_registers_real_erd_and_skips_it_after_normalization_failure(
     monkeypatch.setattr(main, "document_node", lambda root: lambda state: {})
     monkeypatch.setattr(main, "manifest_node", lambda root: lambda state: {})
     design = _design()
+    design = design.evolve(functions=(Function(
+        id="FUNC-01", name="관계 조회", description="연결된 항목을 조회한다", req_ids=("REQ-01",),
+        entity_ops=tuple({"entity_id": e.id, "operations": ("R",)} for e in design.entities),
+    ),))  # fmt: skip
     if failed:
         entity = design.entities[0].evolve(name="사전미등록XYZ")
         design = design.evolve(entities=(entity, *design.entities[1:]))

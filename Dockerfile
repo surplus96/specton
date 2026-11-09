@@ -48,8 +48,15 @@ FROM ${PYTHON_IMAGE} AS runtime
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 \
-      fonts-noto-cjk chromium libstdc++6 ca-certificates tini \
+      fonts-noto-cjk chromium libstdc++6 ca-certificates tini libfreetype6 \
  && rm -rf /var/lib/apt/lists/*
+
+# rhwp-python 0.8.1 리눅스 휠이 묶은 libfreetype에 함수가 빠져 `import rhwp`가 실패한다
+# (amd64 FT_Palette_Data_Get, arm64 FT_Palette_Select. 상류 DanMeon/rhwp-python #31, #25 R1 요청).
+# 시스템 libfreetype을 먼저 불러오면 된다. 경로가 아키텍처마다 달라 빌드 때 고정 경로로 링크한다.
+# 상류가 고쳐져 rhwp-python을 올리면 이 링크와 LD_PRELOAD를 지운다.
+RUN ln -s "$(dpkg -L libfreetype6 | grep '/libfreetype\.so\.6$')" /usr/local/lib/libfreetype-preload.so.6 \
+ && test -e /usr/local/lib/libfreetype-preload.so.6
 
 COPY --from=mermaid /usr/local/bin/node /usr/local/bin/node
 COPY --from=mermaid /home/mermaidcli/node_modules /opt/mermaid-cli/node_modules
@@ -67,7 +74,8 @@ ENV PATH="/app/.venv/bin:/opt/mermaid-cli/node_modules/.bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     SPECTON_STORAGE_DIR=/data/storage \
     SPECTON_PACK_ROOT=/app/domain_packs \
-    SPECTON_MERMAID_PUPPETEER_CONFIG=/app/config/puppeteer.json
+    SPECTON_MERMAID_PUPPETEER_CONFIG=/app/config/puppeteer.json \
+    LD_PRELOAD=/usr/local/lib/libfreetype-preload.so.6
 
 USER specton
 EXPOSE 8000
@@ -85,7 +93,8 @@ RUN UV_PYTHON_DOWNLOADS=never uv sync --locked \
 USER specton
 ENV SPECTON_MMDC_PUPPETEER=/app/config/puppeteer.json
 # mmdc가 PATH에 없으면 실제 mermaid-cli 시험이 건너뛰기로 끝나므로 먼저 막는다 (#226 리뷰).
-RUN mmdc --version && pytest -q -rs tests/unit/test_pdf_engine.py tests/unit/test_pdf_adapter.py \
+# libfreetype 선로드가 빠지면 rhwp import가 실패하므로 여기서 막는다 (#25 R1 요청).
+RUN mmdc --version && python -c "import rhwp" && pytest -q -rs tests/unit/test_pdf_engine.py tests/unit/test_pdf_adapter.py \
       tests/unit/test_erd.py tests/unit/test_erd_areas.py tests/unit/test_erd_node.py
 
 # ── 기본 빌드 대상: 실행 이미지 (마지막 단계가 기본이라 check 뒤에 둔다) ─────
