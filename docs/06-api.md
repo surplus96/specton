@@ -201,7 +201,9 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 - 승인 전 파일은 초안 파일명(`-draft`)·메타데이터(`approved=false`)로 구분한다.
 - 기능 명세 Markdown과 RTM Excel·CSV는 생성 단계에서 같은 모델·revision으로 저장한다.
   승인 때 각 파일 해시를 `approval_basis`에 기록하고, 내보내기는 재생성 없이 같은 바이트를
-  승인본으로 게시한다. 원문 제외·원문 없음 행도 RTM에 남는다. 기능 명세 PDF의 연결은 후속 범위다.
+  승인본으로 게시한다. 원문 제외·원문 없음 행도 RTM에 남는다. 기능 명세 PDF도 설정
+  (`SPECTON_ENABLE_FUNCTION_SPEC_PDF`)을 켜면 같은 단계에서 비공개 후보로 만들고 같은 방식으로 승인·게시한다
+  (끄면 `functions` `pdf`는 409 미생성).
 - manifest JSON도 최종본 바이트를 승인 전 비공개 후보(`approved=false`)로 저장한다.
   JSON의 `approved=true`는 공개할 최종본의 내용이며, 실제 승인은 DB 메타데이터와 승인 기록으로 판단한다.
   JSON을 읽는 쪽도 본문의 `approved`가 아니라 `ArtifactRef.approved`로 승인 여부를 판단한다.
