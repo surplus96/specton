@@ -287,3 +287,11 @@ words:
   domain_group: null
   synonyms: []
   forbidden_synonyms: []
+- word: 문서
+  abbreviation: DOC
+  english: Document
+  definition: 文書. 글이나 기호 따위로 일정한 의사나 관념 또는 사상을 나타낸 것
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
