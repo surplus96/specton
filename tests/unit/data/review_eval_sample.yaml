@@ -1,0 +1,52 @@
+# 검토 관점 평가 고정 설계의 합성 예시 (#40, docs/07 「검토 관점 평가」).
+# 형식을 보이기 위한 예시다. 평가 세트 문장이 아니며, 실제 고정 설계 파일은 평가 자료라 공개 저장소에 두지 않는다.
+reviewer_id: A05
+set: 합성_예시_v1
+pack: inventory
+cases:
+- case_id: SAMPLE-01-N
+  source_id: SAMPLE-01
+  case: normal
+  requirements:
+  - {id: REQ-01, text: 주문 하나에는 주문내역이 하나 이상 있어야 하며 주문내역은 주문 없이 존재할 수 없다., type: FR}
+  entities:
+  - {id: ENT-01, name: 주문}
+  - {id: ENT-02, name: 주문내역}
+  relationships:
+  - {id: REL-01, parent: ENT-01, child: ENT-02, cardinality: '1:N', optional: false, identifying: true, req_ids: [REQ-01]}
+- case_id: SAMPLE-01-D1
+  source_id: SAMPLE-01
+  case: defect
+  requirements:
+  - {id: REQ-01, text: 주문 하나에는 주문내역이 하나 이상 있어야 하며 주문내역은 주문 없이 존재할 수 없다., type: FR}
+  entities:
+  - {id: ENT-01, name: 주문}
+  - {id: ENT-02, name: 주문내역}
+  relationships:
+  - {id: REL-01, parent: ENT-01, child: ENT-02, cardinality: '1:1', optional: false, identifying: true, req_ids: [REQ-01]}
+  expected:
+  - {target: REL-01, defect: cardinality}
+- case_id: SAMPLE-01-D2
+  source_id: SAMPLE-01
+  case: defect
+  requirements:
+  - {id: REQ-01, text: 주문 하나에는 주문내역이 하나 이상 있어야 하며 주문내역은 주문 없이 존재할 수 없다., type: FR}
+  entities:
+  - {id: ENT-01, name: 주문}
+  - {id: ENT-02, name: 주문내역}
+  relationships:
+  - {id: REL-01, parent: ENT-02, child: ENT-01, cardinality: '1:N', optional: false, identifying: true, req_ids: [REQ-01]}
+  expected:
+  - {target: REL-01, defect: direction}
+- case_id: SAMPLE-02-A
+  source_id: SAMPLE-02
+  case: alt_normal
+  requirements:
+  - {id: REQ-01, text: 한 주문에 여러 상품을 담을 수 있고 한 상품도 여러 주문에 담길 수 있다., type: FR}
+  entities:
+  - {id: ENT-01, name: 주문}
+  - {id: ENT-02, name: 상품}
+  - {id: ENT-03, name: 주문상품}
+  relationships:
+  - {id: REL-01, parent: ENT-01, child: ENT-03, cardinality: '1:N', optional: false, identifying: true, req_ids: [REQ-01]}
+  - {id: REL-02, parent: ENT-02, child: ENT-03, cardinality: '1:N', optional: false, identifying: true, req_ids: [REQ-01]}
