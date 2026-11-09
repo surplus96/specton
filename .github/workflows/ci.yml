@@ -16,6 +16,17 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy
       - run: uv run pytest
+      # 한글 엔진 시험 (#24, ADR-0004): rhwp-python 0.8.1 리눅스 휠은 묶어 둔 libfreetype에 함수가 빠져
+      # `import rhwp`가 실패한다(상류 DanMeon/rhwp-python #31). 위 단계에서는 엔진 시험이 건너뛰어지므로,
+      # 시스템 libfreetype을 먼저 불러온 채 다시 돌리고, 엔진을 못 불러와 건너뛰는 것은 실패로 둔다
+      # (비공개 원문 시험 3개는 그대로 건너뜀). 상류가 고쳐지면 지운다.
+      - name: hangul engine tests
+        env:
+          FREETYPE: /usr/lib/x86_64-linux-gnu/libfreetype.so.6
+          SPECTON_REQUIRE_ENGINE: "1"
+        run: |
+          test -f "$FREETYPE" || { echo "시스템 libfreetype이 없음: $FREETYPE"; exit 1; }
+          LD_PRELOAD="$FREETYPE" uv run pytest -rs tests/unit/test_ingest_hangul.py tests/unit/test_hangul_engine_lazy_import.py
       - run: uv run python -m specton.packs.build --check
 
   frontend:
