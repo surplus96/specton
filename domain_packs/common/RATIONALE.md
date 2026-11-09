@@ -123,5 +123,6 @@ NUMERIC·VARCHAR·DATETIME은 그대로 옮겨지지만 CHAR 기반인 일자·�
 공식 이음동의어·금칙어를 도메인 낱말로 등록하는 선택은 각 팩의 `standard_selection.yaml`에
 낱말·표준어·사유를 적는다. 현재 재고의 장부→대장 선택만 있으며, 이는 공식 표준어라는 뜻이 아니다.
 목록 밖 등록과 잘못된·비어 있는·남은 예외는 로더와 build 검사에서 거절한다.
-SC-04 이음동의어의 별도 런타임 지적은 아직 내지 않는다. 향후 이를 내면
-`subtypes.synonym`(minor·informational)을 쓰며 금칙어(major·manual)와 구분한다.
+SC-04는 팩에 없는 공식 이음동의어도 `subtypes.synonym`(minor·informational)으로 지적해
+금칙어(major·manual)와 구분한다(#260, common 0.1.5). 그 자체로 공식 단어이거나 금칙어인 이름은
+이음동의어로 세지 않으며, 선별 적용 목록에 올린 팩 낱말(장부)은 지적하지 않는다.

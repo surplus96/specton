@@ -99,7 +99,7 @@
 
 ### #11 고정·처리 정책 (2026-11-09)
 
-재고·공통 팩의 고정 기준은 ADR-0009를 따른다. common 0.1.4와 inventory 0.1.21은 approved이며
+재고·공통 팩의 고정 기준은 ADR-0009를 따른다. common 0.1.5와 inventory 0.1.21은 approved이며
 `pack.lock`과 `sources.yaml`로 내용을 고정한다. `handling`과 `target_stage`의 의미는 ADR-0009 표를 따른다.
 SC에 critical을 설정하거나 참고 의견을 major로 설정하면 로더가 거절한다.
 `standard_selection.yaml`의 예외는 로더와 `python -m specton.packs.build --check`가 검증한다.

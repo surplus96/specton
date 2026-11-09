@@ -10,10 +10,11 @@
   원본은 `sources.yaml`의 sha256으로 고정하고, 다르면 결과를 재현할 수 없으므로 실행 오류로 멈춘다.
   폐기된 줄은 빼고, 폐기를 빼고도 같은 이름에 내용이 다른 줄이 있으면 어느 줄로 비교할지 추측하지
   않고 미진단으로 센다.
-- 이름은 팩 낱말·공식 단어·공식 금칙어로 끝에서부터 긴 단어를 먼저 맞춰 나눈다
+- 이름은 팩 낱말·공식 단어·공식 금칙어·공식 이음동의어로 끝에서부터 긴 단어를 먼저 맞춰 나눈다
   (`RATIONALE.md`). 끝까지 나눌 수 없으면 팩에도 공식에도 없는
   부분이 있다는 뜻이라 SC-01이다. 팩에 등록한 낱말(공통 팩·도메인 팩 `words.yaml`)은 의도한 선택이라
-  지적하지 않으므로(예: 「장부」) SC-04는 팩에 없는 금칙어만 지적한다. 정리를 통과한 이름은 모두
+  지적하지 않으므로(예: 「장부」, 팩 `standard_selection.yaml`) SC-04는 팩에 없는
+  금칙어(`forbidden_word`)와 이음동의어(`synonym`, #260)만 지적한다. 정리를 통과한 이름은 모두
   팩 사전으로 풀린 것이라 지금 팩으로는 두 검사가 실제로 0건이다.
 - SC-03은 분류어(이름 끝 단어)의 도메인 분류에 속한 공식 도메인들과 칸의 타입이 다를 때,
   SC-06은 공식 용어와 이름이 같고 타입·길이·소수 자릿수가 그 도메인과 다를 때다. 한 칸에서 SC-03이
@@ -21,7 +22,8 @@
   타입은 `naming.yaml`의 `type_profile`(strict·pg_native)로 고른다.
   시각 타입의 소수 초 자릿수는 속성 계약에 칸이 없어 설계를 고쳐도 풀리지 않으므로 비교하지 않는다.
 - SC-04(금칙어)·SC-05(공식 용어와 약어 불일치)는 이름을 바꿀지 팩을 고칠지 사람이 정한다
-  (`requires_manual_review=True`). minor만 있으면 켜지 않는다.
+  (`requires_manual_review=True`). minor만 있으면 켜지 않는다. SC-04 이음동의어는
+  `rules.yaml` `subtypes.synonym`대로 minor 참고다.
 - 비교할 기준이 없으면 통과가 아니라 미진단이다. 항목별로 전체·진단·미진단·적합 칸 수와
   준수율(적합 칸 / 진단 칸 * 100, `rules.yaml` `compliance_rate`)을 함께 돌려준다.
 - 심각도는 `rules.yaml`에서 읽고, 정하지 않은 값이면 그 지적이 필요해질 때 멈춘다.
@@ -60,6 +62,7 @@ class OfficialWord:
     is_classifier: bool
     domain_group: str | None
     forbidden: tuple[str, ...]
+    synonyms: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -105,6 +108,20 @@ class OfficialStandard:
                 index.setdefault(_nfc(bad), name)
         return index
 
+    def synonym_index(self) -> dict[str, str]:
+        """이음동의어 → 대신 쓸 공식 단어. 그 자체로 공식 단어이거나 금칙어인 이름은 뺀다.
+
+        공식 단어는 표준어로 써도 되고, 금칙어는 SC-04 금칙어(major)로 이미 지적한다.
+        한 이음동의어가 여러 단어에 걸리면 이름순으로 먼저인 단어.
+        """
+        skip = {*self.words, *self.ambiguous_words, *self.forbidden_index()}
+        index: dict[str, str] = {}
+        for name in sorted(self.words):
+            for alias in self.words[name].synonyms:
+                if (alias := _nfc(alias)) not in skip:
+                    index.setdefault(alias, name)
+        return index
+
 
 def load_official_standard(
     *, root: Path = DEFAULT_ROOT, profiles: Iterable[Profile] = ("strict", "pg_native")
@@ -120,6 +137,7 @@ def load_official_standard(
                 entry["is_classifier"],
                 entry["domain_group"],
                 tuple(entry["forbidden_synonyms"]),
+                tuple(entry["synonyms"]),
             ),
         )
         for entry in map(word_entry, rows["words"])
@@ -283,7 +301,8 @@ class _Context:
     official: OfficialStandard
     registered: Mapping[str, Word]  # 팩에 등록된 낱말
     forbidden: Mapping[str, str]  # 공식 금칙어 → 대신 쓸 공식 단어
-    known: frozenset[str]  # 이름을 나눌 때 쓰는 낱말: 팩 낱말·공식 단어·공식 금칙어
+    synonyms: Mapping[str, str]  # 공식 이음동의어 → 대신 쓸 공식 단어
+    known: frozenset[str]  # 이름을 나눌 때 쓰는 낱말: 팩 낱말·공식 단어·공식 금칙어·이음동의어
     by_abbreviation: Mapping[str, tuple[str, ...]]  # 약어(대문자) → 그 약어를 쓰는 낱말
     severities: Mapping[str, Severity]
     profile: Profile
@@ -381,6 +400,7 @@ def _context(
 ) -> _Context:
     registered = {_nfc(w.word): w for w in words}
     forbidden = official.forbidden_index()
+    synonyms = official.synonym_index()
     by_abbreviation: dict[str, list[str]] = {}
     for name, info in official.words.items():
         by_abbreviation.setdefault(info.abbreviation.upper(), []).append(name)
@@ -390,7 +410,10 @@ def _context(
         official=official,
         registered=registered,
         forbidden=forbidden,
-        known=frozenset({*registered, *official.words, *official.ambiguous_words, *forbidden}),
+        synonyms=synonyms,
+        known=frozenset(
+            {*registered, *official.words, *official.ambiguous_words, *forbidden, *synonyms}
+        ),
         by_abbreviation={k: tuple(dict.fromkeys(v)) for k, v in by_abbreviation.items()},
         severities=severities,
         profile=profile,
@@ -427,7 +450,7 @@ def _split_name(name: str, term: OfficialTerm | None, ctx: _Context) -> tuple[st
 def _check_words(
     ctx: _Context, tally: _Tally, column: Column, where: str, parts: tuple[str, ...] | None
 ) -> None:
-    """SC-01 팩 낱말·공식 단어로 나눌 수 없는 부분, SC-04 팩에 없는 공식 금칙어."""
+    """SC-01 팩 낱말·공식 단어로 나눌 수 없는 부분, SC-04 팩에 없는 공식 금칙어·이음동의어."""
     tally.diagnosed["SC-01"] += 1
     if parts is None:
         tally.add(
@@ -451,6 +474,17 @@ def _check_words(
                 column,
                 f"{where}: 「{word}」는 공통표준 금칙어입니다(대신 「{instead}」).",
                 f"「{instead}」로 바꿀지, 팩에 낱말을 등록할지 정한다.",
+            )
+        elif word in ctx.synonyms and word not in ctx.registered:
+            # 심각도·처리는 rules.yaml subtypes.synonym(minor·참고)이 정한다 (#260)
+            instead = ctx.synonyms[word]
+            tally.add(
+                ctx,
+                "SC-04",
+                f"synonym:{word}",
+                column,
+                f"{where}: 「{word}」는 공통표준 단어 「{instead}」의 이음동의어입니다.",
+                f"표준어 「{instead}」로 바꾸는 것을 검토한다.",
             )
 
 
