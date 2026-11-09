@@ -204,7 +204,7 @@ def build_graph(
     _add(g, "validation_failure", _with_status(_validation_failure, RunState.REVIEWING))
     _add(g, "route", _route(limit))
     _add(g, "route_router", _route_router)
-    _add(g, "wait_review", _waiting(RunState.AWAITING_REVIEW))
+    _add(g, "wait_review", _with_status(impl["wait_review"], RunState.AWAITING_REVIEW))
     _add(g, "hitl_review", _ask_review)
 
     g.add_edge(START, "parse")
@@ -293,6 +293,7 @@ def _normalization_failure(state: GraphState) -> dict[str, Any]:
 
 def _stub_nodes() -> dict[str, Node]:
     stubs: dict[str, Node] = {name: _noop for name in STAGE_STATUS}
+    stubs["wait_review"] = _noop  # API의 승인 후보 준비 훅. 기존 체크포인트 노드명 유지
     stubs.update({name: _noop for name in GENERATORS})
     stubs.update({name: _stub_reviewer(name) for name in REVIEWERS})
     stubs["a09"] = lambda state: {"router_stage": None}  # 판단 불가 → HITL 2
