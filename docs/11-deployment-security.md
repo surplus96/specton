@@ -25,6 +25,24 @@
 - AWS 제안: EC2 또는 Lightsail 1대 + Docker Compose, IP 제한·HTTPS, 키는 환경 변수 주입, 예산 알림 (ADR-0013). App Runner는 신규 고객을 받지 않아 제외.
 - 배포 전 할 일: compose의 DB 기본 비밀번호를 없애고 환경 변수를 필수로 받는다. → 배포 구성(`compose.deploy.yml`)에 반영 (#25)
 
+### 배포 절차 주의 (#25, #228 리뷰)
+
+- **`--env-file .env.deploy`를 명령마다 붙인다. 서버에는 `.env`를 두지 않는다.** 빠뜨리면 compose가 같은 폴더의
+  `.env`를 읽는다. 개발용 `.env`(`.env.example`을 복사한 것)에는 DB 비밀번호 값이 있어 필수값 검사가 통과하고,
+  그 비밀번호로 배포 DB가 만들어진다.
+- **이미지는 서버 CPU에 맞춰 빌드한다.** compose에 플랫폼 지정이 없어 Apple Silicon에서 빌드하면 arm64 이미지가 올라간다.
+  서버가 x86_64면 빌드하는 곳에서 `DOCKER_DEFAULT_PLATFORM=linux/amd64`를 붙인다:
+  `DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose -f compose.deploy.yml --env-file .env.deploy build`
+- **서버 checkout은 이미지 태그와 같은 커밋으로 둔다.** `docker/web/Caddyfile`과 DB 초기화 스크립트(`docker/postgres/init/`)는
+  이미지가 아니라 서버 checkout에서 붙는다. 이미지 태그를 커밋 해시로 붙이고(`…/specton-api:<커밋>`), 서버에서는
+  `git checkout <커밋>` 뒤 `pull`·`up -d --no-build`를 실행한다.
+- **DB 비밀번호는 볼륨을 처음 만들 때만 적용된다.** 나중에 `.env.deploy`만 바꾸면 DB 역할 비밀번호와 어긋나 api가 접속하지
+  못한다. 바꿀 때는 DB 안에서 먼저 바꾸고, 그다음 `.env.deploy`를 고쳐 api를 다시 띄운다.
+  1. `docker compose -f compose.deploy.yml --env-file .env.deploy exec db psql -U specton -d specton_app`
+  2. psql에서 `\password specton`·`\password specton_sandbox`로 새 비밀번호 입력 (명령 기록에 비밀번호가 남지 않게 대화형으로)
+  3. `.env.deploy`의 `POSTGRES_PASSWORD`·`SANDBOX_PASSWORD`를 같은 값으로 고친다
+  4. `docker compose -f compose.deploy.yml --env-file .env.deploy up -d --no-build api` (바뀐 접속 URL로 api만 다시 만든다)
+
 ## 격리 DB (sandbox)
 
 - sandbox 역할은 슈퍼유저·DB 생성·역할 생성 권한이 없고, 앱 DB 접속(CONNECT)이 막혀 있다. 실행 시간 제한 10초. (로컬에서 확인함)
