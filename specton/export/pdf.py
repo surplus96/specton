@@ -312,7 +312,6 @@ p, ul { margin: 0 0 3mm; }
 li { margin: 0 0 .8mm; }
 code { background: #f2f2f2; padding: 0 .6mm; border-radius: .6mm; }
 section.block + section.block { margin-top: 5mm; }
-.wide td + td { white-space: nowrap; }
 .draft-stamp { position: fixed; top: 95mm; left: 20mm; width: 100%; transform: rotate(-30deg);
   font-size: 80pt; font-weight: 700; color: rgba(243, 115, 33, .12); z-index: -1; }
 .wide { page: wide; break-before: page; }

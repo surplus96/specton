@@ -132,3 +132,41 @@ def test_real_pdf_repeats_the_header_of_a_long_table() -> None:
     list_pages = [t for t in texts if "FUNC-0" in t or "FUNC-1" in t]
     assert len(list_pages) >= 2
     assert all("기능 ID" in t for t in list_pages[:2])  # 기능 목록 머리글이 다음 쪽에도
+
+
+def _right_edges(document: str) -> list[tuple[float, float]]:
+    """쪽마다 (표 칸의 가장 오른쪽 끝, 인쇄 영역 오른쪽 끝) px.
+
+    WeasyPrint는 넘친 부분을 경고 없이 자른다.
+    """
+    weasyprint = _weasyprint(korean=True)
+    edges = []
+    for page in weasyprint.HTML(string=document).render().pages:
+        body = page._page_box
+        limit = body.content_box_x() + body.width
+        cells = [
+            box.position_x + box.margin_width()
+            for box in body.descendants()
+            if getattr(box, "element_tag", None) in {"table", "th", "td"}
+        ]
+        edges.append((max(cells, default=0.0), limit))
+    return edges
+
+
+def test_real_pdf_keeps_twenty_full_crud_columns_inside_the_page() -> None:
+    """엔티티 20개를 모두 C·R·U·D 하는 「관리」 기능이 있어도 가로 쪽 오른쪽이 잘리지 않는다.
+
+    「C R U D」는 칸 안에서 줄바꿈된다. 줄바꿈을 막으면 쪽 1123px 밖 1220px까지 나가
+    잘렸다 (#243 R1 리뷰).
+    """
+    entities = tuple(_entity(i, f"엔티티{i}") for i in range(1, 21))
+    manage = Function(
+        id="FUNC-01",
+        name="전체 관리",
+        description="모두 관리한다",
+        req_ids=("REQ-01",),
+        entity_ops=tuple({"entity_id": e.id, "operations": ("C", "R", "U", "D")} for e in entities),
+    )
+    markdown = render_function_spec(_design(entities=entities, functions=(manage,)))
+    for right, width in _right_edges(build_function_spec_html(markdown, COVER, draft=False)):
+        assert right <= width + 0.5, f"인쇄 영역 오른쪽 {width:.0f}px를 넘음: {right:.0f}px"
