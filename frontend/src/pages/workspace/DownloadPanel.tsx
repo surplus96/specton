@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react'
 import StatusTag from '../../layout/StatusTag.tsx'
-import { useNavigate } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { Alert, Button, Flex, Spin, Table, Tooltip, Typography } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { getView, listRuns } from '../../api/client.ts'
 import { errorMessage } from '../../api/errors.ts'
 import type { RunStatus, RunSummary } from '../../api/types.ts'
-import type { ArtifactRef } from '../../api/viewItems.ts'
+import type { ArtifactRef, DesignItem, Finding } from '../../api/viewItems.ts'
 import PageCard from '../../layout/PageCard.tsx'
+import Pipeline from './Pipeline.tsx'
+import ResultSummary from './ResultSummary.tsx'
+import type { WorkspaceTab } from './pipeline.ts'
 import { DownloadButton } from './WorkspacePanel.tsx'
 import {
   FORMAT_LABEL,
@@ -22,13 +25,17 @@ import {
 
 // UI-07 다운로드·이력 (docs/09): 형식별 다운로드·승인 상태, 이전 실행.
 // 생성 대기·파일 없음·접근 불가는 칸마다 안내한다. 초안 파일 이름에는 서버가 -draft를 붙인다 (docs/06).
+// 위쪽에 결과 요약 숫자와 산출물 파이프라인(요구사항 → … → RTM)을 둔다. 카드를 누르면 결과 작업공간 탭으로 간다.
 type Props = {
   run: RunStatus
 }
 
 function DownloadPanel({ run }: Props) {
   const navigate = useNavigate()
+  const [, setParams] = useSearchParams()
   const [artifacts, setArtifacts] = useState<ArtifactRef[] | null>(null)
+  const [design, setDesign] = useState<DesignItem[]>([])
+  const [findings, setFindings] = useState<Finding[]>([])
   const [runs, setRuns] = useState<RunSummary[] | null>(null)
   const [loadError, setLoadError] = useState<unknown>(null)
   const [reloadKey, setReloadKey] = useState(0)
@@ -37,8 +44,13 @@ function DownloadPanel({ run }: Props) {
     let alive = true
     setArtifacts(null)
     setLoadError(null)
-    getView(run.run_id, 'design', run.revision)
-      .then((v) => alive && setArtifacts(toArtifacts(v.artifacts)))
+    Promise.all([getView(run.run_id, 'design', run.revision), getView(run.run_id, 'review', run.revision)])
+      .then(([designView, reviewView]) => {
+        if (!alive) return
+        setDesign(designView.items as DesignItem[])
+        setFindings(reviewView.items as Finding[])
+        setArtifacts(toArtifacts(designView.artifacts))
+      })
       .catch((err: unknown) => alive && setLoadError(err))
     listRuns({ limit: 20 })
       .then((list) => alive && setRuns(list))
@@ -49,6 +61,15 @@ function DownloadPanel({ run }: Props) {
   }, [run.run_id, run.revision, reloadKey])
 
   const approved = artifacts ? isApproved(artifacts) : false
+
+  function openWorkspace(tab: WorkspaceTab) {
+    setParams((p) => {
+      const q = new URLSearchParams(p)
+      q.set('view', 'workspace')
+      q.set('tab', tab)
+      return q
+    })
+  }
 
   const fileColumns: TableColumnsType<DownloadRow> = [
     { title: '산출물', key: 'kind', width: 160, render: (_, r) => KIND_LABEL[r.kind] },
@@ -124,30 +145,40 @@ function DownloadPanel({ run }: Props) {
             <Spin />
           </Flex>
         ) : (
-          <section aria-label="산출물">
-            <Flex gap={8} align="center" style={{ marginBottom: 12 }}>
-              <Typography.Title level={5} style={{ margin: 0 }}>
-                산출물
-              </Typography.Title>
-              <StatusTag tone={approved ? 'success' : 'warning'}>{approved ? '승인본' : '초안 (승인 전)'}</StatusTag>
-            </Flex>
-            {!approved && (
-              <Alert
-                style={{ marginBottom: 12 }}
-                type="info"
-                showIcon
-                title="승인 전 파일은 초안입니다."
-                description="파일 이름 끝에 -draft가 붙고, PDF는 승인한 뒤에 만들어집니다."
+          <>
+            <ResultSummary design={design} findings={findings} />
+            <section aria-label="산출물 흐름">
+              <Typography.Title level={5}>산출물 파이프라인</Typography.Title>
+              <Typography.Paragraph type="secondary" style={{ marginTop: -4 }}>
+                카드를 누르면 결과 작업공간에서 내용을 봅니다.
+              </Typography.Paragraph>
+              <Pipeline design={design} artifacts={artifacts} onOpen={openWorkspace} />
+            </section>
+            <section aria-label="산출물">
+              <Flex gap={8} align="center" style={{ marginBottom: 12 }}>
+                <Typography.Title level={5} style={{ margin: 0 }}>
+                  산출물
+                </Typography.Title>
+                <StatusTag tone={approved ? 'success' : 'warning'}>{approved ? '승인본' : '초안 (승인 전)'}</StatusTag>
+              </Flex>
+              {!approved && (
+                <Alert
+                  style={{ marginBottom: 12 }}
+                  type="info"
+                  showIcon
+                  title="승인 전 파일은 초안입니다."
+                  description="파일 이름 끝에 -draft가 붙고, PDF는 승인한 뒤에 만들어집니다."
+                />
+              )}
+              <Table
+                rowKey="kind"
+                size="small"
+                pagination={false}
+                columns={fileColumns}
+                dataSource={downloadRows(artifacts, approved)}
               />
-            )}
-            <Table
-              rowKey="kind"
-              size="small"
-              pagination={false}
-              columns={fileColumns}
-              dataSource={downloadRows(artifacts, approved)}
-            />
-          </section>
+            </section>
+          </>
         )}
 
         <section aria-label="이전 실행">

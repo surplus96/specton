@@ -398,6 +398,15 @@ export function createMockBackend(options: MockOptions = {}) {
               revision,
               hash: `mock-${kind}-${revision}`,
               approved: run.approvedRevisions.has(revision),
+              // 서버처럼 DDL/SQL에만 검증 상태를 붙인다 (docs/06 `/view`, #195). 차단 시나리오는 검증 실패.
+              ...(kind === 'ddl' && file_format === 'sql'
+                ? {
+                    validation: {
+                      status: run.scenario === 'critical' ? 'failed' : 'passed',
+                      validated_at: '2026-11-09T09:00:00+09:00',
+                    },
+                  }
+                : {}),
             })),
         )
       : []
