@@ -4,7 +4,7 @@
 
 /** 원문 위치 (specton/contracts/base.py SourceRef) */
 export type SourceRef = {
-  file_format: 'xlsx' | 'csv' | 'pdf' | 'hwpx'
+  file_format: 'xlsx' | 'csv' | 'pdf' | 'hwp' | 'hwpx'
   sheet?: string | null
   row?: number | null
   page?: number | null

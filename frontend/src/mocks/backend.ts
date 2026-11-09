@@ -117,7 +117,7 @@ const INTERRUPT_MESSAGES: Record<InterruptKind, string> = {
 const SKIPPED_REQUIREMENTS_CHECK = '확인할 항목이 없어 분석 확인을 생략했습니다'
 const MAX_UPLOAD_MB = 20
 const PACKS = ['inventory', 'maintenance']
-const ACCEPTED_FORMATS = ['xlsx', 'csv', 'hwpx']
+const ACCEPTED_FORMATS = ['xlsx', 'csv', 'hwpx', 'hwp']
 const STALE_MESSAGE = '이미 답했거나 지금 기다리는 확인 요청이 아닙니다. 최신 상태를 조회하세요.'
 const REVISION_MESSAGE = '다른 revision입니다. 최신 상태를 조회한 뒤 다시 시도하세요.'
 const STATE_MESSAGE = '지금 상태에서는 할 수 없는 요청입니다. 최신 상태를 조회하세요.'
@@ -296,9 +296,6 @@ export function createMockBackend(options: MockOptions = {}) {
   function createRun(file: File | null, pack: string | null): RunStatus {
     if (!file || !pack) throw new Reject(422, 'INVALID_REQUEST', '파일과 팩을 함께 보내 주세요.')
     const suffix = file.name.includes('.') ? file.name.split('.').pop()!.toLowerCase() : ''
-    if (suffix === 'hwp') {
-      throw new Reject(415, 'UNSUPPORTED_MEDIA_TYPE', 'HWP는 지원하지 않습니다. 한글에서 HWPX로 저장해 다시 올려 주세요.')
-    }
     if (!ACCEPTED_FORMATS.includes(suffix)) {
       throw new Reject(415, 'UNSUPPORTED_MEDIA_TYPE', `지원하는 형식은 ${ACCEPTED_FORMATS.map((f) => `.${f}`).join(', ')}입니다.`)
     }

@@ -4,6 +4,8 @@
 
 내용 검사 (#21): 확장자만 맞춘 다른 파일과 압축 폭탄을 파서에 넘기기 전에 막는다.
 - xlsx·hwpx는 zip이어야 하고, 압축을 푼 크기 합이 한도(`max_unzipped_mb`) 안이어야 한다.
+- hwp(HWP 5.0)는 OLE 복합 문서여야 한다(파일 머리 서명). 안의 스트림·암호·배포용 여부는
+  파서가 판정한다(#24).
 - csv는 텍스트여야 한다(NUL 바이트가 없어야 한다). BOM 있는 UTF-16은 해독되면 통과한다.
   인코딩·표 모양은 파서가 판정한다.
 """
@@ -23,9 +25,10 @@ from fastapi import UploadFile
 from specton.api.errors import ApiError
 from specton.contracts import ErrorCode
 
-# 이번 범위의 입력 형식 (10/29 결정 2: PDF 제외, R2 합의: HWP는 HWPX로 변환해 올림)
-ACCEPTED_FORMATS = ("xlsx", "csv", "hwpx")
+# 이번 범위의 입력 형식 (10/29 결정 2: PDF 제외. .hwp는 변환 없이 바로 읽는다, #24)
+ACCEPTED_FORMATS = ("xlsx", "csv", "hwpx", "hwp")
 _ZIP_FORMATS = frozenset({"xlsx", "hwpx"})
+_OLE_SIGNATURE = bytes.fromhex("d0cf11e0a1b11ae1")  # OLE 복합 문서(HWP 5.0) 파일 머리
 _LOCAL_HEADER = struct.Struct("<4s5H3L2H")  # zip 로컬 파일 헤더 (30바이트)
 _UTF16_BOMS = (b"\xff\xfe", b"\xfe\xff")  # 파서(_decode)가 받는 UTF-16 표시
 _CHUNK = 1024 * 1024
@@ -42,12 +45,6 @@ class StoredFile:
 def file_format_of(file_name: str) -> str:
     """확장자로 입력 형식을 정한다. 받지 않는 형식이면 415."""
     suffix = PurePath(file_name).suffix.lower().lstrip(".")
-    if suffix == "hwp":
-        raise ApiError(
-            415,
-            ErrorCode.UNSUPPORTED_MEDIA_TYPE,
-            "HWP는 지원하지 않습니다. 한글에서 HWPX로 저장해 다시 올려 주세요.",
-        )
     if suffix not in ACCEPTED_FORMATS:
         allowed = ", ".join(f".{f}" for f in ACCEPTED_FORMATS)
         raise ApiError(415, ErrorCode.UNSUPPORTED_MEDIA_TYPE, f"지원하는 형식은 {allowed}입니다.")
@@ -98,8 +95,20 @@ def save_upload(
 def _check_content(path: Path, file_format: str, max_unzipped_bytes: int) -> None:
     if file_format in _ZIP_FORMATS:
         _check_zip(path, file_format, max_unzipped_bytes)
+    elif file_format == "hwp":
+        _check_ole(path)
     else:
         _check_text(path)
+
+
+def _check_ole(path: Path) -> None:
+    """HWP 5.0은 OLE 복합 문서다. 확장자만 바꾼 다른 파일을 파서에 넘기지 않는다."""
+    with path.open("rb") as stream:
+        if stream.read(len(_OLE_SIGNATURE)) != _OLE_SIGNATURE:
+            raise ApiError(
+                415, ErrorCode.UNSUPPORTED_MEDIA_TYPE,
+                "파일 내용이 .hwp 형식이 아닙니다. 한글에서 다시 저장해 올려 주세요.",
+            )  # fmt: skip
 
 
 def _check_zip(path: Path, file_format: str, max_unzipped_bytes: int) -> None:

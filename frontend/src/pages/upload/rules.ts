@@ -1,6 +1,6 @@
 // UI-01 업로드 규칙. 화면(UploadPage)과 분리해 테스트한다.
 // - 브라우저에서 미리 검사해 바로 알려 주는 용도다. 최종 판단은 서버가 한다(docs/06-api.md POST /runs).
-// - 크기·빈 파일 문구는 서버(specton/api/runs.py)·mock과 같게 둔다. 형식은 화면이 서버보다 좁게 받는다(.hwpx 제외).
+// - 형식·크기·빈 파일 문구는 서버(specton/api/uploads.py·runs.py)·mock과 같게 둔다.
 import { ApiError, errorMessage } from '../../api/errors.ts'
 import type { Pack } from '../../api/types.ts'
 
@@ -8,11 +8,10 @@ import type { Pack } from '../../api/types.ts'
 export const MAX_UPLOAD_MB = 20
 
 /**
- * 화면에서 받는 형식 (구현 가이드 강의 10).
- * 업로드 API는 .hwpx도 받지만 HWPX 읽기(#24)가 아직 없어 화면에서는 .xlsx·.csv만 받는다.
- * #24가 끝나면 'hwpx'를 다시 넣는다.
+ * 화면에서 받는 형식 (구현 가이드 강의 10). 서버 ACCEPTED_FORMATS와 같은 순서다.
+ * 한글(.hwpx·.hwp)은 요구사항 상세표를 읽는다(#24).
  */
-export const ACCEPTED_FORMATS = ['xlsx', 'csv'] as const
+export const ACCEPTED_FORMATS = ['xlsx', 'csv', 'hwpx', 'hwp'] as const
 
 /** 파일 고르기 창에서 보일 확장자 */
 export const ACCEPT_ATTR = ACCEPTED_FORMATS.map((f) => `.${f}`).join(',')
@@ -42,9 +41,6 @@ function suffixOf(name: string): string {
 /** 고른 파일을 미리 검사한다. 문제가 없으면 null, 있으면 파일 칸에 보일 문장. */
 export function checkFile(file: Pick<File, 'name' | 'size'>): string | null {
   const suffix = suffixOf(file.name)
-  if (suffix === 'hwp' || suffix === 'hwpx') {
-    return '한글 문서는 아직 지원하지 않습니다. 엑셀(.xlsx)이나 CSV로 저장해 올려 주세요.'
-  }
   if (!(ACCEPTED_FORMATS as readonly string[]).includes(suffix)) {
     return `지원하는 형식은 ${ACCEPTED_FORMATS.map((f) => `.${f}`).join(', ')}입니다.`
   }

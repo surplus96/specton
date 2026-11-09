@@ -31,11 +31,24 @@ CREATE TABLE IF NOT EXISTS document (
     document_id  uuid PRIMARY KEY,
     run_id       uuid NOT NULL REFERENCES run ON DELETE CASCADE,
     file_name    text NOT NULL,
-    file_format  text NOT NULL CHECK (file_format IN ('xlsx', 'csv', 'pdf', 'hwpx')),
+    file_format  text NOT NULL CHECK (file_format IN ('xlsx', 'csv', 'pdf', 'hwp', 'hwpx')),
     file_hash    text NOT NULL,
     storage_ref  text NOT NULL,  -- 저장소 내부 위치. 응답에 넣지 않는다
     created_at   timestamptz NOT NULL DEFAULT now()
 );
+
+-- .hwp 입력(#24) 이전 DB의 CHECK 범위만 넓힌다. 기존 문서 기록은 바꾸지 않는다.
+-- 'hwp'를 따옴표째 찾아 'hwpx'와 구분한다.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'document'::regclass
+                   AND conname = 'document_file_format_check'
+                   AND pg_get_constraintdef(oid) LIKE '%''hwp''%') THEN
+        ALTER TABLE document DROP CONSTRAINT IF EXISTS document_file_format_check;
+        ALTER TABLE document ADD CONSTRAINT document_file_format_check CHECK (
+            file_format IN ('xlsx', 'csv', 'pdf', 'hwp', 'hwpx'));
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS source_block (
     document_id       uuid NOT NULL REFERENCES document ON DELETE CASCADE,
