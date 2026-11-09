@@ -1,0 +1,18 @@
+# 이미지에 넣지 않는 것. 비밀값(.env)·로컬 저장소·개발 산출물은 절대 들어가면 안 된다 (docs/11).
+# .gitignore와 달리 .dockerignore는 경로를 붙이지 않으면 빌드 루트만 막으므로 **/를 붙인다 (#226 리뷰).
+**/.env
+**/.env.*
+!**/.env.example
+var/
+.git/
+.github/
+.venv/
+**/__pycache__/
+**/*.pyc
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+frontend/node_modules/
+frontend/dist/
+eval/
+*.log
