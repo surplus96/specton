@@ -34,15 +34,16 @@
 - 엔진 제안: Docling(표 구조·OCR), 텍스트형이 느리면 pdfplumber 보조 (ADR-0004). 대표 PDF 2~3건으로 실측 후 확정.
 - 추출 confidence를 항상 얻을 수 있다고 가정하지 않는다. 빈 블록·문자 깨짐·분리된 행으로 검토 플래그를 만든다.
 
-## HWPX·HWP (stretch 제안)
+## HWPX·HWP
 
 | 유형 | 처리 |
 |---|---|
-| HWPX | ZIP 안의 OWPML XML에서 문단·표·셀 순서를 읽고 섹션·문단·표 위치를 `source_ref`로 |
-| HWP 5.0 | 전용 파서 또는 HWPX/PDF 변환 후 처리. 실험 후 지원 범위 결정 |
+| HWPX | 요구사항 상세표를 읽어 구역·문단·표·셀 위치를 `source_ref`로 (`specton/ingest/hangul.py`) |
+| HWP 5.0 | 엔진은 바로 읽을 수 있지만 업로드는 아직 받지 않는다(`.hwp`는 415와 HWPX 변환 안내, `specton/api/uploads.py`) |
 | 배포용·암호화·손상 | 오류와 지원 경계 안내 |
 
-- 엔진 제안: HWPX `python-hwpx`(Apache-2.0). HWP는 `hwp-hwpx-parser`·`hwpkit` 비교, 시간이 없으면 "HWPX로 변환해 업로드" 안내 (ADR-0004).
+- 엔진: HWP 5.0·HWPX 모두 `rhwp-python==0.8.1`(MIT)로 읽는다(2026-11-08 채택, ADR-0004). 엔진 호출은 `specton/ingest/hangul_engine.py` 한 곳이다.
+- 원문 위치는 구역·문단·표·셀로 적고, 렌더링 쪽 번호를 원문 쪽 번호로 쓰지 않는다.
 - 지원 여부를 화면에 명시한다.
 
 ## 도메인 팩
