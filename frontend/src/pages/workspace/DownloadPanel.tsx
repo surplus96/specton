@@ -131,7 +131,18 @@ function DownloadPanel({ run }: Props) {
   ]
 
   return (
-    <PageCard title="다운로드" subtitle={`revision ${run.revision} 산출물을 형식별로 내려받습니다.`}>
+    <PageCard
+      title="다운로드"
+      subtitle={`revision ${run.revision} 산출물을 형식별로 내려받습니다.`}
+      actions={
+        // 끝난 실행에서 바로 다음 문서로. 이 실행은 「이전 실행」 목록에서 다시 열 수 있다
+        run.status === 'completed' && (
+          <Button type="primary" size="large" onClick={() => navigate('/start')}>
+            새 문서로 시작
+          </Button>
+        )
+      }
+    >
       <Flex vertical gap={24}>
         {loadError ? (
           <Alert
