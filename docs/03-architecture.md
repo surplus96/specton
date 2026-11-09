@@ -132,7 +132,7 @@ RTM의 원문 분할·제외·원문 없음 행은 저장된 설계에서 그대
 처리한다. PDF를 켠 상태에서 생성에 실패해도 PDF 없이 성공한 것으로 우회하지 않는다.
 
 PDF 설정의 기본값은 비활성이다. #209 인계와 #25 실행 이미지의 Pango·Noto CJK 폰트·
-mermaid-cli 11.15.0·Chromium 준비 뒤 활성화한다. CLI 명령은
+mermaid-cli(안의 mermaid 11.17.2, ADR-0004)·Chromium 준비 뒤 활성화한다. CLI 명령은
 `SPECTON_MERMAID_CLI_COMMAND`의 JSON 배열, 브라우저 설정은
 `SPECTON_MERMAID_PUPPETEER_CONFIG`의 JSON 파일 경로로 전달한다.
 
