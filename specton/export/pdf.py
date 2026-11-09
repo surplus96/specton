@@ -5,7 +5,7 @@
 
 ERD PDF 구성 (ADR-0004):
 1. 표지: 실행 정보 표 (#14 출력 manifest와 같은 이름: run_id·revision·model_hash·pack·pack_version)
-2. 전체 관계 개요: 속성 없이 엔티티와 관계만
+2. 전체 관계 개요: 속성 없이 엔티티와 관계만. 나누지 않으며 인쇄 글자가 6pt보다 작으면 경고 (#236)
 3. 업무 영역별 상세도: 키 속성(PK·FK·UK)만, 좌우 배치. 인쇄 글자가 6pt보다 작으면 경고
 4. 테이블 정의서: 전체 속성. 긴 표는 쪽마다 머리글 반복
 
@@ -270,10 +270,15 @@ def build_erd_document(
         svg = mermaid(source)
         fit = fit_wide(svg)
         figures.append(ErdFigure(kind=kind, title=title, source=source, svg=svg, fit=fit))
-        if kind == "area" and fit.text_pt < MIN_PRINT_PT:
+        if fit.text_pt < MIN_PRINT_PT:
+            # 개요는 나누지 않는다. 전체 구조 확인용이고 세부는 영역 상세도에서 본다 (#236 R1).
+            advice = (
+                "개요는 나누지 않으니 세부 관계는 영역 상세도에서 확인해 주세요."
+                if kind == "overview"
+                else "영역 낱말을 나눠 상자 수를 줄여 주세요."
+            )
             warnings.append(
-                f"{title}: 인쇄 글자가 {fit.text_pt}pt로 {MIN_PRINT_PT:g}pt보다 작습니다. "
-                "영역 낱말을 나눠 상자 수를 줄여 주세요."
+                f"{title}: 인쇄 글자가 {fit.text_pt}pt로 {MIN_PRINT_PT:g}pt보다 작습니다. {advice}"
             )
     body = [
         _cover_html(cover, draft),

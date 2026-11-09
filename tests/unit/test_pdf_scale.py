@@ -53,13 +53,15 @@ def test_scale_erd_pdf_renders_every_figure() -> None:
     assert result.pdf.startswith(b"%PDF-") and not result.blocked_urls
     overview = [f for f in document.figures if f.kind == "overview"]
     area_figures = [f for f in document.figures if f.kind == "area"]
-    # 개요 글자 크기는 모델 모양(한 테이블에 달린 자식 수)에 따라 달라 기준을 두지 않고 기록만 한다.
-    # 6pt 경고는 상세도에만 있다 (ADR-0004). 이 모델은 품목·창고에 자식이 많아 개요가 넓다.
-    assert len(overview) == 1 and overview[0].fit.text_pt > 0
+    assert len(overview) == 1
     assert len(area_figures) == 4  # 수불 · 재고 이력 · 기준정보 · 기타
     assert all("<svg" in f.svg for f in document.figures)
-    small = [f.title for f in area_figures if f.fit.text_pt < MIN_PRINT_PT]
-    assert len(document.warnings) == len(small)  # 6pt 미만 상세도마다 경고 하나
+    # 이 모델은 품목·창고에 자식이 많아 개요가 넓어 6pt보다 작다(실측 4.5pt). 개요는 나누지 않고
+    # 경고만 한다 (#236 R1 결정). 경고는 6pt 미만 그림마다 하나: 개요 + 기준정보 상세도.
+    assert overview[0].fit.text_pt < MIN_PRINT_PT
+    small = [f.title for f in document.figures if f.fit.text_pt < MIN_PRINT_PT]
+    assert [w.split(":")[0] for w in document.warnings] == small
+    assert small[0] == "전체 관계 개요" and any(t.startswith("영역 상세 · 기준정보") for t in small)
 
     report = os.environ.get("SPECTON_SCALE_REPORT")
     if report:
