@@ -17,7 +17,8 @@
   팩 사전으로 풀린 것이라 지금 팩으로는 두 검사가 실제로 0건이다.
 - SC-03은 분류어(이름 끝 단어)의 도메인 분류에 속한 공식 도메인들과 칸의 타입이 다를 때,
   SC-06은 공식 용어와 이름이 같고 타입·길이·소수 자릿수가 그 도메인과 다를 때다. 한 칸에서 SC-03이
-  나면 SC-06은 내지 않는다. 타입은 `naming.yaml`의 `type_profile`(strict·pg_native)로 고른다.
+  나면 SC-06 지적은 내지 않는다(집계에서는 SC-06도 부적합으로 센다).
+  타입은 `naming.yaml`의 `type_profile`(strict·pg_native)로 고른다.
   시각 타입의 소수 초 자릿수는 속성 계약에 칸이 없어 설계를 고쳐도 풀리지 않으므로 비교하지 않는다.
 - SC-04(금칙어)·SC-05(공식 용어와 약어 불일치)는 이름을 바꿀지 팩을 고칠지 사람이 정한다
   (`requires_manual_review=True`). minor만 있으면 켜지 않는다.
@@ -275,6 +276,7 @@ def check_standard_compliance(
     findings: list[Finding] = []
     totals = dict.fromkeys(CODES, 0)
     diagnosed = dict.fromkeys(CODES, 0)
+    # 항목별 부적합 칸. 지적을 만들면 들어가고, SC-03과 겹친 SC-06처럼 지적 없이 들어가기도 한다.
     failed: dict[str, set[str]] = {code: set() for code in CODES}
     numbers = dict.fromkeys(CODES, 0)
 
@@ -385,17 +387,20 @@ def check_standard_compliance(
             spec = official.domains.get(_nfc(term.domain), {}).get(profile)
             if spec is not None:
                 diagnosed["SC-06"] += 1
-                if column.id not in failed["SC-03"]:
-                    differs = _spec_differences(column, spec)
-                    if differs:
-                        add(
-                            "SC-06",
-                            "type_length_mismatch",
-                            column,
-                            f"{where}: 공통표준 용어 {name}의 도메인 {term.domain}({profile} 기준 "
-                            f"{_describe(spec)})과 다릅니다: {', '.join(differs)}.",
-                            f"{term.domain}의 타입·길이로 바꾼다.",
-                        )
+                differs = _spec_differences(column, spec)
+                if differs and column.id in failed["SC-03"]:
+                    # 타입 문제는 SC-03으로 이미 지적했다. 지적은 다시 내지 않지만, 공식 도메인과
+                    # 다르므로 SC-06 집계에서는 부적합으로 센다(적합으로 세면 준수율이 부풀려진다).
+                    failed["SC-06"].add(column.id)
+                elif differs:
+                    add(
+                        "SC-06",
+                        "type_length_mismatch",
+                        column,
+                        f"{where}: 공통표준 용어 {name}의 도메인 {term.domain}({profile} 기준 "
+                        f"{_describe(spec)})과 다릅니다: {', '.join(differs)}.",
+                        f"{term.domain}의 타입·길이로 바꾼다.",
+                    )
 
     items = tuple(
         ComplianceItem(code, totals[code], diagnosed[code], diagnosed[code] - len(failed[code]))

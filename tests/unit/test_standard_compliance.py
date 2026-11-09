@@ -530,3 +530,22 @@ def test_very_long_names_split_without_recursion_limits() -> None:
     assert split_from_end("가" * 5000, {"가"}) == ("가",) * 5000
     assert split_from_end("가" * 5000 + "나", {"가"}) is None
     assert split_from_end("가나" * 2000, {"가", "나", "가나"}) == ("가나",) * 2000
+
+
+@pytest.mark.parametrize(
+    ("data_type", "length", "findings", "sc06"),
+    [
+        # SC-03이 난 칸은 SC-06 지적을 다시 내지 않지만, 도메인과 다르니 SC-06도 부적합으로 센다
+        (SqlType.VARCHAR, 10, ["SC-03"], (1, 1, 0, 0)),
+        (SqlType.CHAR, 10, ["SC-06"], (1, 1, 0, 0)),
+        (SqlType.CHAR, 8, [], (1, 1, 0, 1)),
+    ],
+)
+def test_sc06_counts_a_column_skipped_because_of_sc03_as_not_compliant(
+    data_type: SqlType, length: int, findings: list[str], sc06: tuple[int, int, int, int]
+) -> None:
+    review = _check(_col("C1", "배정일자", "altmnt_ymd", data_type, length))
+    assert _codes(review) == findings
+    assert _item(review, "SC-06") == sc06
+    [item] = [i for i in review["items"] if i.code == "SC-06"]
+    assert item.rate == (100.0 if sc06[3] else 0.0)
