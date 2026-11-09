@@ -43,6 +43,36 @@
   3. `.env.deploy`의 `POSTGRES_PASSWORD`·`SANDBOX_PASSWORD`를 같은 값으로 고친다
   4. `docker compose -f compose.deploy.yml --env-file .env.deploy up -d --no-build api` (바뀐 접속 URL로 api만 다시 만든다)
 
+### 데이터 보존·백업·복구 (#25, R1 결정)
+
+저장 위치는 `compose.deploy.yml`의 Docker named volume이다. 컨테이너를 바꿔도 볼륨은 남는다.
+
+| 볼륨 | 컨테이너 경로 | 담는 것 |
+|---|---|---|
+| `pgdata` | db `/var/lib/postgresql` | 앱 DB(`specton_app`: 실행·문서·승인·체크포인트·세션)와 sandbox DB |
+| `storage` | api `/data/storage` (`SPECTON_STORAGE_DIR`) | 업로드 원문·산출물 파일 (`storage_ref`) |
+| `caddy_data`·`caddy_config` | web `/data`·`/config` | HTTPS 인증서·설정 (없어지면 다시 발급) |
+
+- **`down -v`를 쓰지 않는다.** `-v`는 위 볼륨을 지워 DB·업로드·산출물이 모두 사라진다. 멈출 때는 `down`, 재배포는 `pull` 뒤 `up -d --no-build`.
+- 재배포·컨테이너 교체 뒤 유지 확인 (로컬 compose에서 확인, 2026-11-09): 업로드 → `up -d --no-build --force-recreate`
+  → `down` 뒤 `up -d --no-build`를 거쳐도 같은 세션 쿠키로 실행 상태·추출 원문(19건)·업로드 파일이 그대로 보였다.
+- **백업** (DB와 파일을 같은 시점으로 맞추려고 api를 잠깐 멈춘다. `D`는 `docker compose -f compose.deploy.yml --env-file .env.deploy`):
+  1. `$D stop api`
+  2. `$D exec -T db pg_dump -U specton -d specton_app -Fc > specton_app-<날짜>.dump`
+  3. `$D run --rm --no-deps -v "$PWD:/backup" --entrypoint tar api czf /backup/storage-<날짜>.tgz -C /data/storage .`
+  4. `$D start api`
+  - sandbox DB는 검증용이라 백업하지 않는다(초기화 스크립트로 다시 만든다). 백업 파일은 서버 밖(예: S3)에 둔다.
+- **복구** (빈 볼륨에 되살리기, 같은 `.env.deploy`):
+  1. `$D up -d --no-build db` (초기화 스크립트가 역할·sandbox를 만든다)
+  2. `$D exec -T db pg_restore -U specton -d specton_app --clean --if-exists --no-owner < specton_app-<날짜>.dump`
+  3. `$D run --rm --no-deps -v "$PWD:/backup:ro" --entrypoint tar api xzf /backup/storage-<날짜>.tgz -C /data/storage`
+  4. `$D up -d --no-build`
+  - 로컬 확인 (2026-11-09): 위 백업을 빈 볼륨의 새 구성에 복구하니 같은 세션 쿠키로 같은 실행·추출 원문 19건·업로드 파일이 보였다.
+    산출물 내려받기는 LLM 실행이 필요해 실제 LLM E2E(TC-F19) 때 함께 확인한다.
+- **AWS (EC2):** 볼륨은 호스트 디스크(`/var/lib/docker`)에 있으므로 그 디스크를 EBS로 둔다.
+  - 루트 EBS는 기본값이 「인스턴스 종료 시 삭제」(`DeleteOnTermination=true`)다. 끄거나, Docker 데이터용 EBS를 따로 붙인다.
+  - 인스턴스 종료 방지(termination protection)를 켜고, EBS 스냅샷을 정기로 남긴다(위 백업 파일과 별도).
+
 ## 격리 DB (sandbox)
 
 - sandbox 역할은 슈퍼유저·DB 생성·역할 생성 권한이 없고, 앱 DB 접속(CONNECT)이 막혀 있다. 실행 시간 제한 10초. (로컬에서 확인함)
@@ -100,7 +130,7 @@
 
 - 세션은 로컬 단일 세션이고 서버가 발급한 쿠키 값을 `owner_ref`로 쓴다. 업로드 파일은 시연 후 삭제하며, 보존 기간은 시연 계획(#23)에서 정한다 (ADR-0011).
 - 삭제는 파일·문서·상태·체크포인트를 함께 처리하고 실패를 기록한다.
-- 백업 대상은 플랫폼 DB와 파일 manifest. sandbox는 재생성 가능하게 둔다. 복구 후 원문·산출물 해시를 대조한다.
+- 백업 대상은 플랫폼 DB와 파일 manifest. sandbox는 재생성 가능하게 둔다. 복구 후 원문·산출물 해시를 대조한다. 배포 환경의 명령은 「데이터 보존·백업·복구」를 따른다.
 
 ## 릴리스·시연 체크리스트
 
@@ -109,3 +139,5 @@
 - [ ] PDF 입력·한글 출력·HITL·다운로드·실패/재개 시연
 - [ ] 실제 평가 결과·미실행·미지원·남은 위험 인수
 - [ ] 비밀값·개인 원문·검증용 임시 파일이 배포 패키지에 없는지 확인
+- [ ] 배포 검증: 컨테이너 교체·재배포(`up -d --no-build --force-recreate`) 뒤에도 기존 실행·업로드·산출물 내려받기가 유지되는지
+- [ ] 배포 검증: 백업 파일로 빈 볼륨에 복구해 같은 실행이 보이는지, EBS 종료 시 보존·종료 방지·스냅샷 설정 확인
