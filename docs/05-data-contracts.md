@@ -31,7 +31,7 @@
 | #204 | `Error.detail`(「자세히 보기」 문장, 없으면 null) 추가 (#19). `GET /runs/{id}`의 `error`에서도 다시 받을 수 있다 |
 | #222 | `ArtifactRef.kind`에 `manifest`, `file_format`에 `json` 추가. manifest JSON은 승인 전 비공개 후보로 저장하고 승인 근거와 같은 바이트를 공개 |
 
-남은 작업: requirements·추적 검사 설명 (#107), FK 파생·참조 키 (#12), 값 범위 제약 (#15)
+남은 작업: FK 파생·참조 키 (#12), 값 범위 제약 (#15)
 
 - #128로 표 파서의 `review` 블록은 `notice`를 채운다. #139부터 계약도 `review`·`fail` 블록의 `notice`를 필수로 검사한다.
 
