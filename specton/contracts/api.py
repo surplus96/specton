@@ -40,10 +40,14 @@ class ErrorCode(StrEnum):
 
 
 class Error(Contract):
-    """모든 오류 응답의 공통 형식. 파일 경로·비밀값·내부 예외를 담지 않는다."""
+    """모든 오류 응답의 공통 형식. 파일 경로·비밀값·내부 예외를 담지 않는다.
+
+    `message`는 짧은 안내, `detail`은 화면의 「자세히 보기」에 펼칠 문장이다(없으면 null, #19).
+    """
 
     code: str  # ErrorCode 값. 확장 가능성 때문에 응답에서는 문자열로 받는다
     message: NonEmptyText
+    detail: NonEmptyText | None = None
     run_id: str | None = None
     retryable: bool
 
