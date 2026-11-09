@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import { Button, Flex } from 'antd'
 import { useNavigate } from 'react-router'
 import { colors, type, weights } from '../theme.ts'
+import { FORMATS_LABEL } from './upload/rules.ts'
 
 // 첫 화면: 팀·프로젝트 소개 (/). "시작하기"를 누르면 UI-01(업로드, /start)로 간다.
 // 대형 강의장 프로젝터 기준(theme.ts): 남색 면 + 흰 글자, 흰 카드 + 진한 테두리, 큰 글자.
@@ -26,7 +27,7 @@ const MEMBERS = [
 // 무엇을 하는 도구인지 세 단계로 (docs/09-ui-flow.md: 업로드 → 확인·승인 → 결과 보기)
 // 카드 바탕은 파랑 → 진한 파랑 → 남색. 모두 흰 글자와 6.7:1 이상
 const FLOW = [
-  { title: '올리기', text: '요구사항 정의서(.xlsx · .csv)를 올립니다.', bg: colors.primary },
+  { title: '올리기', text: `요구사항 정의서(${FORMATS_LABEL})를 올립니다.`, bg: colors.primary },
   { title: '확인하기', text: '추출·분석 결과를 사람이 확인하고 승인합니다.', bg: colors.primaryStrong },
   { title: '받기', text: '기능 명세 · ERD · DDL · RTM을 내려받습니다.', bg: colors.navy },
 ]

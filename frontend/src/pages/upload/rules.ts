@@ -16,6 +16,9 @@ export const ACCEPTED_FORMATS = ['xlsx', 'csv', 'hwpx', 'hwp'] as const
 /** 파일 고르기 창에서 보일 확장자 */
 export const ACCEPT_ATTR = ACCEPTED_FORMATS.map((f) => `.${f}`).join(',')
 
+/** 화면 안내에 쓰는 형식 목록 (예: .xlsx · .csv · .hwpx · .hwp) */
+export const FORMATS_LABEL = ACCEPTED_FORMATS.map((f) => `.${f}`).join(' · ')
+
 /**
  * 팩 이름과 화면 표시. Record<Pack, …>라서 계약(openapi.json)에 팩이 늘면 여기서 타입 오류가 난다.
  * 설명은 domain_packs/<팩>/manifest.yaml의 description을 한글로 줄였다.
