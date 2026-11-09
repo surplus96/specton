@@ -28,9 +28,10 @@ def _check_nfr_category(type_: RequirementType, category: NfrCategory | None) ->
 class SourceRequirement(Contract):
     """추출된 원문 한 건. 코드가 만들고 LLM은 만들지 않는다.
 
-    `source_` 칸은 원문 그대로다. 추출 확인(UI-02)에서는 문장을 고치지 않고 확인 또는 제외만
-    하며, 그 결정을 `user_decision`에 둔다 (ADR-0015, #95). 노드는 `analysable`인 블록만
-    분석한다.
+    `source_` 칸은 원문에서 온 값이다(코드가 복사하고 해석하지 않음). 앞뒤 공백까지 보존하는
+    칸은 `source_text`뿐이고 나머지 `source_` 칸은 앞뒤 공백을 지운다. 추출 확인(UI-02)에서는
+    문장을 고치지 않고 확인 또는 제외만 하며, 그 결정을 `user_decision`에 둔다
+    (ADR-0015, #95). 노드는 `analysable`인 블록만 분석한다.
     """
 
     document_id: NonEmptyText

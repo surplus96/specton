@@ -322,6 +322,7 @@ def test_extraction_failure_shows_the_parser_notice_and_detail(
     assert error.data.message == status.error.message
     assert error.data.payload["code"] == "EXTRACTION_FAILED"
     assert "위쪽 20행 안에" in error.data.payload["detail"]
+    assert status.error.detail == error.data.payload["detail"]
 
 
 def test_other_failures_keep_the_fixed_message_without_detail(
@@ -339,6 +340,8 @@ def test_other_failures_keep_the_fixed_message_without_detail(
         [error] = [e for e in events_after(conn, run_id, OWNER, 0) if e.event is SseEventType.ERROR]
     assert error.data.message == "모델이 응답을 거절했습니다. 입력을 확인해 주세요."
     assert "detail" not in error.data.payload
+    status = w.status(run_id)
+    assert status.error is not None and status.error.detail is None
 
 
 def test_excluding_a_related_requirement_is_recorded_as_a_run_event(

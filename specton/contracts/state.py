@@ -89,6 +89,8 @@ class DesignState(Contract):
 
 
 ObjectKind = Literal["requirement", "function", "entity", "attribute", "relationship"]
+# 추적 위반 종류: missing_req_ids = req_ids가 비어 있음 / unknown_req_id = 현재 revision에 없는
+# REQ를 가리킴 / unknown_entity_ref = 없는 엔티티를 가리킴 / duplicate_id = 같은 종류 ID가 겹침
 TraceIssueKind = Literal["missing_req_ids", "unknown_req_id", "unknown_entity_ref", "duplicate_id"]
 
 
@@ -102,7 +104,7 @@ class TraceIssue(Contract):
 
 
 def find_trace_issues(state: DesignState) -> list[TraceIssue]:
-    """req_ids가 비었거나 현재 revision에 없는 REQ·엔티티를 가리키는 요소를 모두 찾는다.
+    """req_ids가 비었거나, 없는 REQ·엔티티를 가리키거나, ID가 중복된 요소를 모두 찾는다.
 
     첫 오류에서 멈추지 않고 전부 모은다. 최종 승인 전에 이 목록이 비어 있어야 한다.
     """
@@ -135,7 +137,8 @@ def _duplicate_issues(state: DesignState) -> Iterator[TraceIssue]:
         seen: set[str] = set()
         for object_id in ids:
             if object_id in seen:
-                yield _issue("duplicate_id", object_kind, object_id, "ID가 중복됩니다")
+                detail = f"{object_id}의 ID가 중복됩니다"
+                yield _issue("duplicate_id", object_kind, object_id, detail)
             seen.add(object_id)
 
 
