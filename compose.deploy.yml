@@ -1,0 +1,72 @@
+# 배포용 구성 (#25, ADR-0013): DB + API + 웹. 로컬과 AWS가 같은 파일·같은 이미지를 쓴다.
+# 개발용 docker-compose.yml(DB만, 127.0.0.1)과 따로 둔다.
+#
+#   준비: cp .env.deploy.example .env.deploy 후 값을 채운다 (커밋 금지)
+#   기동: docker compose -f compose.deploy.yml --env-file .env.deploy up -d --build
+#   중지: docker compose -f compose.deploy.yml --env-file .env.deploy down
+#
+# 비밀값은 기본값이 없다. 비어 있으면 compose가 기동을 거부한다 (docs/11 「배포 전 할 일」).
+# 비밀번호는 DB 접속 URL에 그대로 들어가므로 영문·숫자로 만든다 (예: openssl rand -hex 24).
+
+name: specton-deploy  # 개발용(specton)과 볼륨이 섞이지 않게
+
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: specton
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD를 .env.deploy에 넣어 주세요}
+      POSTGRES_DB: specton_app
+      SANDBOX_PASSWORD: ${SANDBOX_PASSWORD:?SANDBOX_PASSWORD를 .env.deploy에 넣어 주세요}
+    # 포트를 밖에 열지 않는다. api만 내부 네트워크로 접속한다.
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U specton -d specton_app"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    image: specton-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPECTON_OPENAI_API_KEY: ${SPECTON_OPENAI_API_KEY:?SPECTON_OPENAI_API_KEY를 .env.deploy에 넣어 주세요}
+      SPECTON_APP_DATABASE_URL: postgresql://specton:${POSTGRES_PASSWORD}@db:5432/specton_app
+      SPECTON_SANDBOX_DATABASE_URL: postgresql://specton_sandbox:${SANDBOX_PASSWORD}@db:5432/specton_sandbox
+      # HTTPS 뒤에서만 쓰므로 세션 쿠키에 Secure를 붙인다 (#21). 로컬 HTTP 확인 때만 false로.
+      SPECTON_SESSION_COOKIE_SECURE: ${SPECTON_SESSION_COOKIE_SECURE:-true}
+      # 실행 이미지에 Pango·한글 폰트·mermaid-cli·Chromium이 있다 (#226).
+      SPECTON_ENABLE_ERD_PDF: ${SPECTON_ENABLE_ERD_PDF:-true}
+    volumes:
+      - storage:/data/storage
+    # 포트를 밖에 열지 않는다. web(Caddy)이 /runs·/health를 넘긴다.
+
+  web:
+    build: ./frontend
+    image: specton-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      # 도메인이면 Caddy가 HTTPS 인증서를 자동으로 받는다. 비우면 :80(HTTP, 로컬 확인용).
+      SPECTON_SITE_ADDRESS: ${SPECTON_SITE_ADDRESS:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/web/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  storage:
+  caddy_data:
+  caddy_config:
