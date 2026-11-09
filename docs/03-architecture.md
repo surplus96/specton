@@ -112,7 +112,14 @@ RTM Excel·CSV 생성기를 순서대로 호출하고 세 파일을 같은 고�
 RTM의 원문 분할·제외·원문 없음 행은 저장된 설계에서 그대로 계산한다. 보류·재시작에는
 체크포인트의 파일을 재사용하고 설계 수정에는 새 revision 파일을 만든다.
 이 연결 전 최종 검토에 도달한 실행에는 새 문서를 소급 생성하지 않는다.
-manifest JSON의 저장·다운로드와 기능 명세 PDF는 후속 범위다.
+기능 명세 PDF는 후속 범위다.
+
+기존 `wait_review` 노드에는 `specton.manifest_node`를 연결한다. 리뷰·라우팅 뒤의 최종 버전 정보를
+포함해 현재 revision 산출물의 manifest JSON을 비공개 승인 후보로 준비한다. 자신의 해시는
+목록에서 제외한다. 새 체크포인트 노드는 추가하지 않으며 이미 최종 검토에 도달한 실행을
+승인할 때 문서를 소급 만들지 않는다. 실행기가 다른 산출물과 같은 트랜잭션으로 후보를 게시하고,
+승인 근거에 JSON 해시를 함께 기록한다. 내보내기는 모델·파일 목록이 후보 내용과 같은지 확인한
+뒤 동일 바이트를 승격한다. 승인 전 JSON 다운로드는 차단하며, 보류·재시작은 같은 후보를 쓴다.
 
 `SPECTON_ENABLE_ERD_PDF=true`이면 같은 ERD 가지에 `specton.pdf_adapter`를 연결한다.
 실행에 기록된 팩·버전과 `settings.pack_root`의 팩을 대조하고, 그 팩의 업무 영역과 #209 엔진으로
@@ -175,7 +182,7 @@ DDL 노드의 pending writes에 현재 revision·SQL·모델과 맞는 검증 �
 실제 생성·검증·저장 연결에 맞춰 SQL 승인 검사 기본값을 켠다
 (`SPECTON_REQUIRE_SQL_VALIDATION=true`). 기존 승인에 검증 근거를 소급 생성하지 않는다.
 
-API의 `export_node()`는 현재 revision의 승인한 SQL·Mermaid·PDF 후보·기능 명세 Markdown·RTM 바이트를 그대로 승인본으로
+API의 `export_node()`는 현재 revision의 승인한 SQL·Mermaid·PDF 후보·기능 명세 Markdown·RTM·manifest 바이트를 그대로 승인본으로
 인계한다. 실행기는 `approval_basis.artifact_hash`와 비교해 승인 이후 변경된 바이트나
 승인 근거에 없는 새 산출물의 게시를 거절한다.
 

@@ -19,7 +19,11 @@ from specton.model_hash import model_hash
 def build_manifest(design: DesignState, generated: Iterable[GeneratedArtifact]) -> dict[str, Any]:
     """현재 revision 산출물의 manifest. 다른 revision·모델·승인 상태가 섞이면 ValueError."""
     digest = model_hash(design)
-    files = sorted(generated, key=lambda g: (g["ref"].kind, g["ref"].file_format))
+    # 자신의 해시는 담을 수 없다. 현재 revision의 실제 출력 파일만 기술한다.
+    files = sorted(
+        (g for g in generated if g["ref"].kind != "manifest"),
+        key=lambda g: (g["ref"].kind, g["ref"].file_format),
+    )
     if not files:
         raise ValueError("manifest: 산출물이 없습니다")
     for item in files:
