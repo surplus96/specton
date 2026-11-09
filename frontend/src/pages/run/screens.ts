@@ -99,7 +99,10 @@ export function requirementsCheckSkipped(events: readonly SseEvent[]): boolean {
   )
 }
 
-/** 실패 안내. 「자세히 보기」 문장(detail)은 상태 조회에 없고 SSE error 이벤트에만 있다. */
+/**
+ * 실패 안내. 「자세히 보기」 문장(detail)은 상태 조회 `error.detail`을 먼저 쓰고, 없으면 SSE error 이벤트
+ * `payload.detail`을 쓴다. 상태 조회 값은 DB에 저장돼 새로고침·SSE 재생 만료 뒤에도 남는다 (#204·#230, docs/06).
+ */
 export function failureOf(
   error: ApiErrorBody | null | undefined,
   events: readonly SseEvent[],
@@ -112,8 +115,13 @@ export function failureOf(
     code,
     message: error?.message ?? last?.data.message ?? '실행이 실패했습니다.',
     retryable: error?.retryable ?? payload.retryable === true,
-    detail: typeof payload.detail === 'string' ? payload.detail : null,
+    detail: textOrNull(error?.detail) ?? textOrNull(payload.detail),
   }
+}
+
+/** 비어 있지 않은 글자면 그대로, 아니면 null (서버도 공백뿐인 detail은 null로 보낸다) */
+function textOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value : null
 }
 
 /** 화면에 보일 최근 진행 문장. 같은 문장이 이어지면 하나만. */

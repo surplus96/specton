@@ -102,6 +102,19 @@ describe('이벤트로 정하는 표시', () => {
     expect(failureOf(null, [])).toBeNull()
   })
 
+  it('자세히 보기는 상태 조회 error.detail이 먼저다. SSE 재생이 만료돼 이벤트가 없어도 남는다 (#204·#230)', () => {
+    const fromStatus = { code: 'EXTRACTION_FAILED', message: '표를 찾지 못했어요', retryable: false, detail: '상태 조회 문장' }
+    const err = event(4, 'error', '표를 찾지 못했어요', {
+      payload: { code: 'EXTRACTION_FAILED', retryable: false, detail: 'SSE 문장' },
+    })
+    expect(failureOf(fromStatus, [err])?.detail).toBe('상태 조회 문장')
+    expect(failureOf(fromStatus, [])?.detail).toBe('상태 조회 문장')
+    // 상태 조회에 없거나(null) 공백뿐이면 SSE payload.detail, 둘 다 없으면 null
+    expect(failureOf({ ...fromStatus, detail: null }, [err])?.detail).toBe('SSE 문장')
+    expect(failureOf({ ...fromStatus, detail: '  ' }, [err])?.detail).toBe('SSE 문장')
+    expect(failureOf({ ...fromStatus, detail: null }, [])?.detail).toBeNull()
+  })
+
   it('진행 기록은 같은 문장이 이어지면 하나만', () => {
     const events = [event(1, 'status', 'a'), event(2, 'status', 'a'), event(3, 'status', 'b')]
     expect(recentMessages(events)).toEqual(['a', 'b'])
@@ -330,6 +343,10 @@ describe('followRun: 실행 따라가기', () => {
     const failure = failureOf(f.got.statuses.slice(-1)[0].error, f.got.events)
     expect(failure?.code).toBe('EXTRACTION_FAILED')
     expect(failure?.detail).toContain('찾은 칸 이름')
+    // mock도 서버처럼 상태 조회 error.detail에 같은 문장을 넣어, 이벤트 없이도 자세히 보기가 남는다
+    const status = f.got.statuses.slice(-1)[0]
+    expect(status.error?.detail).toBe(failure?.detail)
+    expect(failureOf(status.error, [])?.detail).toContain('찾은 칸 이름')
   })
 
   it('스트림이 끊기면 브라우저가 Last-Event-ID로 다시 붙고, 이벤트는 겹치지 않는다', async () => {
