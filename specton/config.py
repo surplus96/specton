@@ -46,6 +46,8 @@ class Settings(BaseSettings):
 
     # PDF 엔진 인계·실행 이미지 도구 준비 뒤 활성화한다 (#13·#17·#25).
     enable_erd_pdf: bool = False
+    # 기능 명세서 PDF(#243 엔진). Mermaid 없이 WeasyPrint·한글 폰트만 쓴다 (#13·#17).
+    enable_function_spec_pdf: bool = False
     mermaid_cli_command: tuple[str, ...] = Field(default=("mmdc",), min_length=1)
     mermaid_puppeteer_config: Path | None = None
 

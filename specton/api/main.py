@@ -23,7 +23,7 @@ from specton.graph import GraphState, Node, build_graph
 from specton.manifest_node import manifest_node
 from specton.normalization_node import normalization_node
 from specton.parse_node import parse_node
-from specton.pdf_adapter import erd_pdf_renderer
+from specton.pdf_adapter import erd_pdf_renderer, function_spec_pdf_renderer
 from specton.persistence.db import Pool, apply_schema, create_checkpointer, create_pool
 from specton.review.normalization_findings import failure_mapper, rule_severities
 from specton.runner import Runner
@@ -50,13 +50,18 @@ def create_graph(
         if settings.enable_erd_pdf
         else erd_node(settings.storage_dir)
     )
+    documents = (
+        document_node(settings.storage_dir, pdf=function_spec_pdf_renderer(settings))
+        if settings.enable_function_spec_pdf
+        else document_node(settings.storage_dir)
+    )
     nodes = {
         **(agent_nodes if agent_nodes is not None else openai_agent_nodes(settings)),
         "parse": parse_node(settings.storage_dir),
         "normalize": normalization_node(mapper, root=settings.pack_root),
         "erd": erd,
         "ddl": ddl_node(settings),
-        "rtm": document_node(settings.storage_dir),
+        "rtm": documents,
         "rules": design_rules_node(root=settings.pack_root),
         "wait_review": manifest_node(settings.storage_dir),
         "export": export_node(settings.storage_dir),
