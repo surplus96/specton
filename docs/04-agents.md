@@ -259,7 +259,7 @@ decide_rework(이번 반복 지적, 재작업 횟수, 상한, 이전 지문)
 | RULE-06 | CRUD 정합 | 기능이 사용하지 않는 엔티티, 잘못된 CRUD 면제(미등록 사유·허용 밖 조작·사용 조작 면제) |
 | RULE-07 | DDL 파싱·실행 | 파싱 실패, 격리 DB 실행 실패 |
 
-표준 준수 검사 SC-01~06도 규칙 지적이다. 지적은 `source=rule`이고 `rule_code`에 `SC-01`처럼 검사 ID를 쓴다. 항목과 근거는 `domain_packs/common/rules.yaml`·`common/RATIONALE.md` "표준 준수 진단"에 있다. 심각도는 `rules.yaml`에서 읽고 `critical`을 쓰지 않는다(ADR-0010 SC 예외).
+표준 준수 검사 SC-01~06도 규칙 지적이다. 지적은 `source=rule`이고 `rule_code`에 `SC-01`처럼 검사 ID를 쓴다. 항목과 근거는 `domain_packs/common/rules.yaml`·`common/RATIONALE.md` "표준 준수 진단"에 있다. 심각도는 `rules.yaml`에서 읽고 `critical`을 쓰지 않는다(ADR-0010 SC 예외, 들어오면 읽을 때 거절).
 
 | 코드 | 검사 | 예시 | 심각도·처리 |
 |---|---|---|---|
@@ -272,7 +272,7 @@ decide_rework(이번 반복 지적, 재작업 횟수, 상한, 이전 지문)
 
 - 검사 함수: `specton/review/standard_compliance.py` `check_standard_compliance`. 정리에 성공한 모델에서 **팩 용어가 아닌 속성 칸**만 본다. 팩 용어 칸은 A03 출력 검사와 RULE-03(`domain_type_mismatch`)이 보므로 같은 원인을 다시 내지 않는다. 관계에서 파생된 FK 칸은 보지 않는다.
 - 비교 기준은 실행 때 읽는 공통표준 원본(`domain_packs/sources/*.csv`, 8차 2025-11)이다. `sources.yaml`의 sha256(CRLF를 LF로 맞춘 값)과 다르면 실행 오류다. 폐기된 줄은 빼고, 이름이 겹치는 단어·용어·도메인은 비교하지 않는다(미진단).
-- 이름은 팩 낱말·공통표준 단어·금칙어로 끝에서부터 긴 단어를 먼저 맞춰 나눈다(`common/RATIONALE.md`, 예: 가산금리 = 가산+금리). 끝까지 나눌 수 없으면 SC-01이다. 물리명 만들기(`codegen/naming.py`)의 분할 규칙과는 다를 수 있다.
+- 이름은 팩 낱말·공통표준 단어·금칙어로 끝에서부터 긴 단어를 먼저 맞춰 나눈다(`common/RATIONALE.md`, 예: 가산금리 = 가산+금리). 공식 용어와 이름이 같으면 그 약어의 `_` 경계대로 나눈다(예: 보고서명 = `RPTP_NM` = 보고서+명. 끝에서부터 나누면 보고+서명이 된다). 끝까지 나눌 수 없으면 SC-01이다. 물리명 만들기(`codegen/naming.py`)의 분할 규칙과는 다를 수 있다.
 - 팩에 등록된 낱말(공통·도메인 팩 `words.yaml`)은 지적하지 않는다(예: 재고 팩 「장부」). 정리를 통과한 이름은 팩 사전으로 풀린 것이라 지금 팩으로는 SC-01·04가 실제로 0건이다.
 - SC-03이 난 칸에는 SC-06 지적을 내지 않는다(집계에서는 SC-06도 부적합으로 센다). 타입은 `naming.yaml` `type_profile`로 고른다. 시각 소수 초 자릿수는 속성 계약에 칸이 없어 비교하지 않는다.
 - SC-04·05가 하나라도 있으면 반환값 `requires_manual_review=True`. 비교 기준이 없는 칸은 미진단으로 세고, 항목별 전체·진단·미진단·적합 수와 준수율(적합 / 진단 * 100)을 함께 돌려준다. 그래프 연결은 R1(#17)이 한다.

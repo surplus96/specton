@@ -11,17 +11,17 @@ rules:
   - { id: RULE-07, name: ddl_parse_execute,           severity: critical, target_stage: null }
 
 # 데이터 표준 준수 검사. 공식 산식·기준값은 공개 자료에서 확인하지 못해 항목은 프로젝트 정의(project)다.
-# 심각도 (#15, ADR-0010 SC 예외. SC-02·03은 R1 확인값, SC-01·04·05·06은 제안값으로 임시 반영, R1·R2 확인 전):
-# 규칙 위반(RULE)과 달리 critical을 쓰지 않는다. minor는 참고로만
-# 남고, major는 SC-03·06이 데이터 설계 재작업, SC-04(금칙어)·05는 사람 조치다. SC-04 이음동의어는 아직 내지 않는다.
+# 심각도 (#15 확정, R1 #247 리뷰. ADR-0010 SC 예외): 규칙 위반(RULE)과 달리 critical을 쓰지 않는다(읽을 때 거절).
+# minor는 참고로만 남고, major는 SC-03·06이 데이터 설계 재작업, SC-04(금칙어)·05는 사람 조치다.
+# SC-04 이음동의어는 아직 내지 않는다(심각도 칸 형식은 R1이 #11 common 팩 고정과 함께 정한다).
 standard_compliance:
   checks:
     - { id: SC-01, name: unregistered_word,          severity: minor, target_stage: null }  # 사전에 없는 단어
     - { id: SC-02, name: missing_classifier,         severity: minor, target_stage: null }  # 마지막 단어가 분류어가 아님
     - { id: SC-03, name: classifier_domain_mismatch, severity: major, target_stage: null }  # 분류어의 도메인 분류와 다른 도메인
-    - { id: SC-04, name: forbidden_synonym,          severity: major, target_stage: null }  # 금칙어 사용 (이음동의어는 경고)
-    - { id: SC-05, name: official_term_conflict,     severity: major, target_stage: null }  # 공식 용어와 이름은 같고 약어·도메인이 다름
-    - { id: SC-06, name: type_length_mismatch,       severity: major, target_stage: null }  # 도메인과 다른 타입·길이
+    - { id: SC-04, name: forbidden_synonym,          severity: major, target_stage: null }  # 금칙어 사용 (이음동의어는 후속)
+    - { id: SC-05, name: official_term_conflict,     severity: major, target_stage: null }  # 공식 용어와 이름은 같고 약어가 다름 (도메인 차이는 SC-06)
+    - { id: SC-06, name: type_length_mismatch,       severity: major, target_stage: null }  # 공식 용어의 도메인과 다른 타입·길이·소수 자릿수
   compliance_rate: compliant_columns / diagnosed_columns * 100   # project 정의, 항목별로 함께 보고
 
 # CRUD 면제 사유와 사유별로 면제되는 조작. 엔티티의 CrudExemption이 이 목록 밖이면 RULE-06이 지적한다.

@@ -40,7 +40,7 @@ from typing import Any, Literal, TypedDict
 from specton.contracts import DesignState, Finding
 from specton.contracts.base import SqlType, TargetStage
 from specton.contracts.findings import FindingSource, FindingTarget, Severity
-from specton.contracts.normalized import Column
+from specton.contracts.normalized import Column, NormalizedModel, Table
 from specton.packs.build import DEFAULT_ROOT, domain_entry, read_csv, read_yaml, word_entry
 from specton.packs.loader import Word, load_common, load_pack
 from specton.review.fingerprint import fingerprint
@@ -119,26 +119,7 @@ def load_official_standard(
 ) -> OfficialStandard:
     """`sources/sources.yaml`이 가리키는 공통표준 CSV를 읽는다. sha256이 다르면 멈춘다."""
     sources = read_yaml(root / _SOURCES)
-    folder = (root / _SOURCES).parent
-    digests: dict[str, str] = {}
-    rows: dict[str, list[dict[str, str]]] = {}
-    for key in ("words", "terms", "domains"):
-        spec = sources["files"][key]
-        path = folder / spec["path"]
-        expected = spec.get("sha256")
-        if not expected:
-            raise ValueError(
-                f"sources.yaml files.{key}.sha256이 없습니다 (표준 준수 검사 원본 고정)"
-            )
-        actual = _content_sha256(path)
-        if actual != expected:
-            raise ValueError(
-                f"공통표준 원본 {spec['path']}의 sha256이 sources.yaml과 다릅니다: "
-                f"{actual} ≠ {expected}"
-            )
-        digests[key] = actual
-        rows[key] = read_csv(path)  # 폐기 줄은 여기서 빠진다
-
+    digests, rows = _verified_rows(sources, (root / _SOURCES).parent)
     words, ambiguous_words = _unique(
         (
             entry["word"],
@@ -158,10 +139,56 @@ def load_official_standard(
         )
         for r in rows["terms"]
     )
-    wanted = tuple(profiles)
-    domain_pairs: list[tuple[str, dict[Profile, DomainSpec]]] = []
+    domains, ambiguous_domains, class_types = _domains(rows["domains"], tuple(profiles))
+    return OfficialStandard(
+        edition=str(sources["edition"]),
+        sha256=digests,
+        words=words,
+        terms=terms,
+        domains=domains,
+        class_types=class_types,
+        ambiguous_words=ambiguous_words,
+        ambiguous_terms=ambiguous_terms,
+        ambiguous_domains=ambiguous_domains,
+    )
+
+
+def _verified_rows(
+    sources: Mapping[str, Any], folder: Path
+) -> tuple[dict[str, str], dict[str, list[dict[str, str]]]]:
+    """원본 파일마다 sha256을 확인하고 줄을 읽는다(폐기 줄은 `read_csv`가 뺀다)."""
+    digests: dict[str, str] = {}
+    rows: dict[str, list[dict[str, str]]] = {}
+    for key in ("words", "terms", "domains"):
+        spec = sources["files"][key]
+        path = folder / spec["path"]
+        expected = spec.get("sha256")
+        if not expected:
+            raise ValueError(
+                f"sources.yaml files.{key}.sha256이 없습니다 (표준 준수 검사 원본 고정)"
+            )
+        actual = _content_sha256(path)
+        if actual != expected:
+            raise ValueError(
+                f"공통표준 원본 {spec['path']}의 sha256이 sources.yaml과 다릅니다: "
+                f"{actual} ≠ {expected}"
+            )
+        digests[key] = actual
+        rows[key] = read_csv(path)
+    return digests, rows
+
+
+def _domains(
+    rows: Sequence[dict[str, str]], profiles: tuple[Profile, ...]
+) -> tuple[
+    dict[str, dict[Profile, DomainSpec]],
+    frozenset[str],
+    dict[str, dict[Profile, frozenset[SqlType]]],
+]:
+    """도메인 이름 → 프로필별 명세, 겹치는 이름, 도메인 분류 → 프로필별 타입 모음."""
+    pairs: list[tuple[str, dict[Profile, DomainSpec]]] = []
     class_types: dict[str, dict[Profile, set[SqlType]]] = {}
-    for entry in map(domain_entry, rows["domains"]):
+    for entry in map(domain_entry, rows):
         specs = {
             p: DomainSpec(
                 entry["class"],
@@ -169,22 +196,16 @@ def load_official_standard(
                 entry["postgres"][p].get("length"),
                 entry["postgres"][p].get("scale"),
             )
-            for p in wanted
+            for p in profiles
         }
-        domain_pairs.append((entry["name"], specs))
+        pairs.append((entry["name"], specs))
         for p, spec in specs.items():
             class_types.setdefault(spec.domain_class, {}).setdefault(p, set()).add(spec.type)
-    domains, ambiguous_domains = _unique(domain_pairs)
-    return OfficialStandard(
-        edition=str(sources["edition"]),
-        sha256=digests,
-        words=words,
-        terms=terms,
-        domains=domains,
-        class_types={c: {p: frozenset(t) for p, t in by.items()} for c, by in class_types.items()},
-        ambiguous_words=ambiguous_words,
-        ambiguous_terms=ambiguous_terms,
-        ambiguous_domains=ambiguous_domains,
+    domains, ambiguous = _unique(pairs)
+    return (
+        domains,
+        ambiguous,
+        {c: {p: frozenset(t) for p, t in by.items()} for c, by in class_types.items()},
     )
 
 
@@ -243,8 +264,17 @@ class StandardComplianceReview(TypedDict):
 
 
 def compliance_severities(*, root: Path = DEFAULT_ROOT) -> dict[str, Severity]:
-    """공통 팩 `rules.yaml` `standard_compliance`의 SC별 심각도. null인 항목은 뺀다."""
+    """공통 팩 `rules.yaml` `standard_compliance`의 SC별 심각도. null인 항목은 뺀다.
+
+    ADR-0010 SC 예외대로 SC에는 `critical`을 쓰지 않는다. 들어오면 SC 지적 하나로 최종 승인이
+    막히므로 읽을 때 거절한다.
+    """
     checks = load_common(root=root).rules.standard_compliance.checks
+    critical = [c.id for c in checks if c.severity == Severity.CRITICAL]
+    if critical:
+        raise ValueError(
+            f"표준 준수 검사에는 critical을 쓰지 않습니다 (ADR-0010 SC 예외): {', '.join(critical)}"
+        )
     return {c.id: Severity(c.severity) for c in checks if c.severity is not None}
 
 
@@ -252,6 +282,56 @@ def pack_words(pack: str, *, root: Path = DEFAULT_ROOT) -> tuple[Word, ...]:
     """팩에 등록된 낱말: 공통 팩 `words.yaml` + 도메인 팩 `words.yaml` (뒤의 것이 우선)."""
     loaded = load_pack(pack, root=root)
     return (*loaded.common.words, *loaded.words)
+
+
+@dataclass(frozen=True)
+class _Context:
+    """검사 한 번에 쓰는 사전들. 칸마다 다시 만들지 않는다."""
+
+    official: OfficialStandard
+    registered: Mapping[str, Word]  # 팩에 등록된 낱말
+    forbidden: Mapping[str, str]  # 공식 금칙어 → 대신 쓸 공식 단어
+    known: frozenset[str]  # 이름을 나눌 때 쓰는 낱말: 팩 낱말·공식 단어·공식 금칙어
+    by_abbreviation: Mapping[str, tuple[str, ...]]  # 약어(대문자) → 그 약어를 쓰는 낱말
+    severities: Mapping[str, Severity]
+    profile: Profile
+    iteration: int
+
+
+@dataclass
+class _Tally:
+    """항목별 집계와 지적. `failed`는 부적합 칸이고, 지적 없이도 들어간다(SC-03과 겹친 SC-06)."""
+
+    totals: dict[str, int]
+    diagnosed: dict[str, int]
+    failed: dict[str, set[str]]
+    findings: list[Finding]
+
+    def add(
+        self, ctx: _Context, code: str, kind: str, column: Column, quote: str, suggestion: str
+    ) -> None:
+        severity = ctx.severities.get(code)
+        if severity is None:
+            raise ValueError(f"{code}의 심각도가 정해지지 않았습니다 (rules.yaml)")
+        assert column.attribute_id is not None
+        targets = (FindingTarget(kind="attribute", id=column.attribute_id),)
+        self.failed[code].add(column.id)
+        number = sum(1 for f in self.findings if f.rule_code == code) + 1
+        self.findings.append(
+            Finding(
+                id=f"{code}-{ctx.iteration}-{number}",
+                source=FindingSource.RULE,
+                rule_code=code,
+                kind=kind,
+                severity=severity,
+                targets=targets,
+                evidence=({"quote": quote},),
+                suggestion=suggestion,
+                target_stage=_STAGE[code],
+                fingerprint=fingerprint(code, kind, targets),
+                iteration=ctx.iteration,
+            )
+        )
 
 
 def check_standard_compliance(
@@ -269,42 +349,63 @@ def check_standard_compliance(
     model = design.normalized
     if model is None:
         raise ValueError("표준 준수 검사: 성공한 정리 결과가 없습니다")
+    ctx = _context(official, words, severities, profile, design.iteration)
+    tally = _Tally(dict.fromkeys(CODES, 0), dict.fromkeys(CODES, 0), {c: set() for c in CODES}, [])
+    for table, column in _target_columns(model):
+        for code in CODES:
+            tally.totals[code] += 1
+        where = f"{table.name}.{column.name}"
+        name = _nfc(column.name)
+        term = official.terms.get(name)
+        parts = _split_name(name, term, ctx)
+        _check_words(ctx, tally, column, where, parts)
+        _check_classifier(ctx, tally, column, where, parts)
+        if term is not None:
+            _check_official_term(ctx, tally, column, where, name, term)
+    items = tuple(
+        ComplianceItem(
+            c, tally.totals[c], tally.diagnosed[c], tally.diagnosed[c] - len(tally.failed[c])
+        )
+        for c in CODES
+    )
+    return StandardComplianceReview(
+        findings=tuple(tally.findings),
+        requires_manual_review=any(f.rule_code in _MANUAL for f in tally.findings),
+        items=items,
+        edition=official.edition,
+        sha256=dict(official.sha256),
+    )
+
+
+def _context(
+    official: OfficialStandard,
+    words: Sequence[Word],
+    severities: Mapping[str, Severity],
+    profile: Profile,
+    iteration: int,
+) -> _Context:
     registered = {_nfc(w.word): w for w in words}
     forbidden = official.forbidden_index()
-    # 이름은 팩 낱말·공식 단어·공식 금칙어로 나눈다. 못 나누면 어느 사전에도 없는 부분이 있다.
-    known = {*registered, *official.words, *official.ambiguous_words, *forbidden}
-    findings: list[Finding] = []
-    totals = dict.fromkeys(CODES, 0)
-    diagnosed = dict.fromkeys(CODES, 0)
-    # 항목별 부적합 칸. 지적을 만들면 들어가고, SC-03과 겹친 SC-06처럼 지적 없이 들어가기도 한다.
-    failed: dict[str, set[str]] = {code: set() for code in CODES}
-    numbers = dict.fromkeys(CODES, 0)
+    by_abbreviation: dict[str, list[str]] = {}
+    for name, info in official.words.items():
+        by_abbreviation.setdefault(info.abbreviation.upper(), []).append(name)
+    for name, word in registered.items():
+        by_abbreviation.setdefault(word.abbreviation.upper(), []).append(name)
+    return _Context(
+        official=official,
+        registered=registered,
+        forbidden=forbidden,
+        known=frozenset({*registered, *official.words, *official.ambiguous_words, *forbidden}),
+        by_abbreviation={k: tuple(dict.fromkeys(v)) for k, v in by_abbreviation.items()},
+        severities=severities,
+        profile=profile,
+        iteration=iteration,
+    )
 
-    def add(code: str, kind: str, column: Column, quote: str, suggestion: str) -> None:
-        severity = severities.get(code)
-        if severity is None:
-            raise ValueError(f"{code}의 심각도가 정해지지 않았습니다 (rules.yaml)")
-        assert column.attribute_id is not None
-        targets = (FindingTarget(kind="attribute", id=column.attribute_id),)
-        failed[code].add(column.id)
-        numbers[code] += 1
-        findings.append(
-            Finding(
-                id=f"{code}-{design.iteration}-{numbers[code]}",
-                source=FindingSource.RULE,
-                rule_code=code,
-                kind=kind,
-                severity=severity,
-                targets=targets,
-                evidence=({"quote": quote},),
-                suggestion=suggestion,
-                target_stage=_STAGE[code],
-                fingerprint=fingerprint(code, kind, targets),
-                iteration=design.iteration,
-            )
-        )
 
-    columns = sorted(
+def _target_columns(model: NormalizedModel) -> list[tuple[Table, Column]]:
+    """팩 용어가 아닌 속성에서 온 칸. 팩 용어 칸은 A03·RULE-03이, FK 칸은 부모 칸이 본다."""
+    return sorted(
         (
             (table, c)
             for table in model.tables
@@ -313,106 +414,159 @@ def check_standard_compliance(
         ),
         key=lambda pair: (pair[0].id, pair[1].id),
     )
-    for table, column in columns:
-        for code in CODES:
-            totals[code] += 1
-        where = f"{table.name}.{column.name}"
-        name = _nfc(column.name)
-        parts = split_from_end(name, known)
 
-        # SC-01: 팩 낱말·공식 단어로 나눌 수 없는 부분이 있음
-        diagnosed["SC-01"] += 1
-        if parts is None:
-            add(
-                "SC-01",
-                "unregistered_word",
+
+def _split_name(name: str, term: OfficialTerm | None, ctx: _Context) -> tuple[str, ...] | None:
+    """공식 용어와 이름이 같으면 그 약어의 단어 경계로, 아니면 끝에서부터 긴 단어 먼저 나눈다.
+
+    공식 용어는 약어가 단어 경계를 담고 있다(보고서명 = RPTP_NM = 보고서+명). 끝에서부터 나누면
+    보고+서명처럼 분류어가 아닌 끝 단어가 나와 SC-02가 잘못 날 수 있다(#247 리뷰).
+    """
+    if term is not None:
+        split = split_by_abbreviation(name, term.abbreviation, ctx.by_abbreviation)
+        if split is not None:
+            return split
+    return split_from_end(name, ctx.known)
+
+
+def _check_words(
+    ctx: _Context, tally: _Tally, column: Column, where: str, parts: tuple[str, ...] | None
+) -> None:
+    """SC-01 팩 낱말·공식 단어로 나눌 수 없는 부분, SC-04 팩에 없는 공식 금칙어."""
+    tally.diagnosed["SC-01"] += 1
+    if parts is None:
+        tally.add(
+            ctx,
+            "SC-01",
+            "unregistered_word",
+            column,
+            f"{where}: 이름을 팩 사전·공통표준 단어로 끝까지 나눌 수 없습니다.",
+            "공통표준 단어로 바꾸거나 팩 사전에 낱말을 등록한다.",
+        )
+        return
+    tally.diagnosed["SC-04"] += 1
+    for word in dict.fromkeys(parts):
+        # 팩에 등록한 낱말은 팩 리뷰를 거친 의도한 선택이라 지적하지 않는다 (R2 11/9, R1 #247)
+        if word in ctx.forbidden and word not in ctx.registered:
+            instead = ctx.forbidden[word]
+            tally.add(
+                ctx,
+                "SC-04",
+                f"forbidden_word:{word}",
                 column,
-                f"{where}: 이름을 팩 사전·공통표준 단어로 끝까지 나눌 수 없습니다.",
-                "공통표준 단어로 바꾸거나 팩 사전에 낱말을 등록한다.",
+                f"{where}: 「{word}」는 공통표준 금칙어입니다(대신 「{instead}」).",
+                f"「{instead}」로 바꿀지, 팩에 낱말을 등록할지 정한다.",
             )
-        else:
-            # SC-04: 팩에 없는 공통표준 금칙어. 팩에 등록한 낱말은 의도한 선택이다 (R2 11/9)
-            diagnosed["SC-04"] += 1
-            for word in dict.fromkeys(parts):
-                if word in forbidden and word not in registered:
-                    add(
-                        "SC-04",
-                        f"forbidden_word:{word}",
-                        column,
-                        f"{where}: 「{word}」는 공통표준 금칙어입니다(대신 「{forbidden[word]}」).",
-                        f"「{forbidden[word]}」로 바꿀지, 팩에 낱말을 등록할지 정한다.",
-                    )
 
-        # SC-02·03: 이름 끝 단어(분류어). 팩 낱말을 먼저, 없으면 공식 단어로 본다.
-        last = _word_info(parts[-1], registered, official) if parts else None
-        if last is not None:
-            word, is_classifier, group = last
-            diagnosed["SC-02"] += 1
-            if not is_classifier:
-                add(
-                    "SC-02",
-                    "missing_classifier",
-                    column,
-                    f"{where}: 끝 단어 「{word}」가 분류어(형식단어)가 아닙니다.",
-                    "이름 끝에 분류어(예: 코드·명·일자·번호)를 둔다.",
-                )
-            elif group:
-                types = official.class_types.get(group, {}).get(profile, frozenset())
-                if types:
-                    diagnosed["SC-03"] += 1
-                    if column.data_type not in types:
-                        allowed = "·".join(sorted(t.value for t in types))
-                        add(
-                            "SC-03",
-                            "classifier_domain_mismatch",
-                            column,
-                            f"{where}: 분류어 「{word}」의 도메인 분류 {group}은 {profile} 기준 "
-                            f"{allowed}인데 칸 타입은 {column.data_type.value}입니다.",
-                            f"{group} 도메인의 타입으로 바꾼다.",
-                        )
 
-        # SC-05·06: 이름이 같은 공식 용어 (없거나 이름이 겹치면 미진단)
-        term = official.terms.get(name)
-        if term is not None:
-            diagnosed["SC-05"] += 1
-            if column.physical_name.upper() != term.abbreviation.upper():
-                add(
-                    "SC-05",
-                    "official_term_conflict",
-                    column,
-                    f"{where}: 공통표준 용어와 이름이 같은데 약어가 다릅니다 "
-                    f"({column.physical_name.upper()} ≠ 공식 {term.abbreviation}).",
-                    "팩에 공식 용어를 등록할지, 이름을 바꿀지 정한다.",
-                )
-            spec = official.domains.get(_nfc(term.domain), {}).get(profile)
-            if spec is not None:
-                diagnosed["SC-06"] += 1
-                differs = _spec_differences(column, spec)
-                if differs and column.id in failed["SC-03"]:
-                    # 타입 문제는 SC-03으로 이미 지적했다. 지적은 다시 내지 않지만, 공식 도메인과
-                    # 다르므로 SC-06 집계에서는 부적합으로 센다(적합으로 세면 준수율이 부풀려진다).
-                    failed["SC-06"].add(column.id)
-                elif differs:
-                    add(
-                        "SC-06",
-                        "type_length_mismatch",
-                        column,
-                        f"{where}: 공통표준 용어 {name}의 도메인 {term.domain}({profile} 기준 "
-                        f"{_describe(spec)})과 다릅니다: {', '.join(differs)}.",
-                        f"{term.domain}의 타입·길이로 바꾼다.",
-                    )
+def _check_classifier(
+    ctx: _Context, tally: _Tally, column: Column, where: str, parts: tuple[str, ...] | None
+) -> None:
+    """SC-02 끝 단어가 분류어가 아님, SC-03 분류어의 도메인 분류와 칸 타입이 다름."""
+    last = _word_info(parts[-1], ctx.registered, ctx.official) if parts else None
+    if last is None:
+        return
+    word, is_classifier, group = last
+    tally.diagnosed["SC-02"] += 1
+    if not is_classifier:
+        tally.add(
+            ctx,
+            "SC-02",
+            "missing_classifier",
+            column,
+            f"{where}: 끝 단어 「{word}」가 분류어(형식단어)가 아닙니다.",
+            "이름 끝에 분류어(예: 코드·명·일자·번호)를 둔다.",
+        )
+        return
+    types = ctx.official.class_types.get(group or "", {}).get(ctx.profile, frozenset())
+    if not types:
+        return
+    tally.diagnosed["SC-03"] += 1
+    if column.data_type not in types:
+        allowed = "·".join(sorted(t.value for t in types))
+        tally.add(
+            ctx,
+            "SC-03",
+            "classifier_domain_mismatch",
+            column,
+            f"{where}: 분류어 「{word}」의 도메인 분류 {group}은 {ctx.profile} 기준 "
+            f"{allowed}인데 칸 타입은 {column.data_type.value}입니다.",
+            f"{group} 도메인의 타입으로 바꾼다.",
+        )
 
-    items = tuple(
-        ComplianceItem(code, totals[code], diagnosed[code], diagnosed[code] - len(failed[code]))
-        for code in CODES
-    )
-    return StandardComplianceReview(
-        findings=tuple(findings),
-        requires_manual_review=any(f.rule_code in _MANUAL for f in findings),
-        items=items,
-        edition=official.edition,
-        sha256=dict(official.sha256),
-    )
+
+def _check_official_term(
+    ctx: _Context, tally: _Tally, column: Column, where: str, name: str, term: OfficialTerm
+) -> None:
+    """SC-05 공식 용어와 약어가 다름, SC-06 그 도메인과 타입·길이·소수 자릿수가 다름."""
+    tally.diagnosed["SC-05"] += 1
+    if column.physical_name.upper() != term.abbreviation.upper():
+        tally.add(
+            ctx,
+            "SC-05",
+            "official_term_conflict",
+            column,
+            f"{where}: 공통표준 용어와 이름이 같은데 약어가 다릅니다 "
+            f"({column.physical_name.upper()} ≠ 공식 {term.abbreviation}).",
+            "팩에 공식 용어를 등록할지, 이름을 바꿀지 정한다.",
+        )
+    spec = ctx.official.domains.get(_nfc(term.domain), {}).get(ctx.profile)
+    if spec is None:
+        return
+    tally.diagnosed["SC-06"] += 1
+    differs = _spec_differences(column, spec)
+    if differs and column.id in tally.failed["SC-03"]:
+        # 타입 문제는 SC-03으로 이미 지적했다. 지적은 다시 내지 않지만, 공식 도메인과 다르므로
+        # SC-06 집계에서는 부적합으로 센다(적합으로 세면 준수율이 부풀려진다).
+        tally.failed["SC-06"].add(column.id)
+    elif differs:
+        tally.add(
+            ctx,
+            "SC-06",
+            "type_length_mismatch",
+            column,
+            f"{where}: 공통표준 용어 {name}의 도메인 {term.domain}({ctx.profile} 기준 "
+            f"{_describe(spec)})과 다릅니다: {', '.join(differs)}.",
+            f"{term.domain}의 타입·길이로 바꾼다.",
+        )
+
+
+def split_by_abbreviation(
+    name: str, abbreviation: str, by_abbreviation: Mapping[str, Collection[str]]
+) -> tuple[str, ...] | None:
+    """공식 약어의 `_` 경계대로 이름을 나눈다(보고서명 + RPTP_NM → 보고서+명). 안 맞으면 None.
+
+    약어 조각마다 그 약어를 쓰는 낱말 중 이름의 남은 앞부분과 맞는 것을 고른다. 여러 분할이 맞으면
+    앞 조각부터 차례로 가장 긴 낱말을 고른다(예: ab·a / c·bcd / def·ef로 abcdef → ab+c+def). 먼저
+    뒤에서부터 「이 조각부터 끝까지 맞출 수 있는 위치」를 구해 두고, 앞에서부터 그 위치로 이어지는
+    가장 긴 낱말을 고른다. 공백은 무시한다.
+    """
+    text = "".join(_nfc(name).split())
+    pieces = [p for p in abbreviation.upper().split("_") if p]
+    candidates = [sorted(by_abbreviation.get(p, ()), key=len, reverse=True) for p in pieces]
+    # finishes[i]: 조각 i부터 끝까지 맞출 수 있는 시작 위치들
+    finishes: list[set[int]] = [set() for _ in range(len(pieces) + 1)]
+    finishes[len(pieces)] = {len(text)}
+    for i in range(len(pieces) - 1, -1, -1):
+        finishes[i] = {
+            stop - len(word)
+            for stop in finishes[i + 1]
+            for word in candidates[i]
+            if len(word) <= stop and text.startswith(word, stop - len(word))
+        }
+    if 0 not in finishes[0]:
+        return None
+    parts: list[str] = []
+    position = 0
+    for i, words in enumerate(candidates):
+        word = next(
+            w
+            for w in words
+            if text.startswith(w, position) and position + len(w) in finishes[i + 1]
+        )
+        parts.append(word)
+        position += len(word)
+    return tuple(parts)
 
 
 def split_from_end(name: str, words: Collection[str]) -> tuple[str, ...] | None:

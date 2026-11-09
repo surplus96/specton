@@ -30,6 +30,7 @@ from specton.review.standard_compliance import (
     compliance_severities,
     load_official_standard,
     pack_words,
+    split_by_abbreviation,
     split_from_end,
 )
 
@@ -549,3 +550,89 @@ def test_sc06_counts_a_column_skipped_because_of_sc03_as_not_compliant(
     assert _item(review, "SC-06") == sc06
     [item] = [i for i in review["items"] if i.code == "SC-06"]
     assert item.rate == (100.0 if sc06[3] else 0.0)
+
+
+# ── 공식 용어는 약어 경계로 나누기 (#247 리뷰) ──────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("name", "abbreviation", "index", "expected"),
+    [
+        ("보고서명", "RPTP_NM", {"RPTP": ("보고서",), "NM": ("명",)}, ("보고서", "명")),
+        # 한 약어를 여러 낱말이 쓰면 앞 조각부터 긴 낱말을 먼저 잡는다(가+나다가 아니라 가나+다)
+        ("가나다", "AB_C", {"AB": ("가", "가나"), "C": ("다", "나다")}, ("가나", "다")),
+        # 조각이 셋 이상이어도 앞 조각부터 긴 낱말이다(쓴 글자 수가 긴 a+bcd+ef가 아니다)
+        ("abcdef", "A_B_C", {"A": ("ab", "a"), "B": ("c", "bcd"), "C": ("def", "ef")},
+         ("ab", "c", "def")),
+        # 앞 조각을 길게 잡으면 끝까지 안 맞을 때만 짧게 잡는다
+        ("abcd", "A_B", {"A": ("abc", "ab"), "B": ("cd",)}, ("ab", "cd")),
+        ("관할 세무서명", "CMPTNC_TXOFC_NM",
+         {"CMPTNC": ("관할",), "TXOFC": ("세무서",), "NM": ("명",)}, ("관할", "세무서", "명")),
+        ("보고서명", "RPTP_NM", {"RPTP": ("보고",), "NM": ("명",)}, None),  # 약어와 이름이 안 맞음
+        ("보고서명", "RPTP", {"RPTP": ("보고서",)}, None),  # 이름이 남음
+    ],
+)  # fmt: skip
+def test_official_term_names_split_on_the_abbreviation_boundaries(
+    name: str,
+    abbreviation: str,
+    index: dict[str, tuple[str, ...]],
+    expected: tuple[str, ...] | None,
+) -> None:
+    assert split_by_abbreviation(name, abbreviation, index) == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "physical", "data_type", "length"),
+    [
+        ("보고서명", "rptp_nm", SqlType.VARCHAR, 256),  # 끝에서부터면 보고+서명
+        ("영업소명", "bizofc_nm", SqlType.VARCHAR, 100),  # 영업+소명
+        ("세무서명", "txofc_nm", SqlType.VARCHAR, 300),  # 세무+서명
+        ("외국인수", "frgnr_cnt", SqlType.NUMERIC, None),  # 외국+인수
+    ],
+)
+def test_names_equal_to_official_terms_are_not_missing_a_classifier(
+    name: str, physical: str, data_type: SqlType, length: int | None
+) -> None:
+    extra = {"precision": 10, "scale": 0} if data_type is SqlType.NUMERIC else {}
+    column = _col("C1", name, physical, data_type, length, **extra)
+    review = check_standard_compliance(
+        _design(column), official=load_official_standard(), words=pack_words("inventory"),
+        severities=SEVERITIES, profile="strict",
+    )  # fmt: skip
+    assert review["findings"] == ()
+    assert _item(review, "SC-02") == (1, 1, 0, 1)
+    assert _item(review, "SC-03") == (1, 1, 0, 1)  # 분류어(명·수)로 도메인 타입까지 진단된다
+
+
+def test_every_official_term_splits_on_its_abbreviation_with_a_classifier_last_word() -> None:
+    # 리뷰 재현: 끝에서부터만 나누면 공식 용어 21개가 「분류어가 아닌 끝 단어」로 나뉘었다.
+    # 나누기 실패도 따로 모아 본다(실패를 빼고 세면 「모두 정상 분리」를 보장하지 못한다).
+    official = load_official_standard()
+    index: dict[str, list[str]] = {}
+    for word, info in official.words.items():
+        index.setdefault(info.abbreviation.upper(), []).append(word)
+    unsplit: list[str] = []
+    wrong: list[str] = []
+    for name, term in official.terms.items():
+        parts = split_by_abbreviation(name, term.abbreviation, index)
+        if parts is None:
+            unsplit.append(name)
+            continue
+        last = official.words.get(parts[-1])
+        if last is None or not last.is_classifier:
+            wrong.append(name)
+    assert unsplit == []
+    assert wrong == []
+    assert len(official.terms) > 13_000
+
+
+def test_critical_sc_severity_is_rejected_when_read(tmp_path: Path) -> None:
+    # ADR-0010 SC 예외: SC에 critical을 쓰면 SC 지적 하나로 최종 승인이 막힌다
+    shutil.copytree(DEFAULT_PACK_ROOT / "common", tmp_path / "common")
+    rules = tmp_path / "common" / "rules.yaml"
+    text = rules.read_text(encoding="utf-8")
+    old = "{ id: SC-01, name: unregistered_word,          severity: minor,"
+    assert old in text
+    rules.write_text(text.replace(old, old.replace("minor", "critical")), encoding="utf-8")
+    with pytest.raises(ValueError, match=r"critical을 쓰지 않습니다.*SC-01"):
+        compliance_severities(root=tmp_path)
