@@ -46,7 +46,7 @@ ID 규칙: 이 문서의 프로젝트 요구사항은 `REQ-01`~`REQ-27`. 고객 
 | REQ-24 | 재현성·평가 기록 | 모델·팩·프롬프트·데이터 버전과 시간·토큰·지표 기록 | 필수 | [07](07-testing-eval.md) | [#11](https://github.com/surplus96/specton/issues/11), [#20](https://github.com/surplus96/specton/issues/20) | TC-N04 |
 | REQ-25 | 자원·취소 | 파일 크기·페이지·실행 시간·토큰 한도 설정, 실행 취소 | 축소 후보 | [11](11-deployment-security.md) | [#3](https://github.com/surplus96/specton/issues/3), [#17](https://github.com/surplus96/specton/issues/17), [#21](https://github.com/surplus96/specton/issues/21) | TC-N05 |
 | REQ-26 | 팩·공통 코드 분리 | 도메인 용어·패턴은 팩에서 공급, 두 도메인이 같은 파이프라인 사용 | 필수 | [03](03-architecture.md), [04](04-agents.md) | [#11](https://github.com/surplus96/specton/issues/11), [#12](https://github.com/surplus96/specton/issues/12) | TC-N06 |
-| REQ-27 | HWPX·HWP 입력 | 본문·표 추출, 원문 기호·위치 보존, 정형 흐름 완성 후 연결 | 축소 후보 | [10](10-io-and-packs.md) | [#24](https://github.com/surplus96/specton/issues/24) | TC-F21 |
+| REQ-27 | HWPX·HWP 입력 | 요구사항 상세표 읽기(서술형 요구사항은 구현 범위에서 제외), 원문 기호·위치 보존, 정형 흐름 완성 후 연결 | 축소 후보 | [10](10-io-and-packs.md) | [#24](https://github.com/surplus96/specton/issues/24) | TC-F21 |
 
 ## 주요 수용 기준
 

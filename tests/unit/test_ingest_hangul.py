@@ -43,8 +43,8 @@ from specton.ingest.tabular import (
     UnsupportedInput,
 )
 
-_KITECH = "kitech_과업지시서.hwp"
-_GYEONGNAM = "경남로봇랜드_붙임3_과업지시서.hwp"
+_DOC_B = "doc_b.hwp"
+_DOC_C = "doc_c.hwp"
 
 # 가짜 칸 표기: (행, 열, 행병합, 열병합, 글[, 그림 포함])
 Spec = tuple[int, int, int, int, str] | tuple[int, int, int, int, str, bool]
@@ -57,10 +57,10 @@ def _table(para: int, cells: list[Spec], *, section: int = 0) -> HangulTable:
     return HangulTable(section, para, rows, cols, made)
 
 
-def _kitech_detail(
+def _detail_b(
     para: int, sid: str, definition: str = "정의 글", detail: str = "세부 글", name: str = "명칭"
 ) -> HangulTable:
-    """KITECH 모양 상세표: 5행 3열, 라벨 2칸 병합 + 값 칸."""
+    """문서 B 모양 상세표: 5행 3열, 라벨 2칸 병합 + 값 칸."""
     return _table(
         para,
         [
@@ -79,8 +79,8 @@ def _kitech_detail(
     )
 
 
-def _gyeongnam_detail(para: int, sid: str, level: str = "필수") -> HangulTable:
-    """경남로봇랜드 모양 상세표: 5행 5열, 한 행에 라벨·값 쌍이 둘(고유번호 + 응락수준)."""
+def _detail_c(para: int, sid: str, level: str = "필수") -> HangulTable:
+    """문서 C 모양 상세표: 5행 5열, 한 행에 라벨·값 쌍이 둘(고유번호 + 응락수준)."""
     return _table(
         para,
         [
@@ -102,7 +102,7 @@ def _gyeongnam_detail(para: int, sid: str, level: str = "필수") -> HangulTable
 
 
 def _list_table(para: int, rows: list[tuple[str, str]]) -> HangulTable:
-    """목록표: 머리 행에 「고유번호」「요구사항명」, 아래 행마다 1건 (KITECH 모양 4열)."""
+    """목록표: 머리 행에 「고유번호」「요구사항명」, 아래 행마다 1건 (문서 B 모양 4열)."""
     cells: list[Spec] = [
         (0, 0, 1, 1, "구분"),
         (0, 1, 1, 1, "고유번호"),
@@ -131,8 +131,8 @@ def _read(monkeypatch: pytest.MonkeyPatch, *tables: HangulTable) -> TabularResul
 
 
 class TestRules:
-    def test_kitech_shape_reads_pair_and_location(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        [req] = _read(monkeypatch, _kitech_detail(359, "SFR-003")).requirements
+    def test_shape_b_reads_pair_and_location(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        [req] = _read(monkeypatch, _detail_b(359, "SFR-003")).requirements
 
         assert req.source_id == "SFR-003"
         assert req.block_id == "SFR-003"  # 원문 고유번호가 있으면 block_id도 그것
@@ -148,8 +148,8 @@ class TestRules:
     def test_two_pairs_in_one_row_keep_right_neighbour_rule(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """한 행에 라벨·값 쌍이 둘(경남 모양)이어도 각 라벨의 오른쪽 칸이 값이다."""
-        [req] = _read(monkeypatch, _gyeongnam_detail(217, "SFR-001", "핵심")).requirements
+        """한 행에 라벨·값 쌍이 둘(문서 C 모양)이어도 각 라벨의 오른쪽 칸이 값이다."""
+        [req] = _read(monkeypatch, _detail_c(217, "SFR-001", "핵심")).requirements
 
         assert req.source_id == "SFR-001"  # 「응락수준」 칸이 아니라 바로 오른쪽 칸이 고유번호 값
         assert req.source_acceptance_level == "핵심"
@@ -161,7 +161,7 @@ class TestRules:
     def test_detail_table_with_attached_requirement_number_label(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """aT 비축 모양: 라벨 「요구사항번호」(붙여 씀)·「요구사항 명칭」·「정의」·「세부 내용」."""
+        """문서 D 모양: 라벨 「요구사항번호」(붙여 씀)·「요구사항 명칭」·「정의」·「세부 내용」."""
         table = _table(
             236,
             [
@@ -205,7 +205,7 @@ class TestRules:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         list_table = _list_table(5, [("SFR-001", "첫째"), ("SFR-002", "둘째")])
-        result = _read(monkeypatch, list_table, _kitech_detail(9, "SFR-001"))
+        result = _read(monkeypatch, list_table, _detail_b(9, "SFR-001"))
 
         by_id = {r.source_id: r for r in result.requirements}
         assert len(result.requirements) == 2  # SFR-001은 상세표 1건만
@@ -238,9 +238,7 @@ class TestRules:
         list_table = _list_with_head(
             119, head, [("SFR-01", "첫째"), ("SFR-02", "둘째"), ("COR-09", "셋째")]
         )
-        result = _read(
-            monkeypatch, list_table, _kitech_detail(130, "SFR-01"), _kitech_detail(131, "SFR-02")
-        )
+        result = _read(monkeypatch, list_table, _detail_b(130, "SFR-01"), _detail_b(131, "SFR-02"))
         by_id = {r.source_id: r for r in result.requirements}
         assert sorted(by_id) == ["COR-09", "SFR-01", "SFR-02"]
         assert len(result.requirements) == 3  # 상세표 번호는 상세표만(중복 없음)
@@ -258,7 +256,7 @@ class TestRules:
         list_table = _list_with_head(
             5, ("구분", "ID", "요구사항명"), [("SFR-01", "첫째"), ("...", ""), ("..", "이름 있음")]
         )
-        result = _read(monkeypatch, list_table, _kitech_detail(9, "SFR-02"))
+        result = _read(monkeypatch, list_table, _detail_b(9, "SFR-02"))
         by_id = {r.source_id: r for r in result.requirements}
         assert sorted(by_id) == ["..", "SFR-01", "SFR-02"]  # 「...」 행만 빠짐
         assert by_id[".."].extraction_status is ExtractionStatus.REVIEW
@@ -269,20 +267,20 @@ class TestRules:
     ) -> None:
         """「번호」「요구사항명」 라벨만 있고 아래에 번호꼴 값이 없으면 목록표가 아니다."""
         lookalike = _list_with_head(5, ("구분", "번호", "요구사항명"), [("(없음)", "이름")])
-        result = _read(monkeypatch, lookalike, _kitech_detail(9, "SFR-01"))
+        result = _read(monkeypatch, lookalike, _detail_b(9, "SFR-01"))
         assert [r.source_id for r in result.requirements] == ["SFR-01"]
 
     def test_table_index_counts_in_section_document_order(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         other_section = _table(1, [(0, 0, 1, 1, "아무 표"), (0, 1, 1, 1, "값")], section=1)
-        late = _kitech_detail(7, "SFR-009")
+        late = _detail_b(7, "SFR-009")
         late = HangulTable(1, late.paragraph, late.rows, late.cols, late.cells)
         result = _read(
             monkeypatch,
-            _kitech_detail(3, "SFR-001"),
+            _detail_b(3, "SFR-001"),
             _table(4, [(0, 0, 1, 1, "아무 표")]),
-            _kitech_detail(5, "SFR-002"),
+            _detail_b(5, "SFR-002"),
             other_section,
             late,
         )
@@ -294,13 +292,13 @@ class TestRules:
     def test_empty_definition_falls_back_to_name_and_review(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        [req] = _read(monkeypatch, _kitech_detail(3, "SFR-001", "", "", "이름만")).requirements
+        [req] = _read(monkeypatch, _detail_b(3, "SFR-001", "", "", "이름만")).requirements
         assert req.extraction_status is ExtractionStatus.REVIEW
         assert req.source_text == "이름만"
         assert req.notice == NOTICE_NAME_ONLY
 
     def test_nothing_to_read_has_no_text(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        [req] = _read(monkeypatch, _kitech_detail(3, "SFR-001", "", "", "")).requirements
+        [req] = _read(monkeypatch, _detail_b(3, "SFR-001", "", "", "")).requirements
         assert req.extraction_status is ExtractionStatus.REVIEW
         assert req.source_text is None
         assert req.notice == NOTICE_EMPTY
@@ -308,21 +306,21 @@ class TestRules:
     def test_duplicate_ids_are_all_review_with_distinct_block_ids(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        result = _read(monkeypatch, _kitech_detail(3, "SFR-001"), _kitech_detail(9, "SFR-001"))
+        result = _read(monkeypatch, _detail_b(3, "SFR-001"), _detail_b(9, "SFR-001"))
         assert [r.extraction_status for r in result.requirements] == [ExtractionStatus.REVIEW] * 2
         assert all(NOTICE_DUPLICATE in (r.notice or "") for r in result.requirements)
         assert [r.block_id for r in result.requirements] == ["S0-P3", "S0-P9"]
         assert {r.source_id for r in result.requirements} == {"SFR-001"}  # 원문 ID는 그대로
 
     def test_missing_id_value_uses_location_block_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        [req] = _read(monkeypatch, _kitech_detail(42, "")).requirements
+        [req] = _read(monkeypatch, _detail_b(42, "")).requirements
         assert req.source_id is None
         assert req.block_id == "S0-P42"  # S{구역}-P{문단}
         assert req.extraction_status is ExtractionStatus.REVIEW
         assert NOTICE_NO_ID in (req.notice or "")
 
     def test_picture_in_cell_is_review(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        table = _kitech_detail(3, "SFR-001")
+        table = _detail_b(3, "SFR-001")
         cells = (*table.cells[:-1], HangulCell(4, 2, 1, 1, "세부 글", True))
         table = HangulTable(0, 3, table.rows, table.cols, cells)
         [req] = _read(monkeypatch, table).requirements
@@ -334,7 +332,7 @@ class TestRules:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """「세부내용」 라벨 오른쪽 칸이 없는(병합이 깨진) 표는 조용히 pass가 되지 않는다."""
-        table = _kitech_detail(3, "SFR-001")
+        table = _detail_b(3, "SFR-001")
         cells = tuple(c for c in table.cells if not (c.row == 4 and c.col == 2))
         table = HangulTable(0, 3, table.rows, table.cols, cells)
         [req] = _read(monkeypatch, table).requirements
@@ -406,10 +404,10 @@ class TestRules:
 
     def test_id_value_cell_vanished_by_merge(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """고유번호 값 칸이 병합으로 사라진 표: 파일이 멈추지 않고 review 블록이 된다."""
-        table = _kitech_detail(8, "SFR-001")
+        table = _detail_b(8, "SFR-001")
         cells = tuple(c for c in table.cells if not (c.row == 1 and c.col == 2))
         table = HangulTable(0, 8, table.rows, table.cols, cells)
-        result = _read(monkeypatch, _kitech_detail(3, "SFR-002"), table)
+        result = _read(monkeypatch, _detail_b(3, "SFR-002"), table)
         broken = next(r for r in result.requirements if r.source_id is None)
         assert broken.extraction_status is ExtractionStatus.REVIEW
         assert broken.block_id == "S0-P8"
@@ -428,7 +426,7 @@ class TestRules:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """상세표의 「관련 요구사항」 칸 값은 엑셀 읽기처럼 원문 글 그대로 담는다."""
-        base = _kitech_detail(359, "SFR-003")
+        base = _detail_b(359, "SFR-003")
         table = _table(
             359,
             [
@@ -450,7 +448,7 @@ class TestRules:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """값 칸이 비어 있거나 라벨이 없으면 None이다(엑셀 읽기의 빈 칸과 같음)."""
-        base = _kitech_detail(359, "SFR-001")
+        base = _detail_b(359, "SFR-001")
         empty = _table(
             359,
             [
@@ -470,7 +468,7 @@ class TestRules:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """「산출정보」 오른쪽이 「관련 요구사항」 라벨이면 그 글자를 값으로 잡지 않는다."""
-        base = _kitech_detail(359, "SFR-004")
+        base = _detail_b(359, "SFR-004")
         table = _table(
             359,
             [
@@ -568,7 +566,7 @@ def _require_engine() -> None:
 def _samples() -> Path:
     given = os.environ.get("SPECTON_HANGUL_SAMPLES")
     folder = Path(given) if given else None
-    if folder is None or not (folder / _KITECH).exists() or not (folder / _GYEONGNAM).exists():
+    if folder is None or not (folder / _DOC_B).exists() or not (folder / _DOC_C).exists():
         pytest.skip(
             "비공개 한글 원문이 없어 건너뜀. 환경변수 SPECTON_HANGUL_SAMPLES를 지정하면 돌아간다"
         )
@@ -589,9 +587,9 @@ def _key_map(path: Path) -> dict[str, tuple[int | None, int | None, int | None, 
 
 
 class TestRegressionOnRealFiles:
-    def test_kitech(self) -> None:
+    def test_doc_b(self) -> None:
         _require_engine()
-        result = read_hangul(_samples() / _KITECH, "kitech")
+        result = read_hangul(_samples() / _DOC_B, "doc_b")
         reqs = result.requirements
         detail = [r for r in reqs if r.notice != NOTICE_LIST_ONLY]
         list_only = [r for r in reqs if r.notice == NOTICE_LIST_ONLY]
@@ -607,9 +605,9 @@ class TestRegressionOnRealFiles:
         assert sfr3.source_ref.page is None
         assert all(r.extraction_status is ExtractionStatus.PASS for r in detail)
 
-    def test_gyeongnam(self) -> None:
+    def test_doc_c(self) -> None:
         _require_engine()
-        reqs = read_hangul(_samples() / _GYEONGNAM, "gyeongnam").requirements
+        reqs = read_hangul(_samples() / _DOC_C, "doc_c").requirements
         sfr = sorted(r.source_id or "" for r in reqs if (r.source_id or "").startswith("SFR-"))
         assert sfr == [f"SFR-{n:03d}" for n in range(1, 23)]
         # 원문 고유번호 64개(목록표) 중 상세표에서 뽑은 것 64개, 목록표만 0개
@@ -620,12 +618,12 @@ class TestRegressionOnRealFiles:
     def test_hwp_and_exported_hwpx_give_same_locations(self, tmp_path: Path) -> None:
         """.hwp → export_hwpx → 다시 읽기에서 고유번호별 (구역·문단·표 순번·칸)이 같다.
 
-        2026-11-07 실제 실행 결과: 두 원문 모두 같았다(KITECH 41건·경남 64건).
+        2026-11-07 실제 실행 결과: 두 원문 모두 같았다(문서 B 41건·문서 C 64건).
         """
         rhwp = _import_engine()  # 알려진 휠 오류면 건너뜀
         # (시험에서 엔진을 직접 쓰는 것은 허용: 원본을 hwpx로 내보내려는 용도)
 
-        for name in (_KITECH, _GYEONGNAM):
+        for name in (_DOC_B, _DOC_C):
             exported = tmp_path / (Path(name).stem + ".hwpx")
             rhwp.parse(str(_samples() / name)).export_hwpx(str(exported))
             assert _key_map(exported) == _key_map(_samples() / name)
