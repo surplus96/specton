@@ -14,7 +14,7 @@ import {
 } from './rules.ts'
 
 // ERD 보기 (UI-05, docs/09 「ERD는 확대·이동과 원문 다운로드」).
-// 서버가 만든 .mmd(specton/codegen/erd.py, #177·#178)만 그린다. 웹·PDF 모두 Mermaid 11.15.0 (#13, #190).
+// 서버가 만든 .mmd(specton/codegen/erd.py, #177·#178)만 그린다. 웹·PDF 모두 Mermaid 11.17.2 (#13, #223, ADR-0004).
 // 보안 (#190 R1 리뷰, ADR-0004 「Mermaid 설정 보안」):
 //   1. 원문 검사: erDiagram이 아니거나 지시문(%%{)이 있으면 그리지 않는다 (isAllowedErdSource).
 //   2. 설정: 개발자가 정한 mermaidConfig()만 넘기고 secure 목록으로 원문이 바꾸지 못하게 한다.

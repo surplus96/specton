@@ -14,8 +14,16 @@
 
 - 로컬: `docker compose up -d db` (PostgreSQL 18, 127.0.0.1에만 노출). 초기화 스크립트는 `docker/postgres/init/`.
 - 로컬과 AWS는 같은 컨테이너 이미지를 쓴다. PDF 렌더러 의존성·한글 폰트·모델 다운로드를 이미지에 포함한다.
+- 배포 구성 (#25): `compose.deploy.yml`이 db·api(`Dockerfile`)·web(`frontend/Dockerfile`, Caddy)을 띄운다.
+  밖으로 여는 포트는 web의 80·443뿐이고 db·api는 내부 네트워크에만 둔다. web이 `/runs`·`/health`를 api로 넘기고
+  나머지는 웹 화면이다(`docker/web/Caddyfile`). `SPECTON_SITE_ADDRESS`에 도메인을 넣으면 HTTPS 인증서를 자동으로 받는다.
+  비밀값(`POSTGRES_PASSWORD`·`SANDBOX_PASSWORD`·`SPECTON_OPENAI_API_KEY`)은 `.env.deploy`로 주입하며 기본값이 없어
+  비어 있으면 기동하지 않는다(`.env.deploy.example`). 개발용 `docker-compose.yml`은 DB만 127.0.0.1에 띄우는 그대로 둔다.
+- 같은 이미지 보장 (#226 리뷰): 이미지는 한 곳에서 한 번 빌드해 레지스트리에 올리고(`compose build`·`push`), 서버는
+  `pull` 뒤 `up -d --no-build`로 받은 이미지를 그대로 쓴다. 서버에서 다시 빌드하지 않는다. 이름·태그는
+  `SPECTON_API_IMAGE`·`SPECTON_WEB_IMAGE`(예: `ghcr.io/<owner>/specton-api:<커밋>`). 서버가 x86_64면 amd64로 빌드한다.
 - AWS 제안: EC2 또는 Lightsail 1대 + Docker Compose, IP 제한·HTTPS, 키는 환경 변수 주입, 예산 알림 (ADR-0013). App Runner는 신규 고객을 받지 않아 제외.
-- 배포 전 할 일: compose의 DB 기본 비밀번호를 없애고 환경 변수를 필수로 받는다.
+- 배포 전 할 일: compose의 DB 기본 비밀번호를 없애고 환경 변수를 필수로 받는다. → 배포 구성(`compose.deploy.yml`)에 반영 (#25)
 
 ## 격리 DB (sandbox)
 

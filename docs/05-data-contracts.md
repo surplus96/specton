@@ -31,7 +31,7 @@
 | #204 | `Error.detail`(「자세히 보기」 문장, 없으면 null) 추가 (#19). `GET /runs/{id}`의 `error`에서도 다시 받을 수 있다 |
 | #222 | `ArtifactRef.kind`에 `manifest`, `file_format`에 `json` 추가. manifest JSON은 승인 전 비공개 후보로 저장하고 승인 근거와 같은 바이트를 공개 |
 
-남은 작업: requirements·추적 검사 설명 (#107), FK 파생·참조 키 (#12), 값 범위 제약 (#15)
+남은 작업: FK 파생·참조 키 (#12), 값 범위 제약 (#15)
 
 - #128로 표 파서의 `review` 블록은 `notice`를 채운다. #139부터 계약도 `review`·`fail` 블록의 `notice`를 필수로 검사한다.
 
@@ -40,7 +40,7 @@
 | 필드 | 값 | 뜻 |
 |---|---|---|
 | `ArtifactRef.kind` | `requirements`·`functions`·`erd`·`ddl`·`rtm`·`review`·`manifest` | 산출물 종류. 파일 형식은 `file_format` |
-| `TraceIssue.kind` | `missing_req_ids`·`unknown_req_id`·`unknown_entity_ref`·`duplicate_id` | 추적 무결성 위반 종류. 대상 객체 종류는 `object_kind` |
+| `TraceIssue.kind` | `missing_req_ids`·`unknown_req_id`·`unknown_entity_ref`·`duplicate_id` | 추적 무결성 위반 종류: `req_ids`가 비어 있음 / 현재 revision에 없는 REQ를 가리킴 / 없는 엔티티를 가리킴 / 같은 종류 객체끼리 ID가 중복. 대상 객체 종류는 `object_kind` |
 | `FindingTarget.kind` | `requirement`·`function`·`entity`·`attribute`·`relationship` | 지적 대상 객체 종류 |
 | `FindingDraft.kind` | 자유 문자열 | 지적 유형 (리뷰어가 붙인 이름) |
 | `QualityIssue.kind` | 자유 문자열 | A01 품질 경고 유형 (모호 표현 등) |
@@ -69,7 +69,7 @@
 - LLM 출력 모델(예: FindingDraft)과 저장 모델(Finding)을 나눈다. `id`·`source`·`fingerprint`·`iteration`은 코드가 붙인다.
 - `source_ref`는 **구조체**로 둔다 (ADR-0009). 문자열 인코딩은 파서마다 형식이 달라지고 비교·검증이 어렵다.
 
-| kind | 필수 필드 | 선택 필드 | 번호 기준 |
+| file_format | 필수 필드 | 선택 필드 | 번호 기준 |
 |---|---|---|---|
 | `xlsx` | `sheet`, `row` | | `sheet`는 시트 이름, `row`는 엑셀에 보이는 행 번호 (1부터, 머리글 행 포함) |
 | `csv` | `row` | | 파일의 행 번호 (1부터, 머리글 행 포함) |
