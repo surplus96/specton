@@ -180,7 +180,14 @@ export function createMockBackend(options: MockOptions = {}) {
       }
       pushEvent(run, 'interrupt', run.interrupt.message, payload)
     } else if (step.error) {
-      run.error = { code: step.error.code, message: step.error.message, run_id: run.run_id, retryable: step.error.code === 'LLM_UNAVAILABLE' }
+      // 서버처럼 상태 조회 error.detail과 SSE payload.detail에 같은 값을 넣는다 (#204·#230, docs/06)
+      run.error = {
+        code: step.error.code,
+        message: step.error.message,
+        run_id: run.run_id,
+        retryable: step.error.code === 'LLM_UNAVAILABLE',
+        detail: step.error.detail ?? null,
+      }
       const payload: Item = { code: step.error.code, retryable: run.error.retryable }
       if (step.error.detail) payload.detail = step.error.detail
       pushEvent(run, 'error', step.error.message, payload)
