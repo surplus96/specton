@@ -1,8 +1,7 @@
 // 실행 화면용 훅: followRun을 React 상태로 바꾼다.
-import { useCallback, useEffect, useState } from 'react'
-import { getRun } from '../../api/client.ts'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RunStatus, SseEvent } from '../../api/types.ts'
-import { followRun, type Connection } from './followRun.ts'
+import { followRun, type Connection, type RunFollower } from './followRun.ts'
 
 export type RunLive = {
   run: RunStatus | null
@@ -22,6 +21,7 @@ export function useRunStatus(runId: string): RunLive {
   const [receivedAt, setReceivedAt] = useState<Record<number, number>>({})
   const [connection, setConnection] = useState<Connection>('connecting')
   const [loadError, setLoadError] = useState<unknown>(null)
+  const follower = useRef<RunFollower | null>(null)
 
   useEffect(() => {
     // 연결은 useEffect 안에서 열고, 정리 함수에서 닫는다 (강의 08)
@@ -30,7 +30,7 @@ export function useRunStatus(runId: string): RunLive {
     setEvents([])
     setReceivedAt({})
     setLoadError(null)
-    followRun(
+    const active = followRun(
       runId,
       {
         onStatus: setRun,
@@ -42,17 +42,22 @@ export function useRunStatus(runId: string): RunLive {
         onConnection: setConnection,
       },
       { signal: controller.signal },
-    ).catch((err: unknown) => {
+    )
+    follower.current = active
+    active.done.catch((err: unknown) => {
       if (controller.signal.aborted) return
       setLoadError(err)
       setConnection('closed')
     })
-    return () => controller.abort()
+    return () => {
+      controller.abort()
+      if (follower.current === active) follower.current = null
+    }
   }, [runId])
 
   const refresh = useCallback(async () => {
-    setRun(await getRun(runId))
-  }, [runId])
+    await follower.current?.refresh()
+  }, [])
 
   return { run, events, receivedAt, connection, loadError, refresh }
 }

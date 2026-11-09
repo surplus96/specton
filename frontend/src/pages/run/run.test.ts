@@ -269,7 +269,7 @@ describe('watchRun: 이벤트 받기', () => {
 function follow(runId: string) {
   const controller = new AbortController()
   const got = { statuses: [] as RunStatus[], events: [] as SseEvent[], connections: [] as Connection[] }
-  const done = followRun(
+  const { done } = followRun(
     runId,
     {
       onStatus: (s) => got.statuses.push(s),

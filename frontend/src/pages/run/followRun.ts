@@ -30,23 +30,35 @@ export type FollowOptions = {
   open?: EventSourceFactory
 }
 
+export type RunFollower = {
+  done: Promise<void>
+  /** 확인·취소 뒤 조회도 SSE 조회와 같은 응답 순서로 처리한다. */
+  refresh: () => Promise<void>
+}
+
 /**
- * 실행을 끝날 때까지 따라간다. 끝나거나 signal로 멈추면 돌아온다.
- * 상태 조회가 실패하면(없는 실행 404 등) 그 오류로 끝난다.
+ * 실행을 따라가는 제어기를 돌려준다. 끝나거나 signal로 멈추면 done이 끝난다.
+ * 최초 조회·끊김 복구 조회가 실패하면(없는 실행 404 등) done이 그 오류로 끝난다.
  */
-export function followRun(runId: string, handlers: FollowHandlers, options: FollowOptions): Promise<void> {
+export function followRun(runId: string, handlers: FollowHandlers, options: FollowOptions): RunFollower {
   const { signal, retryMs = 1000, maxRetryMs = 10_000, refreshMs = 100, open } = options
   const seen = new Set<number>()
   let wait = retryMs
   let closeSource: (() => void) | undefined
   let refreshTimer: ReturnType<typeof setTimeout> | undefined
   let retryTimer: ReturnType<typeof setTimeout> | undefined
+  let refresh: () => Promise<void>
 
-  return new Promise<void>((resolve, reject) => {
+  const done = new Promise<void>((resolve, reject) => {
+    let stopped = false
+    let request = 0
+    let streamClosed = false
     const stop = () => {
+      stopped = true
       clearTimeout(refreshTimer)
       clearTimeout(retryTimer)
       closeSource?.()
+      signal.removeEventListener('abort', finish)
     }
     const finish = () => {
       stop()
@@ -56,59 +68,84 @@ export function followRun(runId: string, handlers: FollowHandlers, options: Foll
       stop()
       reject(err)
     }
-    signal.addEventListener('abort', finish, { once: true })
-
     const load = async () => {
-      const status = await getRun(runId)
-      if (!signal.aborted) handlers.onStatus(status)
-      return status
+      if (stopped) return
+      const current = ++request
+      let status: RunStatus
+      try {
+        status = await getRun(runId)
+      } catch (err) {
+        if (stopped || current !== request) return
+        throw err
+      }
+      // 같은 revision 안에서도 단계가 바뀐다. revision 비교 대신 조회 요청 순서를 쓴다.
+      if (stopped || current !== request) return
+      handlers.onStatus(status)
+      if (streamClosed) {
+        if (isFinished(status.status)) {
+          handlers.onConnection('closed')
+          finish()
+        } else {
+          handlers.onConnection('retrying')
+          clearTimeout(retryTimer)
+          retryTimer = setTimeout(connect, wait)
+          wait = Math.min(wait * 2, maxRetryMs)
+        }
+      }
+    }
+    refresh = async () => {
+      try {
+        await load()
+      } catch (err) {
+        if (streamClosed) fail(err)
+        throw err
+      }
     }
     const refreshSoon = () => {
-      if (refreshTimer !== undefined) return
+      if (stopped || refreshTimer !== undefined) return
       refreshTimer = setTimeout(() => {
         refreshTimer = undefined
-        if (!signal.aborted) load().catch(() => {}) // 실패하면 다음 이벤트·재연결 때 다시 읽는다
+        if (!stopped) load().catch(() => {}) // 실패하면 다음 이벤트·재연결 때 다시 읽는다
       }, refreshMs)
     }
 
     const connect = () => {
-      if (signal.aborted) return
+      if (stopped) return
+      streamClosed = false
       closeSource = watchRun(
         runId,
         {
           onOpen: () => {
+            if (stopped) return
             wait = retryMs
             handlers.onConnection('live')
           },
           onEvent: (event) => {
-            if (seen.has(event.id)) return
+            if (stopped || seen.has(event.id)) return
             seen.add(event.id)
             handlers.onEvent(event)
             refreshSoon()
           },
           onClosed: () => {
-            if (signal.aborted) return
-            load().then(
-              (status) => {
-                if (signal.aborted) return
-                if (isFinished(status.status)) {
-                  handlers.onConnection('closed')
-                  finish()
-                  return
-                }
-                handlers.onConnection('retrying')
-                retryTimer = setTimeout(connect, wait)
-                wait = Math.min(wait * 2, maxRetryMs)
-              },
-              fail,
-            )
+            if (stopped) return
+            streamClosed = true
+            clearTimeout(refreshTimer)
+            refreshTimer = undefined
+            // 나중에 수동 조회가 겹쳐도 최신 조회가 종료·재연결 처리를 이어받는다.
+            load().catch(fail)
           },
         },
         open,
       )
     }
 
+    if (signal.aborted) {
+      finish()
+      return
+    }
+    signal.addEventListener('abort', finish, { once: true })
     handlers.onConnection('connecting')
     load().then(() => connect(), fail)
   })
+  return { done, refresh: () => refresh() }
 }
