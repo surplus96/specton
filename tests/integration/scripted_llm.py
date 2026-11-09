@@ -39,16 +39,18 @@ from specton.nodes.common import unwrap_data
 from specton.review.reviewer import CombinedReviewOutput, ReviewOutput
 
 # (엔티티 이름, [(속성 이름, 키, 팩 용어가 아닐 때 쓸 타입)])
+# 비팩 속성도 공통표준 8차 strict에 맞춘 정상 사례다.
+# SC 결함 경로는 design_rules_pipeline에서 시험한다.
 ENTITIES: tuple[tuple[str, tuple[tuple[str, bool, dict[str, Any]], ...]], ...] = (
     ("창고", (("창고코드", True, {}), ("창고명", False, {}))),
     ("품목", (("품목코드", True, {}), ("품목명", False, {}))),
     ("입고", (
-        ("입고번호", True, {"data_type": "varchar", "length": 20}),
-        ("입고일자", False, {"data_type": "date"}),
+        ("입고번호", True, {"data_type": "varchar", "length": 50}),
+        ("입고일자", False, {"data_type": "char", "length": 8}),
     )),
     ("입고내역", (
-        ("일련번호", True, {"data_type": "integer"}),
-        ("입고수량", False, {"data_type": "numeric", "precision": 12, "scale": 3}),
+        ("일련번호", True, {"data_type": "numeric", "precision": 10, "scale": 0}),
+        ("입고수량", False, {"data_type": "numeric", "precision": 10, "scale": 3}),
     )),
 )  # fmt: skip
 RELATIONSHIPS = (

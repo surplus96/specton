@@ -633,6 +633,12 @@ def test_critical_sc_severity_is_rejected_when_read(tmp_path: Path) -> None:
     text = rules.read_text(encoding="utf-8")
     old = "{ id: SC-01, name: unregistered_word,          severity: minor,"
     assert old in text
-    rules.write_text(text.replace(old, old.replace("minor", "critical")), encoding="utf-8")
+    # informational의 minor 제한과 별개로 SC critical 자체를 거절하는지 검사한다.
+    changed = text.replace(old, old.replace("minor", "critical"))
+    changed = changed.replace(
+        "severity: critical, target_stage: null, handling: informational",
+        "severity: critical, target_stage: null, handling: manual",
+    )
+    rules.write_text(changed, encoding="utf-8")
     with pytest.raises(ValueError, match=r"critical을 쓰지 않습니다.*SC-01"):
         compliance_severities(root=tmp_path)

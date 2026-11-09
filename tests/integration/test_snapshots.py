@@ -131,7 +131,10 @@ def test_normalized_model_is_saved_and_hashed_with_the_design(
     after, hash_after = _stored(pool, run_id)
 
     assert "normalized" not in before
-    assert after["normalized"] == _normalized().model_dump(mode="json")
+    assert NormalizedModel.model_validate(after["normalized"]) == _normalized()
+    # 새 메타데이터가 없는 옛 모델은 null 키를 추가하지 않아 기존 해시를 유지한다.
+    assert "common_version" not in after["normalized"]
+    assert "policy_digest" not in after["normalized"]
     assert hash_after != hash_before
     _approve(pool, run_id, snapshot_id)
     with pool.connection() as conn, pytest.raises(InvalidTransitionError):

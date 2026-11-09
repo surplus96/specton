@@ -243,8 +243,14 @@ def build(root: Path) -> dict[Path, str]:
     outputs: dict[Path, str] = {}
     used_words: set[str] = set()
     used_domains: set[str] = set()
+    from specton.packs.selection import SelectionError, validate_selection
+
     for pack in discover_packs(root):
         project_words = {w["word"]: w for w in read_yaml(pack / "words.yaml").get("words") or []}
+        try:
+            validate_selection(pack, map(word_entry, word_rows), registered_words=project_words)
+        except SelectionError as exc:
+            raise BuildError(str(exc)) from exc
         words = {**all_words, **project_words}
         specs = read_yaml(pack / "term_specs.yaml").get("terms") or []
         terms = [build_term(s, words, all_domains, official, pack.name) for s in specs]

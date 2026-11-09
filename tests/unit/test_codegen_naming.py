@@ -224,6 +224,8 @@ def test_self_reference_prefix_is_read_the_same_way_as_the_pack_loader(
     돌려주고 정리 코드는 None으로 돌려주므로, 로더 쪽 빈 문자열을 None으로 바꿔 비교한다.
     """
     shutil.copytree(DEFAULT_PACK_ROOT / "common", tmp_path / "common")
+    manifest = tmp_path / "common/manifest.yaml"
+    manifest.write_text(manifest.read_text().replace("status: approved", "status: draft"))
     _set_naming(tmp_path, {("column", "self_reference_prefix"): value})
     loaded = load_common(root=tmp_path).naming.column.self_reference_prefix
     assert (loaded or None) == expected

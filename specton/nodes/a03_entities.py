@@ -8,7 +8,7 @@
   다른 이름은 다른 ID다.
   한계: 같은 이름은 같은 객체로 보고, 이름이 바뀌면 새 객체로 본다 (최종 형식은 #12).
 - 다시 실행하면 `entity_ops`는 누적하지 않고 새 결과로 바꾼다.
-- 팩 타입은 `naming.yaml`의 `type_profile`로 고른다 (ADR-0009 미확정, 임시(#11)).
+- 팩 타입은 `naming.yaml`의 `type_profile`로 고른다 (ADR-0009 재고·공통 결정, #11).
 """
 
 import unicodedata
@@ -291,7 +291,7 @@ def load_pack_context(pack: str, *, root: Path = DEFAULT_ROOT) -> PackContext:
     실행 노드는 Settings.pack_root를 넘겨 예시와 같은 위치의 팩을 읽는다.
     """
     loaded = load_pack(pack, root=root)
-    # 임시(#11): 프로필은 naming.yaml의 type_profile에서 온다 (ADR-0009 미확정).
+    # 확정(#11): 프로필은 naming.yaml의 type_profile에서 온다 (ADR-0009).
     profile = loaded.common.naming.type_profile
     domains = {d.name: d for d in loaded.common.domains}
     terms = tuple(

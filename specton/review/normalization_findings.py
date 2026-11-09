@@ -12,10 +12,8 @@
 없으므로, 테이블·컬럼 ID는 입력 설계와 ID 계산(`specton.ids.stable_id`)으로 되짚는다.
 되짚지 못하면 임의 대상으로 잇지 않고 멈춘다.
 
-복귀 단계는 대상 종류에 따라 정해지므로(RULE-01·02는 요구사항·기능·데이터 설계로 갈린다)
-여기서 계산한다. `domain_packs/common/rules.yaml`의 `target_stage`는 아직 null이다. 후속:
-공통 팩을 approved로 고정하면 로더가 null을 거절하므로, 그 전에 규칙별 값으로 채울지 대상별
-계산을 계약에 반영할지 정해야 한다 (#15·#11).
+복귀 단계는 대상 종류·문제 세부 유형으로 계산한 뒤 팩의 handling 정책을 적용한다.
+RULE-01·02·04·06의 dynamic은 계산한 경로를 보존하고, manual은 사람 조치를 우선한다.
 
 이 모듈은 LLM client와 그래프·노드 모듈을 import하지 않는다.
 """
@@ -31,8 +29,9 @@ from specton.contracts.normalized import Problem, ProblemCode
 from specton.contracts.state import ObjectKind, TraceIssueKind
 from specton.ids import stable_id
 from specton.packs.build import DEFAULT_ROOT
-from specton.packs.loader import load_common
+from specton.packs.loader import RulePolicy, load_common
 from specton.review.fingerprint import fingerprint
+from specton.review.rule_policy import apply_policy
 
 
 class NormalizationFailureReview(TypedDict):
@@ -115,7 +114,9 @@ def rule_severities(*, root: Path = DEFAULT_ROOT) -> dict[str, Severity]:
     return {r.id: Severity(r.severity) for r in rules if r.severity is not None}
 
 
-def failure_mapper(severities: Mapping[str, Severity]) -> FailureMapper:
+def failure_mapper(
+    severities: Mapping[str, Severity], *, policies: Mapping[str, RulePolicy] | None = None
+) -> FailureMapper:
     """정리 노드에 넘길 변환 함수. 심각도처럼 팩에서 읽는 설정은 바깥에서 준비해 넣는다.
 
     예: `normalization_node(failure_mapper(rule_severities(root=root)), root=root)`
@@ -125,13 +126,17 @@ def failure_mapper(severities: Mapping[str, Severity]) -> FailureMapper:
     def map_failure(
         design: DesignState, problems: tuple[Problem, ...]
     ) -> NormalizationFailureReview:
-        return map_normalization_failure(design, problems, severities=settings)
+        return map_normalization_failure(design, problems, severities=settings, policies=policies)
 
     return map_failure
 
 
 def map_normalization_failure(
-    design: DesignState, problems: tuple[Problem, ...], *, severities: Mapping[str, Severity]
+    design: DesignState,
+    problems: tuple[Problem, ...],
+    *,
+    severities: Mapping[str, Severity],
+    policies: Mapping[str, RulePolicy] | None = None,
 ) -> NormalizationFailureReview:
     """정리 문제마다 규칙 지적 하나를 만든다. 문제를 빼거나 합치지 않는다.
 
@@ -163,6 +168,9 @@ def map_normalization_failure(
                 fingerprint=fingerprint(rule_code, kind, objects),
                 iteration=design.iteration,
             )
+        )
+        findings[-1], needs_person = apply_policy(
+            findings[-1], policies or {}, inferred_manual=needs_person
         )
         manual = manual or needs_person
     return NormalizationFailureReview(findings=tuple(findings), requires_manual_review=manual)
