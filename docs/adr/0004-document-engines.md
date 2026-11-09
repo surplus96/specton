@@ -12,7 +12,7 @@
 
 - PDF 추출: Docling(표 구조 인식·OCR 내장). 텍스트형이 느리면 pdfplumber로 보조.
 - PDF 출력 (승인, #13 실측 2026-11-05·11-08): 공용 엔진 하나로 기능 명세서(Markdown, #14)와 ERD(Mermaid, #13)를 PDF로 바꾼다.
-  - 엔진: WeasyPrint(HTML/CSS → PDF) + `mermaid-cli`로 ERD를 SVG로 그려 넣는다. Mermaid는 웹과 같은 11.15.0으로 고정한다(#13, #190). ERD가 깨지면 Playwright 인쇄로 전환한다.
+  - 엔진: WeasyPrint(HTML/CSS → PDF) + `mermaid-cli`로 ERD를 SVG로 그려 넣는다. Mermaid는 웹과 같은 11.17.2로 고정한다(#13, #190, #211·#212 검토). mermaid-cli는 이미지 태그가 아니라 안의 mermaid 버전으로 맞춘다: `minlag/mermaid-cli:11.16.1`(`sha256:d98fe54c22e78e65335589fc17d5419f698f915cebca48ea21fee633aff8b258`)에 mermaid-cli 11.16.0과 mermaid 11.17.2가 들어 있다. ERD가 깨지면 Playwright 인쇄로 전환한다.
   - 한글 폰트: Noto Sans CJK KR(`fonts-noto-cjk`)을 실행 이미지에 넣고 PDF에 내장한다.
   - 렌더러는 외부 경로·URL 리소스를 가져오지 않는다. 엔진이 만든 SVG·스타일만 쓴다 (docs/10).
   - Mermaid 설정 보안 (#190 R1 리뷰): 설정은 개발자가 정한 값만 넘기고, `secure` 목록에 `themeCSS`·`fontFamily`·`altFontFamily`·`themeVariables` 등을 넣어 원문 지시문으로 바꾸지 못하게 한다. 이름 안 지시문이 렌더 설정으로 실행되지 않도록 처리하고, ERD 외 다이어그램과 임의 원문은 그리지 않는다. 설정 변경 차단·지시문 처리·외부 리소스 차단은 PDF 엔진 PR에서 구현하고 회귀 시험한다.
@@ -82,6 +82,8 @@
 
 환경: Docker의 WeasyPrint 70.0(Python 3.12-slim, Pango, `fonts-noto-cjk`)과 `minlag/mermaid-cli:11.15.0`(안의 mermaid도 11.15.0). ERD 원문은 main의 실제 코드(`normalize_design` → `render_erd`·`render_area_erd`, #177·#182)로 만들었다. 시험 모델은 재고 팩 용어로 만든 설계를 실제 정리 코드에 통과시킨 테이블 20 · 컬럼 86 · FK 25 · 관계 24(N:M 1)이고, 영역은 기준정보 7 · 수불 7 · 재고 이력 6이다. 2026-11-05에 샘플 모델로 한 사전 실측(한글 폰트, 긴 표, 초안 표시 통과, #13 댓글)을 실제 코드 출력으로 다시 확인했다.
 
+재실측 (2026-11-09, #211·#212 검토): PDF 엔진 시험 모델(`tests/unit/test_pdf_engine.py`, 테이블 8 · 관계 6 · 영역 3)의 원문 4개를 `minlag/mermaid-cli:11.15.0`(mermaid 11.15.0)과 `minlag/mermaid-cli:11.16.1`(mermaid 11.17.2)에서 같은 설정(`MERMAID_CONFIG`)으로 그려 비교했다. 4개 모두 오류 없이 viewBox 크기·엔티티·관계 라벨·한글 표기가 같았고, 자기참조 관계 고리만 길게 늘어진 고리에서 엔티티 아래 작은 고리로 바뀌었다. 속성 이름 글자 규칙과 단독 키워드도 같다(11.17.2는 `.`·`,`를 더 받지만 생성 코드는 쓰지 않는다). PDF 배율은 SVG viewBox로 정하므로 viewBox가 같으면 아래 글자 크기도 같다. 위 20테이블 모델과 PDF 전체는 다시 만들지 않았다.
+
 | 항목 | 결과 |
 |---|---|
 | 한글 | Noto Sans CJK KR 일반·굵게 서브셋 내장, 글자 추출 정상 |
@@ -117,5 +119,5 @@ ERD 글자 크기 (297×210mm 가로 용지, 여백 12mm, 제목 자리 14mm, �
 - 좋아지는 점: 표가 많은 문서에 강하고 한글 PDF 출력 경로가 단순하다.
 - 감수할 점: Docling 모델 다운로드·한글 폰트를 컨테이너 이미지에 포함해야 한다.
 - 감수할 점 (PDF 출력): `mermaid-cli`는 Chromium을 포함해 이미지가 크다(실측 이미지 2.28GB, WeasyPrint 쪽 542MB). 배포 이미지(ADR-0013, #25) 크기에 반영한다. WeasyPrint는 Windows에서 GTK가 따로 필요해, PDF 시험은 Docker·CI(리눅스)에서 돌리고 Windows 로컬에서는 건너뛴다.
-- 감수할 점 (Mermaid 11.15.0): `npm audit`에 mermaid 보통 2건(설정 API 프로토타입 오염, CSS 주입)이 있고 11.17.2에서 고쳐졌다. 팀 결정(#13)대로 고정을 유지하되, `securityLevel: 'strict'`와 「서버가 만든 원문」만으로는 막히지 않는다(#190 R1 실험: 별칭 따옴표 안의 `init` 지시문 `themeCSS`가 strict에서도 인식됨). 그래서 위 「Mermaid 설정 보안」을 웹과 PDF 모두에 적용한다. 올릴 때는 웹과 mermaid-cli를 함께 올리고 한글 ERD를 다시 실측한다.
+- 감수할 점 (Mermaid 11.17.2): 11.15.0의 mermaid 경보 5건(CSS 주입, 설정 API 프로토타입 오염, architecture 프로토타입 오염, XY 차트 무한 루프, radar DoS)은 11.16.1에서 고쳐졌다(#212). katex 낮음 1건(GHSA-238p, 0.18.2에서 수정)은 mermaid 11.x가 katex `^0.16`을 요구해 남고 mermaid 12.x(#211)로만 해소된다. 이 경보는 이미 있는 프로토타입 오염을 전제로 한다(#190 리뷰). 팀 결정(#13)대로 웹·PDF 같은 버전 고정을 유지하되, `securityLevel: 'strict'`와 「서버가 만든 원문」만으로는 막히지 않는다(#190 R1 실험: 별칭 따옴표 안의 `init` 지시문 `themeCSS`가 strict에서도 인식됨). 그래서 위 「Mermaid 설정 보안」을 웹과 PDF 모두에 적용한다. 올릴 때는 웹과 mermaid-cli를 함께 올리고 한글 ERD를 다시 실측한다.
 - 관련 문서: [10 문서 입출력](../10-io-and-packs.md), [11 배포](../11-deployment-security.md)
