@@ -2,7 +2,7 @@
 
 - 관계 수·참조가 원본 모델과 일치한다 (FK마다 선 하나, 선은 설계 관계를 가리킨다)
 - 관계·키·선택 여부가 표기에 드러난다
-- Mermaid 11.15.0이 받지 못하는 글자를 쓰지 않는다 (실측한 문법 규칙, #13 댓글)
+- Mermaid가 받지 못하는 글자를 쓰지 않는다 (11.15.0·11.17.2 실측한 문법 규칙, #13 댓글·#212 검토)
 """
 
 import re
@@ -309,7 +309,7 @@ def test_overview_has_no_attributes() -> None:
     assert len(_edge_lines(text)) == len(MODEL.foreign_keys)
 
 
-# ── Mermaid 11.15.0 문법 (실측) ────────────────────────────
+# ── Mermaid 문법 (11.15.0·11.17.2 실측) ────────────────────
 
 
 def test_numeric_scale_goes_to_the_comment_because_mermaid_rejects_commas_in_types() -> None:
