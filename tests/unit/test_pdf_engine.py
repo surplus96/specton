@@ -163,6 +163,15 @@ def test_small_detail_text_is_warned_with_the_area_name() -> None:
     assert _doc(mermaid=FakeMermaid(scale=1)).warnings == ()  # 작은 그림은 경고 없음
 
 
+def test_small_overview_text_is_warned_without_asking_to_split_it() -> None:
+    """개요도 6pt 미만이면 경고한다. 개요는 나누지 않으므로 상세도를 보라고 안내한다 (#236)."""
+    warnings = _doc(mermaid=FakeMermaid(scale=400)).warnings
+    overview = [w for w in warnings if w.startswith("전체 관계 개요:")]
+    assert len(overview) == 1
+    assert "6pt보다 작습니다" in overview[0] and "영역 상세도에서 확인" in overview[0]
+    assert "영역 낱말을 나눠" not in overview[0]
+
+
 def test_text_from_names_is_escaped_in_html() -> None:
     cover = CoverInfo(
         run_id="<script>x</script>", revision=1, model_hash="h", pack="p", pack_version="1"
