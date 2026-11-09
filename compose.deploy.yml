@@ -1,8 +1,15 @@
 # 배포용 구성 (#25, ADR-0013): DB + API + 웹. 로컬과 AWS가 같은 파일·같은 이미지를 쓴다.
 # 개발용 docker-compose.yml(DB만, 127.0.0.1)과 따로 둔다.
 #
+# 이미지는 한 곳에서 한 번 만들어 레지스트리에 올리고, 서버는 받은 이미지를 그대로 쓴다 (#226 리뷰).
+# 서버에서 다시 빌드하면 apt Chromium·Pango가 빌드 시점 판이라 실측한 이미지와 달라질 수 있다.
+#
 #   준비: cp .env.deploy.example .env.deploy 후 값을 채운다 (커밋 금지)
-#   기동: docker compose -f compose.deploy.yml --env-file .env.deploy up -d --build
+#   만들기(빌드하는 곳): docker compose -f compose.deploy.yml --env-file .env.deploy build
+#                        docker compose -f compose.deploy.yml --env-file .env.deploy push
+#   기동(서버):          docker compose -f compose.deploy.yml --env-file .env.deploy pull
+#                        docker compose -f compose.deploy.yml --env-file .env.deploy up -d --no-build
+#   로컬 확인만 할 때:   ... up -d --build  (이미지 이름 기본값 specton-api:local·specton-web:local)
 #   중지: docker compose -f compose.deploy.yml --env-file .env.deploy down
 #
 # 비밀값은 기본값이 없다. 비어 있으면 compose가 기동을 거부한다 (docs/11 「배포 전 할 일」).
@@ -31,7 +38,8 @@ services:
 
   api:
     build: .
-    image: specton-api
+    # 레지스트리 이름·태그(예: ghcr.io/<owner>/specton-api:<커밋>)를 .env.deploy에 둔다.
+    image: ${SPECTON_API_IMAGE:-specton-api:local}
     restart: unless-stopped
     depends_on:
       db:
@@ -50,7 +58,7 @@ services:
 
   web:
     build: ./frontend
-    image: specton-web
+    image: ${SPECTON_WEB_IMAGE:-specton-web:local}
     restart: unless-stopped
     depends_on:
       - api
