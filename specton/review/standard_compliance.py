@@ -38,24 +38,16 @@ from pathlib import Path
 from typing import Any, Literal, TypedDict
 
 from specton.contracts import DesignState, Finding
-from specton.contracts.base import SqlType, TargetStage
+from specton.contracts.base import SqlType
 from specton.contracts.findings import FindingSource, FindingTarget, Severity
 from specton.contracts.normalized import Column, NormalizedModel, Table
 from specton.packs.build import DEFAULT_ROOT, domain_entry, read_csv, read_yaml, word_entry
 from specton.packs.loader import Word, load_common, load_pack
 from specton.review.fingerprint import fingerprint
+from specton.review.rule_policy import apply_policy, load_policies
 
 CODES = ("SC-01", "SC-02", "SC-03", "SC-04", "SC-05", "SC-06")
 Profile = Literal["strict", "pg_native"]
-_MANUAL = frozenset({"SC-04", "SC-05"})
-_STAGE: dict[str, TargetStage | None] = {
-    "SC-01": None,
-    "SC-02": None,
-    "SC-03": TargetStage.DATA_MODEL,
-    "SC-04": None,
-    "SC-05": None,
-    "SC-06": TargetStage.DATA_MODEL,
-}
 _SOURCES = Path("sources") / "sources.yaml"
 
 
@@ -327,7 +319,7 @@ class _Tally:
                 targets=targets,
                 evidence=({"quote": quote},),
                 suggestion=suggestion,
-                target_stage=_STAGE[code],
+                target_stage=None,
                 fingerprint=fingerprint(code, kind, targets),
                 iteration=ctx.iteration,
             )
@@ -341,6 +333,7 @@ def check_standard_compliance(
     words: Sequence[Word],
     severities: Mapping[str, Severity],
     profile: Profile,
+    root: Path = DEFAULT_ROOT,
 ) -> StandardComplianceReview:
     """정리 결과(`design.normalized`)의 속성 칸을 SC-01~06으로 검사한다.
 
@@ -362,6 +355,8 @@ def check_standard_compliance(
         _check_classifier(ctx, tally, column, where, parts)
         if term is not None:
             _check_official_term(ctx, tally, column, where, name, term)
+    policies = load_policies(root=root)
+    routed = [apply_policy(f, policies) for f in tally.findings]
     items = tuple(
         ComplianceItem(
             c, tally.totals[c], tally.diagnosed[c], tally.diagnosed[c] - len(tally.failed[c])
@@ -369,8 +364,8 @@ def check_standard_compliance(
         for c in CODES
     )
     return StandardComplianceReview(
-        findings=tuple(tally.findings),
-        requires_manual_review=any(f.rule_code in _MANUAL for f in tally.findings),
+        findings=tuple(f for f, _ in routed),
+        requires_manual_review=any(manual for _, manual in routed),
         items=items,
         edition=official.edition,
         sha256=dict(official.sha256),

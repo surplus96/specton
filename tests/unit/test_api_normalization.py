@@ -23,6 +23,8 @@ def test_api_graph_does_not_hide_missing_failure_severity(
     root = tmp_path / "packs"
     for pack in ("common", "maintenance"):
         shutil.copytree(DEFAULT_ROOT / pack, root / pack)
+    manifest = root / "common/manifest.yaml"
+    manifest.write_text(manifest.read_text().replace("status: approved", "status: draft"))
     path = root / "common/rules.yaml"
     rules = read_yaml(path)
     for item in rules["rules"]:

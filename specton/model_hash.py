@@ -15,7 +15,12 @@ def model_payload(state: DesignState) -> dict[str, Any]:
         for name in MODEL_FIELDS
     }
     if state.normalized is not None:
-        model["normalized"] = state.normalized.model_dump(mode="json")
+        normalized = state.normalized.model_dump(mode="json")
+        # 새 선택 필드가 없는 옛 스냅샷은 기존 해시를 그대로 유지한다.
+        for key in ("common_version", "policy_digest"):
+            if normalized[key] is None:
+                del normalized[key]
+        model["normalized"] = normalized
     return model
 
 

@@ -45,6 +45,8 @@ def build_manifest(design: DesignState, generated: Iterable[GeneratedArtifact]) 
         "generator_versions": {
             "normalize_rules": None if normalized is None else normalized.rules_version,
             "lexicon_digest": None if normalized is None else normalized.lexicon_digest,
+            "common_version": None if normalized is None else normalized.common_version,
+            "policy_digest": None if normalized is None else normalized.policy_digest,
         },
         "files": [
             {"kind": g["ref"].kind, "file_format": g["ref"].file_format, "hash": g["ref"].hash}
