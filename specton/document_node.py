@@ -27,10 +27,14 @@ def document_node(storage_dir: Path) -> Node:
             model.pack_version,
         ):
             raise ValueError("문서 생성: 실행과 정리 결과의 팩·버전이 다릅니다")
-        generated = [
-            create_function_spec_artifact(design, storage_dir=storage_dir),
-            *create_rtm_artifacts(design, storage_dir=storage_dir),
-        ]
+        # 기능이 없으면 빈 명세서를 성공 파일로 만들지 않는다. RTM과 후속 RULE-02에서
+        # 미연결 FR을 드러내고 재작업하게 한다. 명세 렌더러 자체의 입력 검사는 유지한다.
+        generated = (
+            [create_function_spec_artifact(design, storage_dir=storage_dir)]
+            if design.functions
+            else []
+        )
+        generated.extend(create_rtm_artifacts(design, storage_dir=storage_dir))
         return {"generated_artifacts": {artifact_key(item["ref"]): item for item in generated}}
 
     return generate
