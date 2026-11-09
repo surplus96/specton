@@ -23,7 +23,7 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 | `GET /runs/{id}/view` | `section`, `revision` 선택 | 200 화면용 JSON (추출 블록·요구사항·설계 모델·지적·산출물 목록) | 404, 409 현재보다 큰 revision |
 | `POST /runs/{id}/resume` | `interrupt_id`, `expected_revision`, `response` | 202 재개 상태 | 409 오래된/이미 응답한 interrupt, 422 잘못된 답변, 500 분석 확인 모델 누락 |
 | `POST /runs/{id}/cancel` | `expected_revision` | 202 취소 요청 상태 (`queued`·사람 확인 대기 중이면 바로 `cancelled`, ADR-0012) | 409 이미 완료/충돌 |
-| `GET /runs/{id}/artifacts/{kind}` | `file_format`, `revision` | 200 파일 | 404, 409 미생성(PDF는 승인본만), 422 형식 불가 |
+| `GET /runs/{id}/artifacts/{kind}` | `file_format`, `revision` | 200 파일 | 404, 409 미생성(PDF·manifest는 승인본만), 422 형식 불가 |
 | `GET /health` | — | 200 기동 상태 (구현됨) | — |
 
 계약: [api/openapi.json](api/openapi.json) (OpenAPI 3.1.1). Pydantic 구현은 `specton/contracts/api.py`이며 `tests/unit/test_contracts_api.py`가 필드·필수 항목·열거값이 같은지 대조한다. 스키마는 `Error`, `ErrorCode`, `SseEvent`, `SseEventData`, `Interrupt`, `RunStatus`, `RunSummary`, `RunView`, `ResumeRequest`, `ExtractionResponse`, `RequirementsResponse`, `ReviewResponse`.
@@ -201,6 +201,7 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
   승인본으로 게시한다. 원문 제외·원문 없음 행도 RTM에 남는다. 기능 명세 PDF의 연결은 후속 범위다.
 - manifest JSON도 최종본 바이트를 승인 전 비공개 후보(`approved=false`)로 저장한다.
   JSON의 `approved=true`는 공개할 최종본의 내용이며, 실제 승인은 DB 메타데이터와 승인 기록으로 판단한다.
+  JSON을 읽는 쪽도 본문의 `approved`가 아니라 `ArtifactRef.approved`로 승인 여부를 판단한다.
   승인 전 다운로드는 409다. 승인 시 manifest 자신의 해시도 근거에 고정하고, 승인 후 재생성하지 않는다.
   `files`에는 같은 모델·revision의 출력 해시만 있고 manifest 자신의 해시는 제외한다.
 - ERD PDF 기능을 켜면
