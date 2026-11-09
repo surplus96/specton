@@ -48,6 +48,7 @@ _MEDIA_TYPES = {
     "sql": "application/sql; charset=utf-8",
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "csv": "text/csv; charset=utf-8",
+    "json": "application/json",
 }
 
 

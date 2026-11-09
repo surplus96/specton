@@ -94,6 +94,7 @@ class _Pipeline:
             patch.setattr(api_main, "erd_node", self._erd_node)
             patch.setattr(api_main, "ddl_node", lambda settings: nodes["ddl"])
             patch.setattr(api_main, "document_node", lambda root: nodes["rtm"])
+            patch.setattr(api_main, "manifest_node", lambda root: lambda state: {})
             patch.setattr(api_main, "export_node", lambda root: nodes["export"])
             self.graph = api_main.create_graph(settings, create_checkpointer(pool))
         self.runner = Runner(pool, self.graph, settings)

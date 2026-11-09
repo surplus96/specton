@@ -238,11 +238,11 @@ def find_artifact(
     file_format: FileFormat,
     revision: int,
 ) -> StoredArtifact:
-    """내려받을 산출물. 없거나 PDF인데 승인본이 아니면 ArtifactNotReadyError (06 문서)."""
+    """내려받을 산출물. PDF·manifest는 승인 후에만 공개한다 (06 문서)."""
     _run_revision(conn, run_id, owner_ref)
     for stored in _artifacts(conn, run_id, revision):
         if stored.ref.kind == kind and stored.ref.file_format == file_format:
-            if file_format == "pdf" and not stored.ref.approved:
+            if file_format in ("pdf", "json") and not stored.ref.approved:
                 break
             return stored
     raise ArtifactNotReadyError(f"{kind}.{file_format} revision {revision}")

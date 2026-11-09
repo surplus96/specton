@@ -14,8 +14,8 @@ from uuid import UUID
 from specton.contracts import ArtifactRef, DesignState
 from specton.model_hash import model_hash
 
-ArtifactKind = Literal["requirements", "functions", "erd", "ddl", "rtm", "review"]
-FileFormat = Literal["md", "pdf", "mmd", "sql", "xlsx", "csv"]
+ArtifactKind = Literal["requirements", "functions", "erd", "ddl", "rtm", "review", "manifest"]
+FileFormat = Literal["md", "pdf", "mmd", "sql", "xlsx", "csv", "json"]
 ARTIFACT_FORMATS: dict[str, tuple[str, ...]] = {
     "requirements": ("md",),
     "functions": ("md", "pdf"),
@@ -23,6 +23,7 @@ ARTIFACT_FORMATS: dict[str, tuple[str, ...]] = {
     "ddl": ("sql",),
     "rtm": ("xlsx", "csv"),
     "review": ("md",),
+    "manifest": ("json",),
 }
 
 

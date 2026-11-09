@@ -94,13 +94,32 @@ CREATE TABLE IF NOT EXISTS artifact (
     artifact_id     uuid PRIMARY KEY,
     snapshot_id     uuid NOT NULL REFERENCES model_snapshot ON DELETE CASCADE,
     kind            text NOT NULL CHECK (kind IN (
-        'requirements', 'functions', 'erd', 'ddl', 'rtm', 'review')),
-    file_format     text NOT NULL CHECK (file_format IN ('md', 'pdf', 'mmd', 'sql', 'xlsx', 'csv')),
+        'requirements', 'functions', 'erd', 'ddl', 'rtm', 'review', 'manifest')),
+    file_format     text NOT NULL CHECK (file_format IN ('md', 'pdf', 'mmd', 'sql', 'xlsx', 'csv', 'json')),
     hash            text NOT NULL,
     storage_ref     text NOT NULL,
     approval_status text NOT NULL DEFAULT 'draft' CHECK (approval_status IN ('draft', 'approved')),
     UNIQUE (snapshot_id, kind, file_format)
 );
+
+-- manifest 이전 DB의 CHECK 범위만 넓힌다. 기존 산출물·승인 기록은 바꾸지 않는다.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'artifact'::regclass
+                   AND conname = 'artifact_kind_check'
+                   AND pg_get_constraintdef(oid) LIKE '%manifest%') THEN
+        ALTER TABLE artifact DROP CONSTRAINT IF EXISTS artifact_kind_check;
+        ALTER TABLE artifact ADD CONSTRAINT artifact_kind_check CHECK (kind IN (
+            'requirements', 'functions', 'erd', 'ddl', 'rtm', 'review', 'manifest'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'artifact'::regclass
+                   AND conname = 'artifact_file_format_check'
+                   AND pg_get_constraintdef(oid) LIKE '%json%') THEN
+        ALTER TABLE artifact DROP CONSTRAINT IF EXISTS artifact_file_format_check;
+        ALTER TABLE artifact ADD CONSTRAINT artifact_file_format_check CHECK (
+            file_format IN ('md', 'pdf', 'mmd', 'sql', 'xlsx', 'csv', 'json'));
+    END IF;
+END $$;
 
 -- SQL 검증 시도 기록 (#167, #194). 시도마다 한 행이고 지우지 않는다(이력).
 -- 같은 SQL·버전이어도 새로 검증하면 새 행이다. 그래서 조회 칸 묶음에 UNIQUE를 두지 않는다.
