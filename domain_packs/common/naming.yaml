@@ -8,19 +8,19 @@ abbreviation:
   case: upper                    # observed
   min_length: 2                  # observed: 공식 단어 3,284개 약어 길이 2~6
   max_length: 6                  # observed
-# 임시(#11): 아래 max_words·table·column 명명 값은 공통 팩이 draft이고 팩 형식(ADR-0009)이 제안 상태라 바뀔 수 있다.
+# 확정(#11, ADR-0009): 아래 값은 정리 코드와 같은 선택값을 사용한다.
 #   값 이름을 바꾸면 specton/codegen/naming.py _KNOWN_NAMING_VALUES와 specton/packs/loader.py를 함께 고친다.
 term:
   classifier_last: true          # observed: 분류어(is_classifier)가 용어의 마지막 단어
-  max_words: unlimited           # project (R4 초안 #11, 2026-11-05): 제한 없음
+  max_words: unlimited           # project (R1 확정 #11, 2026-11-05): 제한 없음
   official_term_immutable: true  # official(고시 제13조④): 공식 용어의 영문약어는 바꾸지 않는다
 table:
-  prefix: none                   # project (R4 초안 #11): 글자 none = 접두어 없음, 빈 칸 = 미정
-  form: as_dictionary            # project (R4 초안 #11): 사전 약어 그대로, 단수·복수 변환 안 함
-  junction_name: parent_child    # project (R4 초안 #11): 부모 테이블 물리명 + 자식 테이블 물리명 (예: wrhus_bcnc)
+  prefix: none                   # project (R1 확정 #11): 글자 none = 접두어 없음, 빈 칸 = 미정
+  form: as_dictionary            # project (R1 확정 #11): 사전 약어 그대로, 단수·복수 변환 안 함
+  junction_name: parent_child    # project (R1 확정 #11): 부모 테이블 물리명 + 자식 테이블 물리명 (예: wrhus_bcnc)
 column:
-  primary_key: term_physical_name       # project (R4 초안 #11): 용어의 물리명 그대로 (예: wrhus_cd)
-  foreign_key: parent_key_physical_name # project (R4 초안 #11): 부모 키 물리명 그대로
-  self_reference_prefix: 상위           # project (R4 초안 #11): 자기참조 FK 앞 공통 단어 (common/words.yaml 상위, 약어 UP)
-type_profile: strict             # project 제안: strict(표준 저장 형식) | pg_native. ADR-0009에서 확정
+  primary_key: term_physical_name       # project (R1 확정 #11): 용어의 물리명 그대로 (예: wrhus_cd)
+  foreign_key: parent_key_physical_name # project (R1 확정 #11): 부모 키 물리명 그대로
+  self_reference_prefix: 상위           # project (R1 확정 #11): 자기참조 FK 앞 공통 단어 (common/words.yaml 상위, 약어 UP)
+type_profile: strict             # project 확정: strict(표준 저장 형식) | pg_native. ADR-0009 결정
 reserved_words_source: postgresql_18_sql_key_words   # 예약어와 같은 단독 컬럼명(END 등)은 거부

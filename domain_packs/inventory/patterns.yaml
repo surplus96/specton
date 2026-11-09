@@ -3,17 +3,18 @@ patterns:
   - id: P-INV-01
     name: master_data_soft_delete
     when: Warehouses or items with transaction history are deactivated, not deleted (INV-012)
-    suggests: { attribute: USE_YN, crud_exemption: soft_delete }
-    source: same as maintenance P-MNT-08; candidate for common
+    suggests: { attribute: 사용여부, crud_exemption: soft_delete }
+    source: 재고 INV-012 개발 요구사항; 공유 패턴 파일로 이동하지 않음 (ADR-0009)
   - id: P-INV-02
     name: header_line_document
     when: One stock transaction document contains one or more item lines (INV-004, INV-005)
-    suggests: { entities: [inventory_transaction, inventory_transaction_line], cardinality: "1:N", unique: [transaction, item] }
+    suggests: { entities: [재고거래문서, 재고거래내역], cardinality: "1:N" }
+    # 문서·품목 조합의 중복 금지는 개발 요구사항에 없어 추가하지 않는다. 내역 식별은 A04 예시 참조.
     source: Odoo stock.picking / stock.move, openMAINT inventory
   - id: P-INV-03
     name: immutable_ledger
     when: Confirmed stock changes are not modified and cancellation adds reverse entries (INV-007, INV-010)
-    suggests: { entity: inventory_ledger, crud_exemption: immutable_ledger, cancel_as: reverse_entry }
+    suggests: { entity: 재고원장, crud_exemption: immutable_ledger, cancel_as: reverse_entry }
     source: Fowler Analysis Patterns (Account/Entry)
   - id: P-INV-04
     name: derived_value_as_view

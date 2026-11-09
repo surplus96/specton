@@ -18,11 +18,12 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from specton.codegen.model import NormalizeFailed, NormalizeResult, ProblemCode, problem
+from specton.codegen.model import Normalized, NormalizeFailed, NormalizeResult, ProblemCode, problem
 from specton.codegen.naming import DEFAULT_PACK_ROOT, load_naming_rules, load_pack_lexicon
 from specton.codegen.normalize import PackRef, normalize
 from specton.contracts import DesignState
 from specton.packs.build import read_yaml
+from specton.packs.provenance import policy_digest
 
 
 def normalize_from_state(
@@ -59,9 +60,18 @@ def normalize_design(design: DesignState, *, root: Path = DEFAULT_PACK_ROOT) -> 
                 ),
             )
         )
-    return normalize(
+    result = normalize(
         design,
         pack=PackRef(pack, recorded),
         lexicon=load_pack_lexicon(pack, root),
         rules=load_naming_rules(root),
     )
+
+    if isinstance(result, Normalized):
+        return result.evolve(
+            model=result.model.evolve(
+                common_version=str(read_yaml(root / "common/manifest.yaml")["version"]),
+                policy_digest=policy_digest(root, pack),
+            )
+        )
+    return result

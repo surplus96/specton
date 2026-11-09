@@ -7,7 +7,7 @@
   `common`은 모든 팩이 함께 쓰는 공통 기반이라 사용자가 고르지 않는다.
 - 팩 이름은 영문 소문자·숫자·`_`만 받는다. `../` 같은 경로가 섞인 이름은 폴더를 찾기 전에 거절한다.
 - `naming.yaml`·`rules.yaml`의 일부 값은 아직 정하지 않아 `null`이다(미정값). manifest의
-  `status`가 `draft`면 미정값을 둬도 되고, `approved`면 모두 채워야 한다 — `load_common`이 검사한다.
+  `status`가 `draft`면 미정값을 둬도 된다. approved는 심각도·처리 방식을 확정해야 한다.
 """
 
 import re
@@ -16,7 +16,14 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationError,
+    model_validator,
+)
 
 from specton.contracts.base import SqlType, TargetStage
 from specton.contracts.findings import Severity
@@ -141,29 +148,52 @@ class Naming(_Strict):
     reserved_words_source: NonEmpty
 
 
-class Rule(_Strict):
-    """규칙 검사 하나. severity·target_stage는 #15에서 정하기 전까지 null이다(미정값).
+class RulePolicy(_Strict):
+    """null인 복귀 단계의 의미를 명시한다. 옛 초안의 handling 생략은 미정으로 남긴다."""
 
-    기본값을 두지 않는다: 키를 생략하지 못하고 미정이면 `null`을 적어야 한다(그래야
-    "쓰다가 빠뜨림"과 "아직 정하지 않음"이 구분된다).
-    """
+    severity: Severity | None
+    target_stage: TargetStage | None
+    handling: Literal["fixed", "dynamic", "manual", "informational"] | None = None
+
+    @property
+    def resolved_handling(self) -> str | None:
+        return self.handling or ("fixed" if self.target_stage is not None else None)
+
+    @model_validator(mode="after")
+    def consistent_policy(self) -> "RulePolicy":
+        if self.handling == "fixed" and self.target_stage is None:
+            raise ValueError("fixed 처리에는 target_stage가 필요합니다")
+        if (
+            self.handling in {"dynamic", "manual", "informational"}
+            and self.target_stage is not None
+        ):
+            raise ValueError("dynamic/manual/informational 처리의 target_stage는 null이어야 합니다")
+        if self.handling == "informational" and self.severity != Severity.MINOR:
+            raise ValueError("informational 처리는 minor만 허용합니다")
+        return self
+
+
+class Rule(RulePolicy):
+    """필수 설계 규칙. dynamic은 대상·문제 세부 유형으로 복귀 단계를 계산한다."""
 
     id: NonEmpty
     name: NonEmpty
-    severity: Severity | None
-    target_stage: TargetStage | None
 
 
-class ComplianceCheck(_Strict):
-    """데이터 표준 준수 검사 하나. severity·target_stage는 #15 착수 전까지 null이다(미정값).
-
-    기본값 없음(Rule과 같은 이유).
-    """
+class ComplianceCheck(RulePolicy):
+    """표준 준수 정책. SC-04 synonym처럼 별도 심각도가 필요한 유형을 명시할 수 있다."""
 
     id: NonEmpty
     name: NonEmpty
-    severity: Severity | None
-    target_stage: TargetStage | None
+    subtypes: dict[NonEmpty, RulePolicy] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def no_critical(self) -> "ComplianceCheck":
+        if any(p.severity == Severity.CRITICAL for p in (self, *self.subtypes.values())):
+            raise ValueError(
+                f"표준 준수 검사에는 critical을 쓰지 않습니다 (ADR-0010 SC 예외): {self.id}"
+            )
+        return self
 
 
 class StandardCompliance(_Strict):
@@ -285,6 +315,7 @@ def load_common(*, root: Path = DEFAULT_ROOT) -> Common:
     naming = _validate(Naming, folder / "naming.yaml")
     rules = _validate(Rules, folder / "rules.yaml")
     _check_blanks(manifest, folder, _naming_blanks(naming) + _rules_blanks(rules))
+    _check_selection(folder, root, words)
     return Common(manifest=manifest, words=words, domains=domains, naming=naming, rules=rules)
 
 
@@ -302,7 +333,25 @@ def load_pack(pack: str, *, root: Path = DEFAULT_ROOT) -> Pack:
     unknown = sorted({t.domain for t in terms if t.domain not in domain_names})
     if unknown:
         raise PackError(f"{folder / 'terms.yaml'}: 공통 도메인에 없는 domain {unknown}")
+    _check_selection(folder, root, words)
     return Pack(manifest=manifest, common=common, terms=terms, words=words, patterns=patterns)
+
+
+def _check_selection(folder: Path, root: Path, words: tuple[Word, ...]) -> None:
+    sources = root / "sources/sources.yaml"
+    if sources.is_file():
+        from specton.packs.build import BuildError, read_csv, read_yaml, word_entry
+        from specton.packs.selection import validate_selection
+
+        spec = read_yaml(sources)["files"]["words"]
+        try:
+            validate_selection(
+                folder,
+                map(word_entry, read_csv(sources.parent / spec["path"])),
+                registered_words=(word.word for word in words),
+            )
+        except BuildError as exc:
+            raise PackError(str(exc)) from exc
 
 
 def load_erd_areas(pack: str, *, root: Path = DEFAULT_ROOT) -> tuple[ErdAreaSpec, ...]:
@@ -339,18 +388,18 @@ def _naming_blanks(naming: Naming) -> list[str]:
 
 
 def _rules_blanks(rules: Rules) -> list[str]:
-    """rules.yaml에서 아직 정하지 않은 값(미정값)의 경로 목록."""
-    blanks = []
-    for rule in rules.rules:
-        if rule.severity is None:
-            blanks.append(f"rules.{rule.id}.severity")
-        if rule.target_stage is None:
-            blanks.append(f"rules.{rule.id}.target_stage")
+    """심각도와 처리 방식의 미정값만 거절한다. 의도적으로 비운 복귀 단계는 허용한다."""
+    policies: list[tuple[str, RulePolicy]] = [(f"rules.{r.id}", r) for r in rules.rules]
     for check in rules.standard_compliance.checks:
-        if check.severity is None:
-            blanks.append(f"standard_compliance.{check.id}.severity")
-        if check.target_stage is None:
-            blanks.append(f"standard_compliance.{check.id}.target_stage")
+        prefix = f"standard_compliance.{check.id}"
+        policies.append((prefix, check))
+        policies.extend((f"{prefix}.subtypes.{kind}", p) for kind, p in check.subtypes.items())
+    blanks = []
+    for path, policy in policies:
+        if policy.severity is None:
+            blanks.append(f"{path}.severity")
+        if policy.resolved_handling is None:
+            blanks.append(f"{path}.target_stage (handling 미정)")
     return blanks
 
 

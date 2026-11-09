@@ -10,6 +10,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from test_scripted_flow import _Flow, _to_final_review
@@ -88,6 +89,19 @@ def test_function_spec_pdf_is_private_until_approval_and_published_as_the_same_b
             params={"file_format": "json", "revision": done["revision"]},
         )
         assert manifest.status_code == 200
+        exported = json.loads(manifest.content)
+        with pool.connection() as conn:
+            snapshot = conn.execute(
+                "SELECT normalized_model, model_hash FROM model_snapshot "
+                "WHERE run_id=%s AND revision=%s",
+                (UUID(run_id), done["revision"]),
+            ).fetchone()
+        assert snapshot is not None
+        normalized = snapshot["normalized_model"]["normalized"]
+        assert exported["model_hash"] == snapshot["model_hash"]
+        assert exported["generator_versions"]["common_version"] == normalized["common_version"]
+        assert exported["generator_versions"]["policy_digest"] == normalized["policy_digest"]
+        assert normalized["common_version"] == "0.1.4" and normalized["policy_digest"]
         listed = {
             (f["kind"], f["file_format"]): f["hash"] for f in json.loads(manifest.content)["files"]
         }

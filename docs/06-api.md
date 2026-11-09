@@ -209,6 +209,9 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
   JSON을 읽는 쪽도 본문의 `approved`가 아니라 `ArtifactRef.approved`로 승인 여부를 판단한다.
   승인 전 다운로드는 409다. 승인 시 manifest 자신의 해시도 근거에 고정하고, 승인 후 재생성하지 않는다.
   `files`에는 같은 모델·revision의 출력 해시만 있고 manifest 자신의 해시는 제외한다.
+  `generator_versions.common_version`·`policy_digest`는 정리 때 기록한 공통 팩 버전·팩/표준 정책 해시다.
+  이전 실행에는 두 값이 null일 수 있으며 다운로드 때 현재 값으로 소급해서 채우지 않는다.
+  내부 `NormalizedModel`의 선택 필드 추가이며 기존 RunView·다운로드 응답 형식은 유지한다.
 - ERD PDF 기능을 켜면
   승인본용 PDF 바이트를 미리 비공개 후보로 저장하되 `approved=false`이며, 승인 전 PDF
   다운로드는 계속 409다. 승인 근거가 기록한 후보 해시와 같은 바이트만 승인 후 공개한다.
