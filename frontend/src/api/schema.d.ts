@@ -126,7 +126,7 @@ export interface paths {
             header?: never;
             path: {
                 id: string;
-                kind: "requirements" | "functions" | "erd" | "ddl" | "rtm" | "review";
+                kind: "requirements" | "functions" | "erd" | "ddl" | "rtm" | "review" | "manifest";
             };
             cookie?: never;
         };
@@ -168,6 +168,8 @@ export interface components {
             /** @description ErrorCode 스키마의 값을 쓴다. */
             code: string;
             message: string;
+            /** @description 「자세히 보기」에 펼칠 문장. 없으면 null (#19). */
+            detail?: string | null;
             run_id?: string | null;
             retryable: boolean;
         };
@@ -626,13 +628,13 @@ export interface operations {
     downloadArtifact: {
         parameters: {
             query: {
-                file_format: "md" | "pdf" | "mmd" | "sql" | "xlsx" | "csv";
+                file_format: "md" | "pdf" | "mmd" | "sql" | "xlsx" | "csv" | "json";
                 revision: number;
             };
             header?: never;
             path: {
                 id: string;
-                kind: "requirements" | "functions" | "erd" | "ddl" | "rtm" | "review";
+                kind: "requirements" | "functions" | "erd" | "ddl" | "rtm" | "review" | "manifest";
             };
             cookie?: never;
         };
