@@ -59,19 +59,30 @@
 - **백업** (DB와 파일을 같은 시점으로 맞추려고 api를 잠깐 멈춘다. `D`는 `docker compose -f compose.deploy.yml --env-file .env.deploy`):
   1. `$D stop api`
   2. `$D exec -T db pg_dump -U specton -d specton_app -Fc > specton_app-<날짜>.dump`
-  3. `$D run --rm --no-deps -v "$PWD:/backup" --entrypoint tar api czf /backup/storage-<날짜>.tgz -C /data/storage .`
+  3. `$D run --rm --no-deps -u 0 -v "$PWD:/backup" --entrypoint tar api czf /backup/storage-<날짜>.tgz -C /data/storage .`
   4. `$D start api`
-  - sandbox DB는 검증용이라 백업하지 않는다(초기화 스크립트로 다시 만든다). 백업 파일은 서버 밖(예: S3)에 둔다.
+  - `-u 0`: 실행 이미지는 UID 10001로 돌아 서버의 백업 폴더(예: UID 1000·755)에 쓰지 못한다. root로 묶는다
+    (리눅스 볼륨으로 확인: `-u 0` 없이 `Cannot open: Permission denied`, 붙이면 성공, #244 R1 리뷰).
+  - sandbox DB는 검증용이라 백업하지 않는다(초기화 스크립트로 다시 만든다).
+  - **백업 파일도 고객 원문·세션을 담는다.** 「자료 수명주기」의 보존 기간·삭제 대상에 백업 사본을 넣어, 업로드를
+    지울 때 백업도 함께 지운다. 서버 밖에 두되 접근을 막고 암호화한다(예: 비공개 S3 버킷 + 서버 측 암호화).
 - **복구** (빈 볼륨에 되살리기, 같은 `.env.deploy`):
-  1. `$D up -d --no-build db` (초기화 스크립트가 역할·sandbox를 만든다)
+  1. `$D up -d --no-build --wait db` (초기화 스크립트가 역할·sandbox를 만든 뒤에 돌아온다)
   2. `$D exec -T db pg_restore -U specton -d specton_app --clean --if-exists --no-owner < specton_app-<날짜>.dump`
-  3. `$D run --rm --no-deps -v "$PWD:/backup:ro" --entrypoint tar api xzf /backup/storage-<날짜>.tgz -C /data/storage`
+  3. `$D run --rm --no-deps -u 0 -v "$PWD:/backup:ro" --entrypoint tar api xzf /backup/storage-<날짜>.tgz -C /data/storage`
   4. `$D up -d --no-build`
+  - 1단계 `--wait`: postgres는 초기화 스크립트가 도는 동안 임시 서버를 소켓으로만 띄운다. db healthcheck를 TCP
+    (`pg_isready -h 127.0.0.1`)로 보게 해 초기화가 끝나야 healthy가 된다. 그 전에 `pg_restore`를 돌리면 임시 서버에
+    붙었다가 끊길 수 있다 (#244 R1 리뷰). 빈 볼륨에서 `--wait`가 돌아온 직후 sandbox 역할·DB가 있는 것을 확인했다.
+  - 3단계 `-u 0`: root로 풀면 묶을 때의 소유자(10001)가 그대로 살아난다(확인: 복구 뒤 앱 사용자가 쓰기 가능).
   - 로컬 확인 (2026-11-09): 위 백업을 빈 볼륨의 새 구성에 복구하니 같은 세션 쿠키로 같은 실행·추출 원문 19건·업로드 파일이 보였다.
     산출물 내려받기는 LLM 실행이 필요해 실제 LLM E2E(TC-F19) 때 함께 확인한다.
 - **AWS (EC2):** 볼륨은 호스트 디스크(`/var/lib/docker`)에 있으므로 그 디스크를 EBS로 둔다.
   - 루트 EBS는 기본값이 「인스턴스 종료 시 삭제」(`DeleteOnTermination=true`)다. 끄거나, Docker 데이터용 EBS를 따로 붙인다.
   - 인스턴스 종료 방지(termination protection)를 켜고, EBS 스냅샷을 정기로 남긴다(위 백업 파일과 별도).
+  - 업로드·산출물이 그 디스크에 쌓이므로 디스크 사용량을 지켜본다.
+- 볼륨 이름은 compose 프로젝트 이름(`name: specton-deploy`)에 묶인다. `-p`로 다른 이름을 주면 빈 볼륨으로 떠서
+  데이터 없이 시작한다. 운영에서는 `-p`를 쓰지 않는다(위 복구 확인은 일부러 다른 이름의 빈 볼륨에 했다).
 
 ## 격리 DB (sandbox)
 
