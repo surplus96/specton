@@ -23,7 +23,7 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 | `GET /runs/{id}/view` | `section`, `revision` 선택 | 200 화면용 JSON (추출 블록·요구사항·설계 모델·지적·산출물 목록) | 404, 409 현재보다 큰 revision |
 | `POST /runs/{id}/resume` | `interrupt_id`, `expected_revision`, `response` | 202 재개 상태 | 409 오래된/이미 응답한 interrupt, 422 잘못된 답변, 500 분석 확인 모델 누락 |
 | `POST /runs/{id}/cancel` | `expected_revision` | 202 취소 요청 상태 (`queued`·사람 확인 대기 중이면 바로 `cancelled`, ADR-0012) | 409 이미 완료/충돌 |
-| `GET /runs/{id}/artifacts/{kind}` | `file_format`, `revision` | 200 파일 | 404, 409 미생성(PDF는 승인본만), 422 형식 불가 |
+| `GET /runs/{id}/artifacts/{kind}` | `file_format`, `revision` | 200 파일 | 404, 409 미생성(PDF·manifest는 승인본만), 422 형식 불가 |
 | `GET /health` | — | 200 기동 상태 (구현됨) | — |
 
 계약: [api/openapi.json](api/openapi.json) (OpenAPI 3.1.1). Pydantic 구현은 `specton/contracts/api.py`이며 `tests/unit/test_contracts_api.py`가 필드·필수 항목·열거값이 같은지 대조한다. 스키마는 `Error`, `ErrorCode`, `SseEvent`, `SseEventData`, `Interrupt`, `RunStatus`, `RunSummary`, `RunView`, `ResumeRequest`, `ExtractionResponse`, `RequirementsResponse`, `ReviewResponse`.
@@ -93,7 +93,9 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 - `artifact` 이벤트 `payload`는 저장한 `ArtifactRef`(`kind`, `file_format`, `revision`, 파일 `hash`, `approved`)다. 실행·모델·산출물 메타데이터와 함께 커밋하고, 같은 결과를 다시 저장할 때는 이벤트를 추가하지 않는다. 내부 경로와 모델 해시는 응답에 넣지 않는다.
 - `interrupt` 이벤트 `payload`: `interrupt_id`, `kind`. 최종 검토(`review`)는 `failed_branches`(실패하거나 빠진 리뷰 관점, 비어 있지 않으면 불완전 검토, TC-F14)와 자동 루프를 멈춘 사유 `hitl_reason`(있을 때)을 더한다.
 - 정리 문제에 사람의 조치가 필요하면 `hitl_reason=manual_review`로 알린다. 이때 생성과 LLM 검토를 건너뛰며, 실행하지 않은 리뷰 관점은 `failed_branches`에 넣지 않는다 (#17·#15).
-- `error` 이벤트 `payload`: `code`, `retryable`. `EXTRACTION_FAILED`면 `detail`(「자세히 보기」에 펼칠 문장)도 넣는다.
+- `error` 이벤트 `payload`: `code`, `retryable`. `EXTRACTION_FAILED`에 상세 안내가 있으면
+  `error.detail`과 같은 문장을 `payload.detail`에도 넣는다. 상세 안내가 없거나 공백뿐이면
+  상태 조회의 `error.detail`은 null이고 SSE의 `payload.detail`은 생략한다.
 - 엑셀에서 요구사항 표가 없거나 빈 표인 시트는 `stage: parsing`인 `status` 이벤트로 안내한다. `message`는 「요구사항을 읽지 않은 시트가 있습니다」, `payload`는 `info: "skipped_sheets"`, `document_id`, `sheets`(시트 이름 목록)다. 문서마다 한 번 기록하며 이 안내만으로 추출 확인을 멈추지 않는다 (docs/09 UI-02).
 - 추출 확인 답(`confirmed=true`)을 수락하면 「답변을 받아 다시 진행합니다」 `status` 이벤트 `payload`에 `kind: "extraction"`, `interrupt_id`, `confirmed_block_ids`를 넣는다. `confirmed_block_ids`는 제외하지 않은 `review` 블록 ID를 정렬한 목록이다(원문 문장이 없는 블록 포함, 없으면 `[]`). `pass`·`fail`·제외한 블록은 넣지 않는다. 이 이벤트는 `approval`·상태 전이와 같은 트랜잭션에서 API가 저장하고, 중단·422·409 응답에는 남기지 않는다 (#95 결론, #130).
 - 추출 확인 답을 반영할 때, 제외한 원문의 `source_id`가 남은 원문의 「관련 요구사항」에 나오면 `status` 이벤트로 경고를 남긴다. `payload`는 `warning: "excluded_related"`, `block_id`, `source_id`, `related_block_ids`다. 제외는 막지 않는다 (ADR-0015 결정 5).
@@ -153,10 +155,11 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 ## 오류 형식
 
 ```json
-{"code": "RUN_REVISION_CONFLICT", "message": "다른 revision입니다.", "run_id": "…", "retryable": false}
+{"code": "RUN_REVISION_CONFLICT", "message": "다른 revision입니다.", "detail": null, "run_id": "…", "retryable": false}
 ```
 
-- `code`/`message`/`run_id`/`retryable`로 통일한다. 코드 값은 `ErrorCode`(ADR-0009)다.
+- `code`/`message`/`detail`/`run_id`/`retryable`로 통일한다. 코드 값은 `ErrorCode`(ADR-0009)다.
+- `message`는 짧은 안내이고, `detail`은 화면의 「자세히 보기」에 펼칠 문장이다. 없으면 null이며 화면은 `message`만 보여 준다 (#19). 실행 상태 조회의 `error`에도 같은 칸이 있어 실패 뒤 다시 열어도 「자세히 보기」를 보여 줄 수 있다. SSE `error` 이벤트는 지금처럼 `payload.detail`에도 담는다.
 
 | 코드 | 언제 | HTTP | 다시 시도 |
 |---|---|---|---|
@@ -179,7 +182,7 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 | `INTERNAL` | 그 밖의 서버 오류 | 500 / 실행 상태 | 경우에 따라 |
 
 - "실행 상태"는 HTTP 오류가 아니라 실패한 실행의 `GET /runs/{id}` 응답 `error` 필드와 SSE `error` 이벤트로 전달된다는 뜻이다.
-- `EXTRACTION_FAILED`의 `message`는 파서·추출 확인이 만든 짧은 안내(`notice`)다. 「자세히 보기」 문장은 SSE `error` 이벤트 `payload.detail`에 있다. 다른 실행 실패는 내부 내용을 숨기고 코드별 고정 문구를 쓴다.
+- `EXTRACTION_FAILED`의 `message`는 파서·추출 확인이 만든 짧은 안내(`notice`)다. 「자세히 보기」 문장은 실행 상태 조회 `error.detail`과 SSE `error` 이벤트 `payload.detail` 둘 다에 담는다(실행기가 채움, #19·#204). 다른 실행 실패는 내부 내용을 숨기고 코드별 고정 문구를 쓴다.
 - 비동기 실행 중 오류는 `GET /runs/{id}`와 SSE `error` 이벤트로 전달한다.
 
 ## 산출물 형식
@@ -192,12 +195,18 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 | `ddl` | sql | |
 | `rtm` | xlsx, csv | |
 | `review` | md | |
+| `manifest` | json | 승인 후에만 다운로드 |
 
 - 다른 조합은 422.
 - 승인 전 파일은 초안 파일명(`-draft`)·메타데이터(`approved=false`)로 구분한다.
 - 기능 명세 Markdown과 RTM Excel·CSV는 생성 단계에서 같은 모델·revision으로 저장한다.
   승인 때 각 파일 해시를 `approval_basis`에 기록하고, 내보내기는 재생성 없이 같은 바이트를
-  승인본으로 게시한다. 원문 제외·원문 없음 행도 RTM에 남는다. 기능 명세 PDF와 manifest JSON의 연결은 후속 범위다.
+  승인본으로 게시한다. 원문 제외·원문 없음 행도 RTM에 남는다. 기능 명세 PDF의 연결은 후속 범위다.
+- manifest JSON도 최종본 바이트를 승인 전 비공개 후보(`approved=false`)로 저장한다.
+  JSON의 `approved=true`는 공개할 최종본의 내용이며, 실제 승인은 DB 메타데이터와 승인 기록으로 판단한다.
+  JSON을 읽는 쪽도 본문의 `approved`가 아니라 `ArtifactRef.approved`로 승인 여부를 판단한다.
+  승인 전 다운로드는 409다. 승인 시 manifest 자신의 해시도 근거에 고정하고, 승인 후 재생성하지 않는다.
+  `files`에는 같은 모델·revision의 출력 해시만 있고 manifest 자신의 해시는 제외한다.
 - ERD PDF 기능을 켜면
   승인본용 PDF 바이트를 미리 비공개 후보로 저장하되 `approved=false`이며, 승인 전 PDF
   다운로드는 계속 409다. 승인 근거가 기록한 후보 해시와 같은 바이트만 승인 후 공개한다.

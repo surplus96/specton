@@ -28,8 +28,10 @@
 | #140 | `SourceRequirement`: `review`·`fail` 블록은 `notice` 필수 |
 | #143 | 정리 결과 모델을 계약으로 이전하고 `DesignState.normalized` 추가. 정리 결과가 있으면 스냅샷 저장·해시에 포함하고 체크포인트 허용 타입에 등록 |
 | #176 | SQL 검증 결과 공용 계약 `SqlValidation`·`ValidationStep`·`ValidationIssue` 추가 (#167). 저장·승인 검사는 후속 |
+| #204 | `Error.detail`(「자세히 보기」 문장, 없으면 null) 추가 (#19). `GET /runs/{id}`의 `error`에서도 다시 받을 수 있다 |
+| #222 | `ArtifactRef.kind`에 `manifest`, `file_format`에 `json` 추가. manifest JSON은 승인 전 비공개 후보로 저장하고 승인 근거와 같은 바이트를 공개 |
 
-남은 작업: requirements·추적 검사 설명 (#107), FK 파생·참조 키 (#12), 값 범위 제약 (#15)
+남은 작업: FK 파생·참조 키 (#12), 값 범위 제약 (#15)
 
 - #128로 표 파서의 `review` 블록은 `notice`를 채운다. #139부터 계약도 `review`·`fail` 블록의 `notice`를 필수로 검사한다.
 
@@ -37,8 +39,8 @@
 
 | 필드 | 값 | 뜻 |
 |---|---|---|
-| `ArtifactRef.kind` | `requirements`·`functions`·`erd`·`ddl`·`rtm`·`review` | 산출물 종류. 파일 형식은 `file_format` |
-| `TraceIssue.kind` | `missing_req_ids`·`unknown_req_id`·`unknown_entity_ref`·`duplicate_id` | 추적 무결성 위반 종류. 대상 객체 종류는 `object_kind` |
+| `ArtifactRef.kind` | `requirements`·`functions`·`erd`·`ddl`·`rtm`·`review`·`manifest` | 산출물 종류. 파일 형식은 `file_format` |
+| `TraceIssue.kind` | `missing_req_ids`·`unknown_req_id`·`unknown_entity_ref`·`duplicate_id` | 추적 무결성 위반 종류: `req_ids`가 비어 있음 / 현재 revision에 없는 REQ를 가리킴 / 없는 엔티티를 가리킴 / 같은 종류 객체끼리 ID가 중복. 대상 객체 종류는 `object_kind` |
 | `FindingTarget.kind` | `requirement`·`function`·`entity`·`attribute`·`relationship` | 지적 대상 객체 종류 |
 | `FindingDraft.kind` | 자유 문자열 | 지적 유형 (리뷰어가 붙인 이름) |
 | `QualityIssue.kind` | 자유 문자열 | A01 품질 경고 유형 (모호 표현 등) |
@@ -67,7 +69,7 @@
 - LLM 출력 모델(예: FindingDraft)과 저장 모델(Finding)을 나눈다. `id`·`source`·`fingerprint`·`iteration`은 코드가 붙인다.
 - `source_ref`는 **구조체**로 둔다 (ADR-0009). 문자열 인코딩은 파서마다 형식이 달라지고 비교·검증이 어렵다.
 
-| kind | 필수 필드 | 선택 필드 | 번호 기준 |
+| file_format | 필수 필드 | 선택 필드 | 번호 기준 |
 |---|---|---|---|
 | `xlsx` | `sheet`, `row` | | `sheet`는 시트 이름, `row`는 엑셀에 보이는 행 번호 (1부터, 머리글 행 포함) |
 | `csv` | `row` | | 파일의 행 번호 (1부터, 머리글 행 포함) |
@@ -169,5 +171,15 @@ DDL은 `specton/persistence/schema.sql`이고 이 표와 같아야 한다. 보�
 - 업로드가 끝나기 전 임시 파일은 document에 연결하지 않는다.
 - run과 event 저장은 같은 트랜잭션이거나 다시 재생할 수 있어야 한다.
 - 모델을 수정하면 기존 승인·산출물은 과거 버전으로 남기고 새로 생성한다.
-- 상태 저장과 파일 생성 사이에 장애가 나면 manifest로 누락 파일을 다시 만든다.
+- 파일을 완성한 뒤 체크포인트와 앱 DB에 게시한다. 앱 DB 게시가 중단되면 확정 체크포인트의
+  파일·해시로 메타데이터를 복구하며, 파일이 없거나 변조됐으면 실행 오류로 멈춘다.
+  manifest만으로 누락 파일을 자동 재생성하지 않는다.
+
+`manifest/json`은 현재 revision의 모델·원문·팩·프롬프트·생성기 버전과 파일별 해시를 담는다.
+`files`에는 manifest 자신을 제외한다. JSON의 `approved=true`는 승인 후 공개할 최종본 내용이며,
+승인 전 후보의 `ArtifactRef.approved`와 DB `approval_status`는 false·draft다. 실제 사용자 승인
+여부는 이 메타데이터와 `approval`·`approval_basis`가 결정한다. 승인 전 JSON 다운로드는 409이고,
+승인 시 후보 해시를 근거에 포함한 뒤 같은 바이트만 공개한다. 실행 중 오류나 정리 실패에는
+가짜 manifest를 만들지 않는다. 기존 승인 기록과 이미 최종 검토에 도달한 체크포인트에는
+manifest를 소급 추가하지 않는다. 기존 DB는 artifact의 종류·형식 CHECK만 넓히며 기록을 보존한다.
 - 실행 삭제는 DB 레코드·파일·체크포인트를 함께 처리하고, 정리 실패는 기록 후 재시도한다. 보존 기간은 미정 (ADR-0011).

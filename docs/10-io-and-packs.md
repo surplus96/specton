@@ -82,7 +82,7 @@
 
 - PDF는 승인 시점에 최종 Markdown·Mermaid를 변환해 1회 만든다 (확정).
 - 기능 명세서 Markdown(`specton/codegen/function_spec.py`, #14)은 문서 정보(`run_id`·`revision`·`model_hash`·`pack`·`pack_version`, ERD PDF 표지와 같은 이름) → 기능 목록 → 기능 상세 → CRUD 매트릭스(면제 근거 포함) 순서다. 제목·문단·글머리표·굵게·인라인 코드·파이프 표만 쓰고(글 안의 `\`·`*`·`` ` ``는 역슬래시로, 표 칸의 `|`는 그 뒤에 이스케이프), 초안 표시는 넣지 않는다(승인본이 같은 바이트라 초안 구분은 파일 이름·PDF가 한다).
-- PDF 엔진: WeasyPrint(HTML/CSS → PDF) + `mermaid-cli`(SVG), Mermaid 11.15.0. 기능 명세서와 ERD가 같은 엔진을 쓴다. ERD가 깨지면 Playwright 인쇄로 전환 (ADR-0004 승인).
+- PDF 엔진: WeasyPrint(HTML/CSS → PDF) + `mermaid-cli`(SVG), Mermaid 11.17.2 (웹과 같음, #223). 기능 명세서와 ERD가 같은 엔진을 쓴다. ERD가 깨지면 Playwright 인쇄로 전환 (ADR-0004 승인).
 - 한글 폰트(Noto Sans CJK KR)·긴 표 페이지 분할·머리글 반복·ERD 배율은 실측으로 확인했다. ERD는 개요 + 영역별 상세도(키 속성만) + 테이블 정의서로 나누고, 넓은 표는 가로 쪽에 두되 넘치면 열을 나눈다 (ADR-0004 「PDF 출력 실측」).
 - 렌더러가 외부 경로·URL 리소스를 가져오지 못하게 제한한다.
 
@@ -90,6 +90,6 @@
 
 `run_id`, `revision`, `model_hash`, `source_hash`, 팩·프롬프트·생성기 버전, 승인 상태, 파일별 해시. 초안과 승인본의 내용 버전을 섞지 않는다.
 
-- 구현: `specton/codegen/manifest.py` `build_manifest`·`render_manifest`(키 순서를 고정한 JSON, #14). 한 manifest에는 현재 revision·현재 모델·같은 승인 상태의 파일만 넣고, 섞이면 만들지 않는다. 생성기 버전은 모델 정리 규칙 버전·이름 규칙 해시다. 내려받기·승인본 게시에 붙이는 연결은 #17·#13에서 한다.
+- 구현: `specton/codegen/manifest.py` `build_manifest`·`render_manifest`(키 순서를 고정한 JSON, #14). 한 manifest에는 현재 revision·현재 모델·같은 승인 상태의 파일만 넣고, 섞이면 만들지 않는다. 자신의 해시는 파일 목록에서 제외한다. 생성기 버전은 모델 정리 규칙 버전·이름 규칙 해시다. #17의 `manifest_node`가 최종 검토 직전 `manifest/json` 비공개 후보를 저장하고, 승인 근거에 고정한 같은 바이트를 승인 후 내려받는다. JSON의 `approved=true`는 최종본 내용이고 실제 승인 여부는 산출물 메타데이터·DB 승인 기록을 따른다.
 - RTM(`specton/codegen/rtm.py`, #14): 시트 「RTM」(원문 ID·원문 위치·요구사항 ID·상위 요구사항·요구사항·유형·기능·엔티티·관계·상태·비고)과 「문서 정보」(기능 명세서와 같은 문서 정보 + 상태별 건수). CSV는 같은 행을 UTF-8(BOM)·CRLF로 쓴다. 상태는 `연결`(기능에 하나라도 연결)·`미연결`·`제외`·`확인(원문 없음)`이고, 연결은 `req_ids` ID 조인만 쓴다. 같은 입력이면 같은 바이트다(xlsx 작성 시각 고정). 글 칸은 수식이 아닌 문자열로 쓰고(CSV는 `=`·`+`·`-`·`@`·탭·CR로 시작하면 앞에 `'`), 엑셀 한 칸 한도(32,767자)를 넘는 글은 「긴 글」 시트에 조각으로 모두 남긴다.
 - **잔여 — 「보류」 표시:** 위 출력 규격 표의 「보류」는 계약에 명시적 보류 판정·사유가 없어 아직 만들지 않는다. 비기능이라는 이유만으로 보류를 자동 생성하지 않고, 기능 연결이 없으면 `미연결`로 둔다. 보류 기준·기록 방식이 정해지면 후속으로 더한다 (#215 R1 기준).
