@@ -31,7 +31,9 @@ services:
       - pgdata:/var/lib/postgresql
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U specton -d specton_app"]
+      # TCP로 확인한다. 초기화 스크립트가 도는 동안 postgres는 임시 서버를 소켓으로만 띄워, 소켓 기준
+      # pg_isready는 초기화 전에도 준비됐다고 답한다 (#244 R1 리뷰). api의 depends_on·복구 --wait가 이 값을 본다.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U specton -d specton_app"]
       interval: 5s
       timeout: 3s
       retries: 10
