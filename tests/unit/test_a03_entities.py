@@ -238,7 +238,7 @@ def test_example_passes_the_checks_for_its_own_input() -> None:
 
 
 def test_prompt_version_is_fixed() -> None:
-    assert PROMPT_VERSION == "a03-v4"
+    assert PROMPT_VERSION == "a03-v5"
     assert SYSTEM_PROMPT.strip()
 
 
@@ -521,6 +521,59 @@ def test_assigns_ids_and_fills_entity_ops_by_function() -> None:
     ]
     assert len(transport.sent) == 1
     assert [c.outcome for c in result.calls] == ["ok"]
+
+
+def _named_attribute(name: str) -> dict[str, Any]:
+    """예시 출력의 첫 엔티티에 속성 하나를 더한 응답."""
+    data = _example_output().model_dump(mode="json")
+    entity = data["entities"][0]
+    entity["attributes"].append(
+        {"name": name, "data_type": "varchar", "length": 10, "req_ids": entity["req_ids"]}
+    )
+    return data
+
+
+def test_names_the_dictionary_cannot_compose_are_asked_about_once() -> None:
+    first, second = _named_attribute("가나다라"), _named_attribute("창고위치")
+    client, transport = stub_client(reply(_raw(first)), reply(_raw(second)))
+
+    result = run(client, _a02_state(), _settings(), pack="inventory")
+
+    assert "창고위치" in [a.name for a in result.output.entities[0].attributes]
+    assert len(transport.sent) == 2 and [c.attempt for c in result.calls] == [1, 1]
+    review = json.loads(unwrap_data(transport.sent[1].messages[-1].content))["name_review"]
+    assert review["unresolved"] == ["창고.가나다라"]
+    assert review["previous"]["entities"][0]["attributes"][-1]["name"] == "가나다라"
+
+
+def test_a_name_still_unresolved_after_the_review_is_kept_for_manual_action() -> None:
+    data = _named_attribute("가나다라")
+    client, transport = stub_client(reply(_raw(data)), reply(_raw(data)))
+
+    result = run(client, _a02_state(), _settings(), pack="inventory")
+
+    assert "가나다라" in [a.name for a in result.output.entities[0].attributes]
+    assert len(transport.sent) == 2  # 다시 묻지 않는다. 정리 단계가 사람 조치로 멈춘다
+
+
+def test_a_name_review_that_changes_the_structure_is_discarded() -> None:
+    client, _ = stub_client(
+        reply(_raw(_named_attribute("가나다라"))), reply(_example_output())
+    )  # 두 번째 응답이 속성을 지웠다
+
+    result = run(client, _a02_state(), _settings(), pack="inventory")
+
+    assert "가나다라" in [a.name for a in result.output.entities[0].attributes]
+    assert len(result.calls) == 2
+
+
+def test_name_review_is_skipped_when_the_token_budget_is_spent() -> None:
+    client, transport = stub_client(reply(_raw(_named_attribute("가나다라"))))
+
+    result = run(client, _a02_state(), _settings(), pack="inventory", token_budget=20)
+
+    assert len(transport.sent) == 1
+    assert "가나다라" in [a.name for a in result.output.entities[0].attributes]
 
 
 def test_function_fields_other_than_entity_ops_are_kept() -> None:
