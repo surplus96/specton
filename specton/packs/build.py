@@ -21,6 +21,7 @@ from typing import Any
 import yaml
 
 from specton.contracts.base import SqlType
+from specton.packs.term_names import term_name_conflicts
 
 Record = dict[str, Any]
 
@@ -254,6 +255,9 @@ def build(root: Path) -> dict[Path, str]:
         words = {**all_words, **project_words}
         specs = read_yaml(pack / "term_specs.yaml").get("terms") or []
         terms = [build_term(s, words, all_domains, official, pack.name) for s in specs]
+        # 이름 충돌이 물리명 충돌보다 원인이 분명하므로 먼저 알린다 (#264). 로더도 같은 함수를 쓴다.
+        if problems := term_name_conflicts((t["term"], t["synonyms"]) for t in terms):
+            raise BuildError(f"{pack / 'term_specs.yaml'}:\n" + "\n".join(problems))
         unique_physical_names(terms, pack.name)
         used_words |= {w for t in terms for w in t["composition"] if w in all_words}
         used_domains |= {t["domain"] for t in terms}

@@ -65,15 +65,36 @@ TC 37개(기능 `TC-F01`~`F22`, 비기능 `TC-N01`~`N06`, 에이전트 `TC-A01`~
 
 - 고정 설계 파일: 관점 하나에 YAML 하나. 사례마다 원문 ID와 그 문장에 대한 설계 한 벌을 둔다. 형식은 합성 예시 `tests/unit/data/review_eval_sample.yaml`.
   - `reviewer_id`(관점), `set`(평가 세트 이름·버전), `pack`(few-shot 예시를 넣을 팩), `cases`
-  - 사례: `case_id`, `source_id`(근거 원문), `case`(`normal` 정상 · `alt_normal` 같은 요구를 다르게 표현한 정상 · `defect` 결함), `requirements`(`id`·`text`·`type`·`nfr_category`), `functions`(선택), `entities`(`id`·`name`), `relationships`(관점 예시와 같은 칸), `expected`
+  - 사례: `case_id`, `source_id`(근거 원문), `case`(`normal` 정상 · `alt_normal` 같은 요구를 다르게 표현한 정상 · `defect` 결함), `requirements`(`id`·`text`·`type`·`nfr_category`), `functions`(선택), `entities`(`id`·`name`, 선택 `description`·`req_ids`·`attributes`), `relationships`(관점 예시와 같은 칸), `expected`
   - `expected`: `defect` 사례에만 `{target: 설계 요소 ID, defect: cardinality | direction | optional | identifying}`. 결함은 사례마다 하나씩 심는다.
   - 파일에 없는 계약 필수 칸(원문 위치·설명·키 속성·관계 근거)은 도구가 중립 값으로 채운다. `description`·`rationale`은 파일에 쓰면 그대로 쓴다.
-- 채점: 지적 대상(`targets`)에 기대 대상 ID가 있으면 맞춘 것이다. 지적 `kind`는 LLM이 정하는 글자라 채점하지 않고 보고서에만 남긴다.
+- 채점: 지적 대상(`targets`)의 종류·ID가 기대 대상과 같으면 맞춘 것이다. 지적 `kind`는 LLM이 정하는 글자라 채점하지 않고 보고서에만 남긴다.
   - 발견율 = 맞춘 기대 결함 / 기대 결함, 지적 정확도 = 기대 대상을 가리킨 지적 / 전체 지적, 정상 오탐 = `normal`·`alt_normal` 사례의 지적 수
   - 호출이 실패한 사례는 지적 0건으로 세지 않고 실패로 따로 센다. 지표 계산에서는 뺀다.
 - 실행: `uv run python -m specton.review.eval_fixtures <고정설계.yaml> --out <결과.json>` (`specton/review/eval_fixtures.py`). 사례마다 `review_perspective`로 그 관점만 실제 LLM으로 돌린다(`SPECTON_OPENAI_API_KEY` 필요). 결과 파일에는 사례별 지적·찾은/놓친 대상·지표·프롬프트 버전·모델·토큰이 들어간다.
 - 고정 설계 파일과 결과 파일은 평가 자료다. 공개 저장소에 두지 않는다 (위 「평가 데이터」).
-- 정리 결과(`normalized`)를 입력으로 받는 관점(A08)은 아직 고정 설계로 만들 수 없어 실행 전에 멈춘다. 고정 설계를 정리 코드에 통과시키는 방식은 A08 평가 방식이 정해지면 더한다.
+- **A08:** 모든 엔티티의 `attributes`를 명시한다. 각 속성은 저장 계약의 `id`·`name`·`data_type`·`req_ids`와 타입 크기·키 여부·NULL 허용 등을 사용한다. A05의 생략된 키 보충을 A08에 적용하지 않는다. `normalized`를 파일에 직접 쓰지 않는다.
+  - `Settings.pack_root`에서 승인된 도메인·공통 팩을 읽고 실제 내용이 `pack.lock`과 같은지 검사한 뒤, 버전을 상태에 기록하고 `normalize_design`으로 정리한다. 모든 사례를 LLM 호출 전에 준비한다. 한 사례라도 정리에 실패하면 사례 ID·문제 코드로 평가 자료 오류를 내며 미탐·정상으로 세지 않는다.
+  - A08의 `expected.target`은 원래 엔티티·속성·관계 ID다. `defect`는 `multi_value`·`repeating_group`·`duplicate_fact`·`transitive_dependency`·`partial_dependency`·`derived_value` 중 하나이며 채점은 A05와 같이 대상 ID 기준이다. 정리 테이블·컬럼 ID를 기대 대상으로 쓰지 않는다.
+  - 결과에 사례별 팩·공통 버전, 정책·사전 해시, 정리 규칙 버전과 모델 해시를 남긴다. 파일 전체의 파싱된 내용 해시(`fixture_content_hash`)와 사례별 호출 기록(모델·토큰·재요청·호출 소요시간)도 기록한다. 호출 소요시간 합계는 전체 벽시계 시간과 구분한다. 사례 전체에서 실행 토큰 예산을 공유하며 소진 뒤 후속 호출은 `BUDGET_EXCEEDED` 실패로 남긴다. 합성 형식 예시는 `tests/unit/test_eval_a08.py`다.
+  - 고정 팩에 없는 낱말 때문에 정리되지 않는 사례를 위해 사전을 자동 확장하지 않는다. 평가용 확장 사전의 별도 조건·버전·보고 정책은 #40에서 결정한 뒤 추가한다.
+
+## 오프라인 통합 채점 (#20)
+
+실제 실행과 채점을 분리한다. `python -m specton.evaluation input.json --out report.json`은 승인된 정답·매칭과 저장된 실행 결과를 읽으며 LLM·DB에 접속하지 않는다. 입력과 결과는 평가 자료이므로 팀 비공개 위치에 둔다. 기존 파일은 덮어쓰지 않는다.
+
+- 입력 형식은 `specton/evaluation/models.py`의 `Evaluation`이다. `dataset`, `gold_version`, `gold_variant`, `gold_hash`, `approval_ref`, `gold_status: approved`, `matching_status: approved`, `planned_document_ids`, `documents`를 받는다. 정답·매칭 승인을 이 도구가 대신하지 않는다.
+- 문서마다 입력 해시·run ID·조건(`condition`)·반복 번호·완료/실패/취소/미완료/미실행 상태·코드/팩/공통/정책/모델/프롬프트 버전을 기록한다. 조건·반복마다 예정 문서를 모두 넣으며 미실행도 행으로 남긴다. 같은 조건의 버전 불일치, 같은 문서의 입력 해시 불일치는 거절한다.
+- A01: 원문 ID·요구사항 ID·FR/NFR·필수/허용 경고를 승인 정답에서 변환한다. `alignments`는 같은 원문 안의 정답·출력 ID 일대일 대응이다. ID 문자열·문장 유사도로 추정하지 않는다. 원래 정답의 허용 분할안은 승인된 `gold_variant`로 명시하고 그 기준으로 대응을 준비한다.
+  - FR/NFR precision·recall·F1, 라벨 macro F1, 문서 macro F1과 혼동행렬을 낸다. 대응이 없는 정답·출력도 각각 FN·FP에 포함한다.
+  - 분할 수는 원문별 정답·출력 건수를 비교한다. 경고는 요구사항·종류 단위로 세며 필수 경고 누락은 FN, 필수·허용 밖 경고는 FP다. 허용 경고는 TP·FP 어느 쪽에도 넣지 않고 별도 집계한다.
+- 기능·엔티티·속성·관계는 `objects`에서 승인된 동등 그룹을 받는다. 분할·병합을 허용한 그룹 하나를 TP 하나로 세고 남은 출력·정답은 FP·FN이다. 같은 대상을 여러 그룹에 재사용하거나 없는 대상을 매칭하면 거절한다. micro와 문서 macro, 측정 문서 수를 함께 낸다.
+- 결함 탐지는 `detections`의 `rule`·`llm`·`filtered`를 각각 받는다. 기대 결함 ID·지적 ID의 승인 매칭과 정상 사례 오탐을 센다. 입력하지 않은 항목은 측정 문서 수 0·점수 null이며 통과로 표시하지 않는다.
+- 품질 지표는 완료 실행을 대상으로 하고 제외한 실패·미실행 run ID와 상태를 보고한다. DDL 성공률 분모는 실패·미실행을 포함한 전체 예정 실행이며 미생성·실패·오류·미검증을 분리한다.
+- 0분모 점수는 null이다. macro는 정의된 점수만 평균한다. 시간·입출력 토큰·재요청·재작업·비용은 실패 실행도 포함해 측정 건수와 합계를 기록하고, 미측정 값은 0으로 채우지 않는다. 비용을 입력하면 단가 기준 날짜·출처(`cost_basis`)를 함께 적는다.
+- `specton.evaluation.observations`는 저장된 `DesignState`에서 A01 출력·품질 경고와 기능·모델 ID를 꺼낸다. A01 채점에는 사용자 수정 전 체크포인트를 사용하고, 원문 ID 변환은 명시적으로 제공한다. 원문·의미 매칭·정답을 생성하지 않는다.
+- 합성 입력·숫자 예시는 `tests/unit/test_evaluation_scoring.py`다. R3 Excel 정답은 v0.3 승인 후 이 형식으로 변환하며 원본과 승인 해시를 보존한다. 원본 Excel을 직접 읽거나 평가를 실행하는 도구는 아니다.
+- 조건별 보고를 제공하지만 팩 미적용·parallel/combined의 실제 실행을 만들지 않는다. 비교에서 바꿀 요소와 고정할 버전은 실행 전에 정한다 (#20·#18).
 
 ## 진입·종료 기준
 
