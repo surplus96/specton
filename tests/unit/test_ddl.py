@@ -129,7 +129,7 @@ def _statements(sql: str) -> list[Any]:
 def test_tables_then_foreign_keys_in_fixed_shape() -> None:
     assert _sql() == (
         "-- postgresql 18 / pack inventory 0.1.8 / rules normalize-v0 / lexicon abc123"
-        f" / generator {DDL_GENERATOR_VERSION} / validation unverified\n"
+        f" / generator {DDL_GENERATOR_VERSION}\n"
         "\n"
         'CREATE TABLE "wrhus" (\n'
         '  "wrhus_cd" varchar(10) NOT NULL,\n'
@@ -629,3 +629,9 @@ def test_type_parameter_at_postgres_upper_bound_passes(
     sql = _sql(_model([table]))
     assert f'  "val" {expected},\n' in sql
     assert [type(s) for s in _statements(sql)] == [CreateStmt]
+
+
+def test_header_does_not_claim_a_validation_state() -> None:
+    """파일은 검증 전에 해시가 정해져 검증 뒤에 고칠 수 없다. 상태는 API·승인 기록에 둔다."""
+    assert "validation" not in _sql().splitlines()[0]
+    assert DDL_GENERATOR_VERSION == "ddl-v1"
