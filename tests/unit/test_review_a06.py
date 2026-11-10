@@ -6,6 +6,7 @@
 """
 
 import json
+from pathlib import Path
 
 from specton.config import Settings
 from specton.contracts import DesignState, Entity, FindingDraft, Function, Requirement
@@ -128,9 +129,9 @@ def _settings() -> Settings:
 # 관점 설정
 
 
-def test_a06_reads_requirements_functions_and_entities() -> None:
-    assert set(A06.inputs) == {"requirements", "functions", "entities"}
-    assert A06.prompt_version == "a06-v2"
+def test_a06_reads_requirements_functions_entities_and_relationships() -> None:
+    assert set(A06.inputs) == {"requirements", "functions", "entities", "relationships"}
+    assert A06.prompt_version == "a06-v4"
 
 
 def test_a06_is_loaded_with_the_other_perspectives() -> None:
@@ -235,3 +236,17 @@ def test_a06_finding_without_evidence_is_rejected() -> None:
     run = review_perspective(client, A06, _missing_state(), _settings())
 
     assert (run.results[0].ok, run.results[0].error_code) == (False, "LLM_OUTPUT_INVALID")
+
+
+def test_a06_sees_existing_relationship_without_requiring_an_explicit_fk_attribute() -> None:
+    cases = json.loads(
+        (Path(__file__).parent / "data/review_comparison_synthetic.json").read_text()
+    )
+    state = DesignState.model_validate(cases["cases"][0]["design"])
+    client, transport = stub_client(reply(ReviewOutput(findings=())))
+    review_perspective(client, A06, state, _settings())
+    data = json.loads(unwrap_data(transport.sent[0].messages[-1].content))
+    assert data["relationships"][0]["id"] == "REL-01"
+    assert data["relationships"][0]["parent"] == "ENT-01"
+    assert data["relationships"][0]["child"] == "ENT-02"
+    assert [a["name"] for a in data["entities"][1]["attributes"]] == ["입고코드"]
