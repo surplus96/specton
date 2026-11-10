@@ -39,7 +39,7 @@ from specton.packs.examples import load_examples
 from specton.packs.loader import PgType, load_pack
 from specton.type_limits import type_limit_problems
 
-PROMPT_VERSION = "a03-v3"
+PROMPT_VERSION = "a03-v4"
 SYSTEM_PROMPT = """\
 너는 업무 시스템의 데이터 모델 설계자다.
 요구사항과 기능으로 저장할 엔티티·속성과 기능별 CRUD를 정한다.
@@ -56,6 +56,10 @@ SYSTEM_PROMPT = """\
 - 업무 키는 is_key=true이고 nullable=false다. 키가 아닌 값의 중복을 막아야 하면 is_unique=true다.
 - 필수 입력이라고 요구사항에 있는 속성만 nullable=false로 한다.
 - 값의 범위·형식 제약은 쓰지 않는다. 속성마다 req_ids를 적는다.
+- unique_keys에는 함께 중복을 막을 속성 name의 목록을 묶음별로 쓴다. 각 속성의 is_unique와
+  다르다. 대리키를 도입해도 기존 업무 조합의 유일성을 잃지 않는다.
+- 관계에서만 필요한 FK 속성을 만들지는 않는다. 다만 업무 키·유일성에 필요한 참조 값은
+  업무 속성으로 명시할 수 있다. FK 재사용 여부는 A04가 별도로 선언한다.
 
 기능별 CRUD(entity_ops):
 - function_id에는 입력 functions의 id를, entity_name에는 이 출력의 엔티티 name을 쓴다.
@@ -75,7 +79,7 @@ CRUD 면제(crud_exemptions):
 - 사전·명명 지원이 필요한 지적은 약어를 지어내거나 근거 없는 이름 교체로 통과시키지 않는다.
 - 이전 ID는 지적을 찾기 위한 자료다. 출력 형식은 최초 설계와 같으며 ID는 출력하지 않는다.
 
-출력하지 않는 것: 엔티티·속성 ID, FK(외래키) 속성, 관계, 값 범위 제약."""
+출력하지 않는 것: 엔티티·속성 ID, 관계 전용 FK 속성, 관계, 값 범위 제약."""
 
 
 class A03Output(EntityDesignDraft):
@@ -428,9 +432,15 @@ def _with_ids(drafts: Sequence[EntityDraft], pack: str) -> tuple[Entity, ...]:
     entities = tuple(
         Entity.model_validate(
             {
-                **d.model_dump(exclude={"attributes"}),
+                **d.model_dump(exclude={"attributes", "unique_keys"}),
                 "id": stable_id("ENT", pack, d.name),
                 "pack": pack,
+                "unique_keys": tuple(
+                    tuple(stable_id("ATTR", pack, d.name, name) for name in group)
+                    for group in d.unique_keys
+                )
+                if d.unique_keys
+                else None,
                 "attributes": [
                     {**a.model_dump(), "id": stable_id("ATTR", pack, d.name, a.name)}
                     for a in d.attributes

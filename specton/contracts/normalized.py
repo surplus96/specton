@@ -17,6 +17,8 @@ from specton.contracts.base import Contract, SqlType
 class ProblemCode(StrEnum):
     """정리를 막는 문제의 종류."""
 
+    INVALID_FK_BINDING = "invalid_fk_binding"  # 명시적 FK 재사용 선언이 키·타입·NULL과 맞지 않음
+
     INPUT_TRACE = "input_trace"  # 입력 추적 위반 (계약의 find_trace_issues)
     PACK_MISMATCH = "pack_mismatch"  # 엔티티의 팩이 정리에 쓰는 팩과 다름
     NO_PRIMARY_KEY = "no_primary_key"  # RULE-03 PK 없음 (D6)

@@ -21,7 +21,7 @@ from specton.llm.client import LLMClient
 from specton.nodes.common import NodeRun, assign_ids, build_request, with_design_rework
 from specton.packs.examples import load_examples
 
-PROMPT_VERSION = "a04-v3"
+PROMPT_VERSION = "a04-v4"
 SYSTEM_PROMPT = """\
 너는 데이터 모델 관계 설계자다. 주어진 엔티티 사이의 관계를 요구사항에 근거해 판단한다.
 - parent_name·child_name에는 입력 엔티티의 name을 그대로 쓴다.
@@ -31,6 +31,10 @@ SYSTEM_PROMPT = """\
 - optional: 자식이 부모 없이 존재할 수 있으면 true.
 - identifying: 자식이 부모 없이는 식별되지 않으면 true. 자기참조와 N:M에는 쓰지 않는다.
 - FK 속성이나 키 컬럼을 만들지 않는다.
+- fk_bindings는 부모의 키 속성과 같은 사실을 표현하는 자식의 기존 업무 속성에만 쓴다.
+  parent_attribute_name·child_attribute_name에 각각 입력 속성 name을 적는다. 이름·타입이
+  같다는 이유만으로 선언하지 않는다. 선언하지 않은 FK 칸은 정리 코드가 새로 만든다.
+  상속된 키나 다른 관계에서 만든 칸을 이름으로 추측해 바인딩하지 않는다.
 - req_ids에는 근거 요구사항 ID를 적는다.
 - rationale은 req_ids 요구사항 문장에서 근거 부분을 큰따옴표로 그대로 인용하고,
   판단 설명을 한 문장 덧붙인다.
@@ -86,14 +90,26 @@ def run(
         examples=load_examples(pack, "A04", A04Output, root=settings.pack_root),
     )
     entity_ids = {e.name: e.id for e in state.entities}
-    output_model = _checked_against(entity_ids.keys(), {r.id: r.text for r in state.requirements})
+    attributes = {e.name: {a.name: a.id for a in e.attributes} for e in state.entities}
+    output_model = _checked_against(
+        entity_ids.keys(), {r.id: r.text for r in state.requirements}, attributes=attributes
+    )
     result = client.complete(request, output_model, token_budget=token_budget)
     drafts = result.output.relationships
     ids = assign_ids("REL", len(drafts))
     relationships = tuple(
         Relationship.model_validate(
             {
-                **d.model_dump(exclude={"parent_name", "child_name"}),
+                **d.model_dump(exclude={"parent_name", "child_name", "fk_bindings"}),
+                "fk_bindings": tuple(
+                    {
+                        "parent_attribute_id": attributes[d.parent_name][b.parent_attribute_name],
+                        "child_attribute_id": attributes[d.child_name][b.child_attribute_name],
+                    }
+                    for b in d.fk_bindings
+                )
+                if d.fk_bindings
+                else None,
                 "id": i,
                 "parent": entity_ids[d.parent_name],
                 "child": entity_ids[d.child_name],
@@ -111,14 +127,26 @@ def input_data(state: DesignState) -> dict[str, Any]:
     """
     return {
         "entities": [
-            e.model_dump(
-                mode="json",
-                include={
-                    "name": True,
-                    "description": True,
-                    "attributes": {"__all__": {"name", "data_type", "is_key", "nullable"}},
-                },
-            )
+            {
+                **e.model_dump(
+                    mode="json",
+                    include={
+                        "name": True,
+                        "description": True,
+                        "attributes": {"__all__": {"name", "data_type", "is_key", "nullable"}},
+                    },
+                ),
+                **(
+                    {
+                        "unique_keys": [
+                            [next(a.name for a in e.attributes if a.id == attr) for attr in group]
+                            for group in e.unique_keys
+                        ]
+                    }
+                    if e.unique_keys
+                    else {}
+                ),
+            }
             for e in state.entities
         ],
         "requirements": [
@@ -127,7 +155,12 @@ def input_data(state: DesignState) -> dict[str, Any]:
     }
 
 
-def _checked_against(entity_names: Collection[str], texts: Mapping[str, str]) -> type[A04Output]:
+def _checked_against(
+    entity_names: Collection[str],
+    texts: Mapping[str, str],
+    *,
+    attributes: Mapping[str, Mapping[str, str]] | None = None,
+) -> type[A04Output]:
     """이번 입력으로 검사하는 출력 모델. 어기면 형식 오류처럼 재요청 대상이 된다.
 
     - parent_name·child_name은 입력에 있는 엔티티 이름만 허용한다.
@@ -143,6 +176,15 @@ def _checked_against(entity_names: Collection[str], texts: Mapping[str, str]) ->
             unknown_names = sorted(names - set(entity_names))
             if unknown_names:
                 raise ValueError(f"입력에 없는 엔티티를 참조했습니다: {', '.join(unknown_names)}")
+            for relation in self.relationships:
+                for binding in relation.fk_bindings or ():
+                    if attributes is None or (
+                        binding.parent_attribute_name not in attributes[relation.parent_name]
+                        or binding.child_attribute_name not in attributes[relation.child_name]
+                    ):
+                        raise ValueError(
+                            f"FK 재사용은 부모·자식의 기존 속성만 참조합니다: {binding}"
+                        )
             referenced = {req_id for r in self.relationships for req_id in r.req_ids}
             unknown_reqs = sorted(referenced - normalized.keys())
             if unknown_reqs:

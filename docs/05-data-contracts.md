@@ -17,6 +17,7 @@
 
 | PR | 내용 |
 |---|---|
+| #290 | EntityDraft.unique_keys(속성 이름 묶음) → Entity.unique_keys(속성 ID 묶음), RelationshipDraft.fk_bindings(속성 이름 쌍) → Relationship.fk_bindings(속성 ID 쌍). 없거나 빈 선언은 이전 모델 해시에서 제외. 명시적 직접 PK 재사용만 허용하며 invalid_fk_binding은 RULE-04·설계 재작업 |
 | #252 | 정리 결과에 선택적 common_version·policy_digest. 새 실행의 팩·표준 정책 근거를 보존하며, 두 값이 없는 옛 스냅샷의 모델 해시에는 null 키를 추가하지 않음 |
 | #73 | `critical` 심각도는 규칙 지적만 (ADR-0010) |
 | #87 | 표준 준수 검사 규칙 코드 `SC-01~06` |
@@ -57,8 +58,8 @@
 | SourceRequirement | `document_id`, `block_id`, `source_id`, `source_ref`, `source_text`, `source_acceptance_level`, `source_related_requirements`, `source_extra`, `extraction_status`, `notice`, `user_decision`, `excluded_reason` | 문장은 고치지 않는다(ADR-0015). `source_text`는 원문 문장이 없는 행이면 null이고 이때 판정은 `review`. `extraction_status`는 기본값 없음. `review`·`fail`이면 판정 이유 `notice`가 필수다(화면에 확인 이유를 보여 준다). `user_decision`(`confirmed`·`excluded`)은 추출 확인 결정이며 `pass` 블록에는 두지 않고 `fail` 블록은 확인할 수 없다. 제외 사유는 `review`면 필수이고, 있으면 빈 문자열이 아니다. 노드는 제외했거나 원문이 없거나 `fail`인 블록을 분석하지 않는다(`analysable`) |
 | Requirement | `id`, `source_id`, `source_ref`, `parent_id`, `text`, `draft_text`, `source_text`, `source_acceptance_level`, `type`, `nfr_category`, `quality_issues`, `analysis_version` | — |
 | Function | `id`, `name`, `description`, `priority`, `req_ids`, `entity_ops` | `priority` nullable + 근거·확인 상태 (ADR-0006). A03 전까지 `entity_ops` 비움 |
-| Entity / Attribute | `pack`, `name`, `description`, `attributes`, `req_ids`, `crud_exemptions` / 타입·길이·정밀도·키·NULL·제약 | 허용 타입 고정, 안정적 내부 참조 키. FK는 관계에서 파생 |
-| Relationship | `id`, `parent`, `child`, `cardinality`, `optional`, `identifying`, `rationale`, `req_ids` | 참조 키 선택·복합 키 표현 |
+| Entity / Attribute | `pack`, `name`, `description`, `attributes`, `req_ids`, `crud_exemptions`, `unique_keys?` / 타입·길이·정밀도·키·NULL·제약 | Entity.unique_keys는 함께 중복을 막는 기존 속성 ID 묶음 목록. 단일 속성 is_unique와 다름. SQL UNIQUE의 NULL 의미 유지 |
+| Relationship | `id`, `parent`, `child`, `cardinality`, `optional`, `identifying`, `rationale`, `req_ids`, `fk_bindings?` | 명시적 parent_attribute_id·child_attribute_id 쌍으로 기존 업무 속성을 FK에 재사용. 미선언 시 파생, 이름·타입만으로 재사용하지 않음 |
 | Finding | `id`, `severity`, `kind`, `source`, `targets`, `evidence`, `suggestion`, `target_stage`, `fingerprint`, `iteration` | `reviewer_id`, 근거 위치, 필터 결과 |
 | NormalizedModel | `pack`, `pack_version`, `rules_version`, `lexicon_digest`, `common_version?`, `policy_digest?`, `tables`(`Table`: 컬럼·PK·UNIQUE), `foreign_keys`(`ForeignKey`) | 모델 정리(#12) 성공 결과(`specton/contracts/normalized.py`). PK·FK·UNIQUE는 컬럼 ID 묶음(순서 있음). 실패는 `NormalizeFailed`(`problems`)로 따로 돌려주며 상태에 두지 않는다. ID 기준은 ADR-0016 |
 | SqlValidation | `status`, `artifact_hash`, `validator_version`, `policy_version`, `postgres_version`, `steps`(`ValidationStep`: `name`·`status`·`issues`) | SQL 파일 하나의 검증 결과(`specton/contracts/validation.py`, #167). 단계는 `parse` → `allowed_statements` → `execute` → `rollback` → `cleanup`이 순서대로 한 번씩 있고, 실행하지 않은 단계는 `not_run`이다. 단계 상태 `failed`는 SQL 결함, `error`는 검증 환경·정리 장애이며(`rollback`·`cleanup`에는 `failed`가 없다) 둘 다 `issues`(`ValidationIssue`: `code`·`message`·`statement_index`·`sqlstate`)가 1건 이상이다. 전체 `status`는 `error` > `failed` > `unverified`(실패 없이 `not_run`이 있음) > `passed` 순으로 단계에서 정해지고 계약이 일치를 검사한다. 파싱·허용 문장 검사를 통과하지 않으면 `execute`는 `not_run`이다. `postgres_version`은 대상 DB이며 DDL 생성기의 `DDL_TARGET`과 같은 값(`postgresql-18`)이다. `message`에는 보여도 되는 문장만 넣는다. run·revision·`model_hash`·검증 시도 ID는 검증기가 모르며 실행기·저장 쪽이 붙인다. 최종 승인 근거는 `passed`뿐이다 |
