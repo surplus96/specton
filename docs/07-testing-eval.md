@@ -65,15 +65,19 @@ TC 37개(기능 `TC-F01`~`F22`, 비기능 `TC-N01`~`N06`, 에이전트 `TC-A01`~
 
 - 고정 설계 파일: 관점 하나에 YAML 하나. 사례마다 원문 ID와 그 문장에 대한 설계 한 벌을 둔다. 형식은 합성 예시 `tests/unit/data/review_eval_sample.yaml`.
   - `reviewer_id`(관점), `set`(평가 세트 이름·버전), `pack`(few-shot 예시를 넣을 팩), `cases`
-  - 사례: `case_id`, `source_id`(근거 원문), `case`(`normal` 정상 · `alt_normal` 같은 요구를 다르게 표현한 정상 · `defect` 결함), `requirements`(`id`·`text`·`type`·`nfr_category`), `functions`(선택), `entities`(`id`·`name`), `relationships`(관점 예시와 같은 칸), `expected`
+  - 사례: `case_id`, `source_id`(근거 원문), `case`(`normal` 정상 · `alt_normal` 같은 요구를 다르게 표현한 정상 · `defect` 결함), `requirements`(`id`·`text`·`type`·`nfr_category`), `functions`(선택), `entities`(`id`·`name`, 선택 `description`·`req_ids`·`attributes`), `relationships`(관점 예시와 같은 칸), `expected`
   - `expected`: `defect` 사례에만 `{target: 설계 요소 ID, defect: cardinality | direction | optional | identifying}`. 결함은 사례마다 하나씩 심는다.
   - 파일에 없는 계약 필수 칸(원문 위치·설명·키 속성·관계 근거)은 도구가 중립 값으로 채운다. `description`·`rationale`은 파일에 쓰면 그대로 쓴다.
-- 채점: 지적 대상(`targets`)에 기대 대상 ID가 있으면 맞춘 것이다. 지적 `kind`는 LLM이 정하는 글자라 채점하지 않고 보고서에만 남긴다.
+- 채점: 지적 대상(`targets`)의 종류·ID가 기대 대상과 같으면 맞춘 것이다. 지적 `kind`는 LLM이 정하는 글자라 채점하지 않고 보고서에만 남긴다.
   - 발견율 = 맞춘 기대 결함 / 기대 결함, 지적 정확도 = 기대 대상을 가리킨 지적 / 전체 지적, 정상 오탐 = `normal`·`alt_normal` 사례의 지적 수
   - 호출이 실패한 사례는 지적 0건으로 세지 않고 실패로 따로 센다. 지표 계산에서는 뺀다.
 - 실행: `uv run python -m specton.review.eval_fixtures <고정설계.yaml> --out <결과.json>` (`specton/review/eval_fixtures.py`). 사례마다 `review_perspective`로 그 관점만 실제 LLM으로 돌린다(`SPECTON_OPENAI_API_KEY` 필요). 결과 파일에는 사례별 지적·찾은/놓친 대상·지표·프롬프트 버전·모델·토큰이 들어간다.
 - 고정 설계 파일과 결과 파일은 평가 자료다. 공개 저장소에 두지 않는다 (위 「평가 데이터」).
-- 정리 결과(`normalized`)를 입력으로 받는 관점(A08)은 아직 고정 설계로 만들 수 없어 실행 전에 멈춘다. 고정 설계를 정리 코드에 통과시키는 방식은 A08 평가 방식이 정해지면 더한다.
+- **A08:** 모든 엔티티의 `attributes`를 명시한다. 각 속성은 저장 계약의 `id`·`name`·`data_type`·`req_ids`와 타입 크기·키 여부·NULL 허용 등을 사용한다. A05의 생략된 키 보충을 A08에 적용하지 않는다. `normalized`를 파일에 직접 쓰지 않는다.
+  - `Settings.pack_root`에서 승인된 도메인·공통 팩을 읽고 실제 내용이 `pack.lock`과 같은지 검사한 뒤, 버전을 상태에 기록하고 `normalize_design`으로 정리한다. 모든 사례를 LLM 호출 전에 준비한다. 한 사례라도 정리에 실패하면 사례 ID·문제 코드로 평가 자료 오류를 내며 미탐·정상으로 세지 않는다.
+  - A08의 `expected.target`은 원래 엔티티·속성·관계 ID다. `defect`는 `multi_value`·`repeating_group`·`duplicate_fact`·`transitive_dependency`·`partial_dependency`·`derived_value` 중 하나이며 채점은 A05와 같이 대상 ID 기준이다. 정리 테이블·컬럼 ID를 기대 대상으로 쓰지 않는다.
+  - 결과에 사례별 팩·공통 버전, 정책·사전 해시, 정리 규칙 버전과 모델 해시를 남긴다. 파일 전체의 파싱된 내용 해시(`fixture_content_hash`)와 사례별 호출 기록(모델·토큰·재요청·호출 소요시간)도 기록한다. 호출 소요시간 합계는 전체 벽시계 시간과 구분한다. 사례 전체에서 실행 토큰 예산을 공유하며 소진 뒤 후속 호출은 `BUDGET_EXCEEDED` 실패로 남긴다. 합성 형식 예시는 `tests/unit/test_eval_a08.py`다.
+  - 고정 팩에 없는 낱말 때문에 정리되지 않는 사례를 위해 사전을 자동 확장하지 않는다. 평가용 확장 사전의 별도 조건·버전·보고 정책은 #40에서 결정한 뒤 추가한다.
 
 ## 진입·종료 기준
 
