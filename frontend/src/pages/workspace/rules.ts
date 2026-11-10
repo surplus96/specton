@@ -89,7 +89,7 @@ export function isDownloadable(a: Pick<ArtifactRef, 'file_format' | 'approved'>)
 
 /** UI-07 표: 종류마다 형식별 상태. 승인 전 PDF는 목록에 있든 없든 「승인 후」로 구분한다. */
 export function downloadRows(artifacts: readonly ArtifactRef[], approved: boolean): DownloadRow[] {
-  return KIND_ORDER.map((kind) => ({
+  return KIND_ORDER.filter((kind) => kind !== 'review' || artifacts.some((a) => a.kind === 'review')).map((kind) => ({
     kind,
     files: ARTIFACT_FORMATS[kind].map((format) => {
       const artifact = artifacts.find((a) => a.kind === kind && a.file_format === format)
