@@ -128,6 +128,7 @@ def _merge_artifacts(
 
 
 class GraphState(TypedDict, total=False):
+    call_summaries: Annotated[dict[str, tuple[dict[str, Any], ...]], operator.or_]
     design: DesignState
     documents: tuple[DocumentRef, ...]  # 업로드 문서 (parse 노드 입력)
     notes: tuple[

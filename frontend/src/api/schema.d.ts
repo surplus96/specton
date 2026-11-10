@@ -244,6 +244,10 @@ export interface components {
             section: "extraction" | "requirements" | "design" | "review";
             items: Record<string, unknown>[];
             artifacts?: Record<string, unknown>[];
+            /** Normalization */
+            normalization?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * @description 오류 code 값 (ADR-0009). Error.code는 확장 가능성 때문에 문자열로 받는다. 실행 실패 원인 코드는 RunStatus.error에 담긴다.

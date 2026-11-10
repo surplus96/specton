@@ -171,6 +171,9 @@ def test_upload_to_download_with_the_scripted_llm(flow: _Flow) -> None:
     } <= set(drafts)
     assert not any(a["approved"] for a in drafts.values())
     assert drafts[("ddl", "sql")]["validation"]["status"] == "passed"  # 격리 DB에서 실제 실행
+    assert design["normalization"]["tables"] == len(ENTITIES)
+    assert design["normalization"]["columns"] >= len(ENTITIES)
+    assert design["normalization"]["common_version"] is not None
     findings = flow.view(run_id, "review")["items"]
     assert not [f for f in findings if f["severity"] == "critical"]  # 승인할 수 있다
 
@@ -208,6 +211,16 @@ def test_upload_to_download_with_the_scripted_llm(flow: _Flow) -> None:
     assert flow.transport.calls["A01"] == flow.transport.calls["A02"] == 1
     assert flow.transport.calls["A03"] == flow.transport.calls["A04"] == 1
     assert flow.transport.calls["A09"] == 0
+    stream = flow.client.get(f"/runs/{run_id}/events")
+    assert stream.status_code == 200
+    import json
+
+    data = [json.loads(line[6:]) for line in stream.text.splitlines() if line.startswith("data: ")]
+    progress = [e["payload"] for e in data if e.get("payload", {}).get("node")]
+    assert len({(p["task_id"], p["phase"]) for p in progress}) == len(progress)
+    a01 = next(p for p in progress if p["node"] == "a01" and p["phase"] == "finished")
+    assert a01["result_saved"] is True and a01["calls"][0]["model"]
+    assert not any(key in str(a01) for key in ("messages", "api_key", "storage_ref"))
 
 
 def test_revise_goes_back_to_the_data_model_and_approves_the_new_revision(flow: _Flow) -> None:

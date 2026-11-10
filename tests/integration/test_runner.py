@@ -126,7 +126,11 @@ class _World:
     def status_stages(self, run_id: UUID) -> list[str | None]:
         with self.pool.connection() as conn:
             events = events_after(conn, run_id, OWNER, 0)
-        return [e.data.stage for e in events if e.event is SseEventType.STATUS]
+        return [
+            e.data.stage
+            for e in events
+            if e.event is SseEventType.STATUS and not e.data.payload.get("node")
+        ]
 
     def lease_is_live(self, run_id: UUID) -> bool:
         with self.pool.connection() as conn:
@@ -163,6 +167,69 @@ def test_queued_run_stops_at_requirements_check_and_releases_lease(
     assert status.interrupt is not None and status.interrupt.kind == "requirements"
     assert not w.lease_is_live(run_id)
     assert w.events(run_id)[-1] is SseEventType.INTERRUPT
+
+
+def test_node_progress_is_safe_and_call_metadata_survives_restart(
+    world: Callable[..., _World],
+) -> None:
+    from langgraph.config import get_stream_writer
+
+    from specton.agent_nodes import _used
+    from specton.llm.types import CallRecord
+
+    def analyse(state: GraphState) -> Mapping[str, Any]:
+        # 그래프 입력이나 임의 custom 메시지는 공개 이벤트로 복사하지 않는다.
+        get_stream_writer()({"private": "not-public"})
+        _used(
+            state["design"].run_id,
+            [
+                CallRecord(
+                    stage="A01",
+                    prompt_version="test",
+                    model="scripted",
+                    attempt=2,
+                    outcome="ok",
+                    input_tokens=12,
+                    output_tokens=4,
+                    duration_ms=3,
+                )
+            ],
+        )
+        return _with_requirement(state)
+
+    w = world({"a01": analyse})
+    run_id = w.create()
+    w.runner.run_pending()
+    with w.pool.connection() as conn:
+        events = events_after(conn, run_id, OWNER, 0)
+    progress = [e.data.payload for e in events if e.data.payload.get("node") == "a01"]
+    assert [p["phase"] for p in progress] == ["started", "finished"]
+    finished = progress[-1]
+    assert finished["duration_ms"] >= 0 and finished["result_saved"] is True
+    assert finished["calls"][0]["input_tokens"] == 12
+    assert finished["calls"][0]["attempt"] == 2
+    assert "not-public" not in str(events)
+    restarted = world()
+    restarted.runner.run_pending()
+    with w.pool.connection() as conn:
+        assert events_after(conn, run_id, OWNER, 0) == events
+
+
+def test_node_event_idempotence_does_not_change_the_saved_checkpoint(pool: Pool) -> None:
+    from specton.persistence.runs import NewEvent, record_node_event
+
+    with pool.connection() as conn:
+        run_id = create_run(conn, OWNER, "inventory").run_id
+        assert lease.acquire(conn, run_id, "node-event-test", 60)
+        event = NewEvent(
+            SseEventType.STATUS,
+            "a03 시작",
+            payload={"task_id": "task-1", "node": "a03", "phase": "started"},
+        )
+        record_node_event(conn, run_id, "node-event-test", 0, event)
+        record_node_event(conn, run_id, "node-event-test", 0, event)
+        assert len(events_after(conn, run_id, OWNER, 0)) == 1
+        assert lease.check_holder(conn, run_id, "node-event-test") is None
 
 
 def test_a_new_run_starts_with_its_pack_in_the_design(world: Callable[..., _World]) -> None:
@@ -456,7 +523,11 @@ def test_skipped_requirements_check_is_announced_for_the_progress_screen(
 
     with w.pool.connection() as conn:
         events = events_after(conn, run_id, OWNER, 0)
-    statuses = [(e.data.stage, e.data.message) for e in events if e.event is SseEventType.STATUS]
+    statuses = [
+        (e.data.stage, e.data.message)
+        for e in events
+        if e.event is SseEventType.STATUS and not e.data.payload.get("node")
+    ]
     stages = [stage for stage, _ in statuses]
     assert "awaiting_requirements" not in stages
     assert stages[stages.index("analysing") + 1] == "designing"
@@ -693,6 +764,15 @@ def test_cancel_requested_during_a_node_ends_at_the_node_boundary(
     assert w.status(run_id).status is RunState.CANCELLED
     assert "analysing" not in w.status_stages(run_id)  # 취소된 노드 결과는 저장하지 않는다
     assert w.events(run_id)[-1] is SseEventType.CANCELLED
+    with w.pool.connection() as conn:
+        events = events_after(conn, run_id, OWNER, 0)
+    ended = [
+        e.data.payload
+        for e in events
+        if e.data.payload.get("node") == "a01" and e.data.payload.get("phase") == "finished"
+    ]
+    assert ended and ended[-1]["outcome"] == "cancelled"
+    assert ended[-1]["result_saved"] is False
     assert not w.lease_is_live(run_id)
 
 

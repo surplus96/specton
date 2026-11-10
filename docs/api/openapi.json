@@ -1007,6 +1007,18 @@
             "items": {
               "type": "object"
             }
+          },
+          "normalization": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalization"
           }
         },
         "required": [
