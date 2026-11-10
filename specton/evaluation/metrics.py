@@ -4,7 +4,7 @@ from collections import Counter
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from specton.evaluation.models import Classification, Matching
+from specton.evaluation.models import Classification, Detection, Matching, WarningPolicy
 
 
 @dataclass
@@ -28,7 +28,10 @@ class Counts:
 def matching_counts(items: Matching) -> Counts:
     gold = {i for m in items.matches for i in m.gold}
     predicted = {i for m in items.matches for i in m.predicted}
-    return Counts(len(items.matches), len(items.predicted - predicted), len(items.gold - gold))
+    permitted = items.permitted.predicted if isinstance(items, Detection) else frozenset()
+    return Counts(
+        len(items.matches), len(items.predicted - predicted - permitted), len(items.gold - gold)
+    )
 
 
 def classification(items: Classification) -> dict[str, Any]:
@@ -58,30 +61,60 @@ def classification(items: Classification) -> dict[str, Any]:
     }
 
 
+def warning_counts(policy: WarningPolicy, actual: frozenset[str]) -> tuple[Counts, int]:
+    alternatives = {kind for group in policy.required_warning_groups for kind in group}
+    return Counts(
+        len(policy.required_warnings & actual)
+        + sum(bool(group & actual) for group in policy.required_warning_groups),
+        len(actual - policy.required_warnings - policy.allowed_warnings - alternatives),
+        len(policy.required_warnings - actual)
+        + sum(not group & actual for group in policy.required_warning_groups),
+    ), len(actual & policy.allowed_warnings)
+
+
 def warnings(items: Classification) -> dict[str, Any]:
     gold = {i.id: i for i in items.gold}
     predicted = {i.id: i for i in items.predicted}
-    counts = Counts()
-    permitted = 0
+    results = []
     for alignment in items.alignments:
         expected, actual = gold.pop(alignment.gold), predicted.pop(alignment.predicted)
-        counts.tp += len(expected.required_warnings & actual.warnings)
-        counts.fn += len(expected.required_warnings - actual.warnings)
-        counts.fp += len(actual.warnings - expected.required_warnings - expected.allowed_warnings)
-        permitted += len(actual.warnings & expected.allowed_warnings)
-    counts.fn += sum(len(i.required_warnings) for i in gold.values())
-    counts.fp += sum(len(i.warnings) for i in predicted.values())
-    return {**counts.report(), "permitted": permitted}
+        if expected.source_id not in items.source_warnings:
+            results.append(warning_counts(expected, actual.warnings))
+    results.extend(
+        warning_counts(i, frozenset())
+        for i in gold.values()
+        if i.source_id not in items.source_warnings
+    )
+    results.extend(
+        (Counts(fp=len(i.warnings)), 0)
+        for i in predicted.values()
+        if i.source_id not in items.source_warnings
+    )
+    for source, policy in items.source_warnings.items():
+        actual_warnings = frozenset(
+            kind for i in items.predicted if i.source_id == source for kind in i.warnings
+        )
+        results.append(warning_counts(policy, actual_warnings))
+    counts = Counts(*(sum(asdict(c)[k] for c, _ in results) for k in ("tp", "fp", "fn")))
+    return {
+        **counts.report(),
+        "permitted": sum(n for _, n in results),
+        "source_policies": len(items.source_warnings),
+    }
 
 
 def splits(items: Classification) -> dict[str, Any]:
     expected = Counter(i.source_id for i in items.gold)
     actual = Counter(i.source_id for i in items.predicted)
     sources = sorted(expected.keys() | actual.keys())
-    correct = sum(expected[s] == actual[s] for s in sources)
+    allowed = {s: items.allowed_split_counts.get(s, frozenset({expected[s]})) for s in sources}
+    correct = sum(actual[s] in allowed[s] for s in sources)
     return {
         "correct": correct,
         "total": len(sources),
         "accuracy": correct / len(sources) if sources else None,
-        "counts": {s: {"expected": expected[s], "actual": actual[s]} for s in sources},
+        "counts": {
+            s: {"expected": expected[s], "allowed": sorted(allowed[s]), "actual": actual[s]}
+            for s in sources
+        },
     }
