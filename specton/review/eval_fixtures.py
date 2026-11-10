@@ -86,6 +86,12 @@ class FixtureRequirement(Contract):
     type: RequirementType
     nfr_category: NfrCategory | None = None
 
+    @model_validator(mode="after")
+    def _check_category(self) -> Self:
+        if (self.type is RequirementType.NFR) != (self.nfr_category is not None):
+            raise ValueError("NFR에는 nfr_category가 필요하고 FR에는 두지 않습니다")
+        return self
+
 
 class FixtureFunction(Contract):
     id: ObjectId
