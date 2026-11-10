@@ -118,6 +118,7 @@ class _AbbreviationRule(_Strict):
 
 
 class _TermRule(_Strict):
+    word_aliases: Literal["disabled", "official_unambiguous"] = "disabled"
     classifier_last: bool
     # 기본값을 두지 않는다: 미정값은 키를 생략하지 못하고 null을 적어야 한다
     max_words: Literal["unlimited"] | None

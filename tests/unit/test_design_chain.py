@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from specton.codegen.model import Normalized, NormalizeFailed, ProblemCode
+from specton.codegen.model import Normalized
 from specton.codegen.naming import (
     DEFAULT_PACK_ROOT,
     PackLexicon,
@@ -353,27 +353,15 @@ def test_review_does_not_change_the_design_state() -> None:
 # 팩을 넣으므로(#121) 같은 값만 더한다. 중간 결과(엔티티·관계)는 바꾸지 않는다.
 
 PACK_VERSION = str(read_yaml(DEFAULT_PACK_ROOT / PACK / "manifest.yaml")["version"])
-# 실제 maintenance 팩 사전으로 영어 이름을 만들지 못하는 이름 (아래 첫 테스트가 고정한다)
-UNREGISTERED_NAMES = ["변경전값", "변경후값"]
 
 
 def _with_pack(state: DesignState) -> DesignState:
     return state.evolve(versions=VersionInfo(pack_id=PACK, pack_version=PACK_VERSION))
 
 
-# 실제 팩에 없는 단어의 테스트용 약어. 실제 사전 단어를 덮어쓰지 않는다.
-_TEST_WORDS = {"전": "BFR", "후": "AFT"}
-
-
 def _test_lexicon() -> PackLexicon:
-    real = load_pack_lexicon(PACK)
-    assert not set(_TEST_WORDS) & set(real.tokens)  # 실제 사전 단어를 덮어쓰지 않는다
-    return PackLexicon(
-        terms=real.terms,
-        tokens={**real.tokens, **_TEST_WORDS},
-        separator=real.separator,
-        digest=f"{real.digest}+test",
-    )
+    """고정 공식 단어와 이음동의어를 포함한 실제 팩 사전."""
+    return load_pack_lexicon(PACK)
 
 
 def _reviewable_state() -> DesignState:
@@ -386,28 +374,20 @@ def _reviewable_state() -> DesignState:
     return state.evolve(normalized=result.model)
 
 
-def test_normalize_takes_the_chain_result_and_stops_only_on_unregistered_words() -> None:
-    """실제 팩으로는 연결 자체는 되지만, 사전에 없는 단어 때문에 결정 대기(D5)로 멈춘다."""
+def test_normalize_takes_the_chain_result_with_official_aliases() -> None:
+    """실제 공식 이음동의어로 기존 설계가 입력 변형 없이 정리된다."""
     state = _with_pack(_run_design().state)
     before = state.model_dump(mode="json")
 
     result = normalize_from_state({"design": state})
 
-    assert isinstance(result, NormalizeFailed)
-    # 입력 추적·키·관계 문제는 없고, 이름을 만들지 못한 문제만 남는다
-    assert {(p.code, p.decision, p.pending) for p in result.problems} == {
-        (ProblemCode.UNRESOLVED_NAME, "D5", True)
-    }
-    assert sorted(p.detail.split(":")[0] for p in result.problems) == UNREGISTERED_NAMES
+    assert isinstance(result, Normalized)
     # 요구사항·기능(CRUD 포함)·엔티티·관계를 바꾸지 않는다
     assert state.model_dump(mode="json") == before
 
 
-def test_normalize_derives_keys_from_the_chain_result_when_words_are_supplied() -> None:
-    """사전 단어만 보탰을 때 실제 반환값에서 테이블·PK·FK가 어떻게 나오는지 본다.
-
-    보탠 약어는 실제 팩에 없는 테스트용 값이다. 엔티티·관계 등 앞 단계 결과는 그대로 쓴다.
-    """
+def test_normalize_derives_keys_from_the_chain_result_with_the_real_pack() -> None:
+    """실제 팩 사전으로 테이블·PK·FK를 만들며 앞 단계 결과는 보존한다."""
     lexicon = _test_lexicon()
     state = _with_pack(_run_design().state)
     before = state.model_dump(mode="json")

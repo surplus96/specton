@@ -11,6 +11,7 @@ abbreviation:
 # 확정(#11, ADR-0009): 아래 값은 정리 코드와 같은 선택값을 사용한다.
 #   값 이름을 바꾸면 specton/codegen/naming.py _KNOWN_NAMING_VALUES와 specton/packs/loader.py를 함께 고친다.
 term:
+  word_aliases: official_unambiguous # project: 공식 단어의 비모호 이음동의어만 약어 조합에 허용
   classifier_last: true          # observed: 분류어(is_classifier)가 용어의 마지막 단어
   max_words: unlimited           # project (R1 확정 #11, 2026-11-05): 제한 없음
   official_term_immutable: true  # official(고시 제13조④): 공식 용어의 영문약어는 바꾸지 않는다

@@ -41,6 +41,7 @@ _KNOWN_NAMING_VALUES: dict[tuple[str, str], frozenset[str]] = {
     ("column", "foreign_key"): frozenset({"parent_key_physical_name"}),  # 부모 키 물리명 그대로
     ("column", "repeated_foreign_key"): frozenset({"manual", "relationship_id"}),
     ("term", "max_words"): frozenset({"unlimited"}),  # 용어당 단어 수 제한 없음
+    ("term", "word_aliases"): frozenset({"disabled", "official_unambiguous"}),
 }
 # #11에서 새로 더한 키. 팩 파일에 아직 없을 수 있어 키가 없어도 미정으로 본다 (_naming_value).
 _NEW_NAMING_KEYS = frozenset(
@@ -48,6 +49,7 @@ _NEW_NAMING_KEYS = frozenset(
         ("table", "junction_name"),
         ("column", "self_reference_prefix"),
         ("column", "repeated_foreign_key"),
+        ("term", "word_aliases"),
     }
 )
 
@@ -305,6 +307,11 @@ def load_pack_lexicon(pack: str, root: Path = DEFAULT_PACK_ROOT) -> PackLexicon:
         words = ((w["word"], w["abbreviation"]) for w in source.get("words") or [])
         tokens.update(_by_nfc_name(words, where))
     tokens.update({name: info.physical_name for name, info in terms.items()})
+    aliases = _naming_value(naming, "term", "word_aliases")
+    if aliases not in (None, "disabled", "official_unambiguous"):
+        raise ValueError(f"지원하지 않는 term.word_aliases: {aliases!r}")
+    if aliases == "official_unambiguous":
+        tokens.update(_official_aliases(common_words.get("words") or [], tokens))
     digest = hashlib.sha256()
     for f in files:
         digest.update(f.relative_to(root).as_posix().encode("utf-8") + b"\0")
@@ -315,6 +322,33 @@ def load_pack_lexicon(pack: str, root: Path = DEFAULT_PACK_ROOT) -> PackLexicon:
         separator=naming["physical_name"]["word_separator"],
         digest=digest.hexdigest(),
     )
+
+
+def _official_aliases(
+    words: Iterable[Mapping[str, Any]], tokens: Mapping[str, str]
+) -> dict[str, str]:
+    """공식 이음동의어만 사용한다. 기존 이름·금칙어·둘 이상의 표준어로 이어지는 이름은 제외한다.
+
+    원래 논리명은 유지하며 SC-04의 이음동의어 진단도 유지한다. 팩의 자유 동의어를 수집하거나
+    전이적으로 치환하지 않으며, 약어는 해당 공식 표준어의 값만 사용한다.
+    """
+    candidates: dict[str, dict[str, str]] = {}
+    forbidden: set[str] = set()
+    for word in words:
+        forbidden.update(_nfc(s) for s in word.get("forbidden_synonyms") or [])
+        for alias in word.get("synonyms") or []:
+            candidates.setdefault(_nfc(alias), {})[_nfc(word["word"])] = word["abbreviation"]
+    return {
+        alias: next(iter(targets.values()))
+        for alias, targets in candidates.items()
+        if alias
+        and alias not in tokens
+        and alias not in forbidden
+        and len(targets) == 1
+        and all(
+            tokens.get(name, abbreviation) == abbreviation for name, abbreviation in targets.items()
+        )
+    }
 
 
 def _term_info(term: Mapping[str, Any], domain: Mapping[str, Any], profile: str) -> TermInfo:

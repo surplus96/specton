@@ -8,8 +8,7 @@
 
 - 팩: 실행기처럼 첫 상태 `versions`에 팩 ID·버전을 넣는다(#121 `runs.load_versions`).
   버전은 API가 run을 만들 때처럼 팩 manifest에서 읽는다.
-- 앞 단계 결과(엔티티·관계)는 바꾸지 않는다. 실제 팩으로 멈추는 경우와, 테스트용 단어를 보태
-  성공하는 경우를 나눈다.
+- 앞 단계 결과(엔티티·관계)는 바꾸지 않고, 실제 팩의 공식 이음동의어로 정리한다.
 """
 
 import json
@@ -21,10 +20,9 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
 from specton.agent_nodes import design_nodes
-from specton.codegen.model import Normalized, NormalizeFailed, NormalizeResult, ProblemCode
+from specton.codegen.model import Normalized, NormalizeFailed, NormalizeResult
 from specton.codegen.naming import (
     DEFAULT_PACK_ROOT,
-    PackLexicon,
     load_naming_rules,
     load_pack_lexicon,
 )
@@ -180,10 +178,9 @@ def test_skip_path_brings_the_a04_design_and_the_run_pack_to_normalize() -> None
     (arrived,) = probe.arrived
     assert (arrived.versions.pack_id, arrived.versions.pack_version) == (PACK, PACK_VERSION)
     assert arrived.entities and len(arrived.relationships) == 3
-    # 실제 팩으로는 사전에 없는 이름 때문에 결정 대기로 멈춘다 (구조 문제는 없음)
+    # 공식 이음동의어 정책으로 실제 팩에서 정리된다.
     (result,) = probe.results
-    assert isinstance(result, NormalizeFailed)
-    assert {(p.code, p.pending) for p in result.problems} == {(ProblemCode.UNRESOLVED_NAME, True)}
+    assert isinstance(result, Normalized)
     # 정리는 설계 상태를 바꾸지 않고, 정리 결과는 그래프 상태 어디에도 남지 않는다 (미연결)
     assert _same_design(final["design"], arrived)
     assert not any(isinstance(v, (Normalized, NormalizeFailed)) for v in final.values())
@@ -236,28 +233,16 @@ def test_requirements_check_answers_reach_normalize(action: str) -> None:
     assert _a02_requirement_ids(sent) == list(expected)
     assert arrived.entities == skipped.arrived[0].entities
     assert arrived.relationships == skipped.arrived[0].relationships
-    # 정리 입력 검사(추적)에서 막히지 않고, 실제 팩에서는 이름 문제로만 멈춘다
+    # 사용자 답 반영 후에도 추적·키·관계와 공식 이음동의어 명명이 유효하다.
     (result,) = checked.results
-    assert isinstance(result, NormalizeFailed)
-    assert {p.code for p in result.problems} == {ProblemCode.UNRESOLVED_NAME}
+    assert isinstance(result, Normalized)
 
 
-def test_graph_input_normalizes_when_only_test_words_are_added() -> None:
-    """그래프로 도착한 설계를 그대로 두고, 사전 단어만 테스트용으로 보태면 FK가 만들어진다.
+def test_graph_input_normalizes_with_the_real_official_alias_dictionary() -> None:
+    """그래프가 보낸 설계를 실제 팩으로 정리해 FK와 원래 근거를 보존한다."""
+    lexicon = load_pack_lexicon(PACK)
 
-    보탠 약어는 실제 팩에 없는 값이다. 실제 팩으로 연결이 성공했다는 뜻이 아니다.
-    """
-    real = load_pack_lexicon(PACK)
-    test_only = {"전": "BFR", "후": "AFT"}
-    assert not set(test_only) & set(real.tokens)
-    lexicon = PackLexicon(
-        terms=real.terms,
-        tokens={**real.tokens, **test_only},
-        separator=real.separator,
-        digest=f"{real.digest}+test",
-    )
-
-    def with_test_words(state: Mapping[str, Any]) -> NormalizeResult:
+    def with_real_pack(state: Mapping[str, Any]) -> NormalizeResult:
         design: DesignState = state["design"]
         version = design.versions.pack_version
         assert version is not None
@@ -265,7 +250,7 @@ def test_graph_input_normalizes_when_only_test_words_are_added() -> None:
             design, pack=PackRef(PACK, version), lexicon=lexicon, rules=load_naming_rules()
         )
 
-    probe = _Probe(with_test_words)
+    probe = _Probe(with_real_pack)
     _run_graph(probe, with_issue=False)
 
     (arrived,) = probe.arrived
