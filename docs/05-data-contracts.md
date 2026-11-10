@@ -17,7 +17,7 @@
 
 | PR | 내용 |
 |---|---|
-| #290 | EntityDraft.unique_keys(속성 이름 묶음) → Entity.unique_keys(속성 ID 묶음), RelationshipDraft.fk_bindings(속성 이름 쌍) → Relationship.fk_bindings(속성 ID 쌍). 없거나 빈 선언은 이전 모델 해시에서 제외. 명시적 직접 PK 재사용만 허용하며 invalid_fk_binding은 RULE-04·설계 재작업 |
+| #292 (#290) | EntityDraft.unique_keys(속성 이름 묶음) → Entity.unique_keys(속성 ID 묶음), RelationshipDraft.fk_bindings(속성 이름 쌍) → Relationship.fk_bindings(속성 ID 쌍). 없거나 빈 선언은 이전 모델 해시에서 제외. 명시적 직접 PK 재사용만 허용하며 invalid_fk_binding은 RULE-04·설계 재작업 |
 | #252 | 정리 결과에 선택적 common_version·policy_digest. 새 실행의 팩·표준 정책 근거를 보존하며, 두 값이 없는 옛 스냅샷의 모델 해시에는 null 키를 추가하지 않음 |
 | #73 | `critical` 심각도는 규칙 지적만 (ADR-0010) |
 | #87 | 표준 준수 검사 규칙 코드 `SC-01~06` |

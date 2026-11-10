@@ -105,3 +105,10 @@ python -m pytest -q -m 'not llm' tests/integration/test_runner.py tests/integrat
 - RTM의 네 행 상태는 유지한다. NFR 미연결과 HITL 대기 때문에 행을 보류로 바꾸지 않으며 CSV·Excel 바이트가 실행 대기 상태만으로 달라지지 않는 것을 `test_nfr_and_final_review_wait_do_not_create_a_deferred_rtm_row`로 확인한다. 행별 보류 계약은 이번 필수 범위에 추가하지 않는다.
 - 전체 기본 회귀: 1,859 passed·6 skipped·DB 330개 별도. 실제 API/실행기·기본 흐름·오류 상세 관련 DB 회귀 39개 통과(스킵 0). 실제 LLM·평가 자료는 사용하지 않았다.
 - 린트·포맷·타입 검사 및 배포 compose의 사용자 지정 상한 전달 확인. compose 검증은 설정 해석만 수행하며 배포·컨테이너 기동은 하지 않았다.
+
+### #290 계약·정리 보완 검증 (#292)
+
+- TC-A03: 복합 unique_keys 속성 이름→ID 변환, 없는 속성·중복 묶음 거절.
+- TC-A04·TC-F09: 명시적 fk_bindings만 재사용하고 미선언 D13·잘못된 PK/타입/NULL은 차단. 식별 관계의 PK 중복 방지, 원래 속성 출처·FK 쌍 보존.
+- PostgreSQL 18·API: 같은 부모 아래 업무 조합 중복 거절, 다른 부모 아래 같은 구성 값 허용, 없는 부모 참조 거절, 두 revision 보존·승인·ERD 다운로드. DB/API·실제 두 PDF/8종 통합 17개 통과.
+- 새 필드 없는 설계의 기존 해시 유지와 선언 추가 시 해시 변경 검증. 전체 기본 1,926개 통과·6개 스킵. 실제 LLM 평가 결과가 아니다.
