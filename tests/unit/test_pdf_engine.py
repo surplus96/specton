@@ -94,6 +94,14 @@ def test_sources_are_overview_then_areas_in_pack_order_then_other() -> None:
     ]
 
 
+def test_overview_draws_lines_without_relationship_names_and_details_keep_them() -> None:
+    """개요는 이름이 겹치지 않게 관계 ID를 빼고, 영역 상세도에는 남긴다 (#261)."""
+    sources = erd_sources(MODEL, RELATIONSHIPS, AREAS)
+    overview = sources[0][2]
+    assert "REL-" not in overview and overview.count(' : ""') == len(MODEL.foreign_keys)
+    assert all("REL-" in source for kind, _, source in sources[1:] if " : " in source)
+
+
 def test_overview_has_no_attributes_and_details_are_key_only_left_to_right() -> None:
     sources = {t: s for _, t, s in erd_sources(MODEL, RELATIONSHIPS, AREAS)}
     overview = sources["전체 관계 개요"]
