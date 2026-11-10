@@ -29,10 +29,16 @@ from specton.contracts.requirements import (
     SourceRequirement,
 )
 from specton.llm.client import LLMClient
-from specton.nodes.common import NodeRun, assign_ids, build_request
+from specton.nodes.common import (
+    USER_REQUEST_RULE,
+    NodeRun,
+    assign_ids,
+    build_request,
+    with_user_request,
+)
 from specton.packs.examples import load_examples
 
-PROMPT_VERSION = "a01-v1"
+PROMPT_VERSION = "a01-v2"
 SYSTEM_PROMPT = """\
 너는 업무 시스템의 요구사항 분석가다.
 고객 문서에서 추출한 원문 블록을 읽고 요구사항 문장으로 정리한다.
@@ -59,6 +65,7 @@ SYSTEM_PROMPT = """\
     이 kind를 남긴다.
 
 출력하지 않는 것: 요구사항 ID, 원문 ID(source_id), 위치, 우선순위, 기능·엔티티."""
+SYSTEM_PROMPT += "\n\n" + USER_REQUEST_RULE
 
 _NUMBER = re.compile(r"\d+")
 ADDED_NUMBER = "added_number"  # 코드가 붙이는 품질 경고 kind
@@ -78,6 +85,7 @@ def run(
     pack: str,
     token_budget: int | None = None,
     analysis_version: int = 1,
+    feedback: str | None = None,
 ) -> NodeRun[tuple[Requirement, ...]]:
     """원문 블록을 요구사항으로 나누고 코드가 ID·원문 연결을 붙인 Requirement를 돌려준다."""
     blocks = {b.block_id: b for b in state.source_requirements if b.analysable}
@@ -89,7 +97,7 @@ def run(
         stage="A01",
         prompt_version=PROMPT_VERSION,
         system=SYSTEM_PROMPT,
-        data=input_data(state),
+        data=with_user_request(input_data(state), feedback),
         examples=load_examples(pack, "A01", A01Output, root=settings.pack_root),
     )
     output_model = _checked_against({k: _text(b) for k, b in blocks.items()})

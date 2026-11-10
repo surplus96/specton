@@ -18,10 +18,17 @@ from specton.config import Settings
 from specton.contracts import Cardinality, DesignState, Relationship, RelationshipDraft
 from specton.contracts.base import Contract
 from specton.llm.client import LLMClient
-from specton.nodes.common import NodeRun, assign_ids, build_request, with_design_rework
+from specton.nodes.common import (
+    USER_REQUEST_RULE,
+    NodeRun,
+    assign_ids,
+    build_request,
+    with_design_rework,
+    with_user_request,
+)
 from specton.packs.examples import load_examples
 
-PROMPT_VERSION = "a04-v4"
+PROMPT_VERSION = "a04-v5"
 SYSTEM_PROMPT = """\
 너는 데이터 모델 관계 설계자다. 주어진 엔티티 사이의 관계를 요구사항에 근거해 판단한다.
 - parent_name·child_name에는 입력 엔티티의 name을 그대로 쓴다.
@@ -45,6 +52,7 @@ SYSTEM_PROMPT = """\
   A03이 엔티티·키를 바꿨을 수 있으므로 옛 ID·관계를 그대로 복사하지 않는다.
   충돌을 숨기려고 업무상 필요한 관계를 삭제하거나 의미·방향을 임의로 바꾸지 않는다.
   사전·명명 지원 부족은 관계 의미를 바꿔 해결하지 않는다. 출력 형식은 최초 설계와 같다."""
+SYSTEM_PROMPT += "\n\n" + USER_REQUEST_RULE
 
 _QUOTE = re.compile(r'"([^"]+)"')
 
@@ -72,6 +80,7 @@ def run(
     *,
     pack: str,
     token_budget: int | None = None,
+    feedback: str | None = None,
 ) -> NodeRun[tuple[Relationship, ...]]:
     """현재 엔티티·요구사항으로 관계를 설계하고 코드가 ID를 붙인다."""
     if not state.entities:
@@ -86,7 +95,7 @@ def run(
         stage="A04",
         prompt_version=PROMPT_VERSION,
         system=SYSTEM_PROMPT,
-        data=with_design_rework(input_data(state), state),
+        data=with_user_request(with_design_rework(input_data(state), state), feedback),
         examples=load_examples(pack, "A04", A04Output, root=settings.pack_root),
     )
     entity_ids = {e.name: e.id for e in state.entities}
