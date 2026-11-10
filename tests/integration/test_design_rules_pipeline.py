@@ -134,8 +134,9 @@ class _World:
             attr_name, attr_type, length = {
                 "sc_minor": ("창고", "varchar", 10),
                 "sc_rework": ("창고수", "varchar", 10),
-                "sc_manual": ("수작업여부", "char", 1),
-                "sc_manual_critical": ("수작업여부", "char", 1),
+                # 단어 조합(LIB_LI_NO)이 공식 용어 약어(BOOK_MNG_NO)와 달라 SC-05가 난다
+                "sc_manual": ("도서관리번호", "varchar", 50),
+                "sc_manual_critical": ("도서관리번호", "varchar", 50),
             }[self.kind]
             extra = Attribute(
                 id="ATTR-02",
