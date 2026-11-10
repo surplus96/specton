@@ -561,21 +561,21 @@ def _self_reference_prefix(rel: Relationship, run: _Run) -> tuple[str, str] | No
 def _fk_conflict(rel: Relationship, table: Table, physical: str, clash: Column) -> Problem:
     if clash.relationship_id is not None:
         # 같은 테이블에 같은 이름의 FK 칸을 만드는 관계가 또 있음 → 이름 구분 규칙이 필요 (D4, D2)
-        # 임시(#11): 역할 단어(출발·도착)로 구분하려면 A04 관계 출력에 칸을 더하는 계약 변경이
-        #   필요해 후속으로 둔다 (#11 질문 3). 그때까지는 겹친 이름으로 모델을 만들지 않고 멈춘다.
         return problem(
             ProblemCode.FK_COLUMN_CONFLICT,
             rel.id,
             f"{table.name}.{physical}: 관계 {clash.relationship_id}의 FK 칸과 이름이 같음. "
-            "같은 이름의 부모 키를 두 번 가리키는 관계라(예: 출발 창고·도착 창고) "
-            "역할 구분이 필요합니다",
+            f"현재 관계 {rel.id}의 부모 {rel.parent} 키와 관계 {clash.relationship_id}가 "
+            f"참조하는 키 {clash.references}가 겹칩니다. "
+            "부모·참조 키를 확인하고 역할 구분이 필요합니다",
             decision="D4",
         )
     # 기존 속성과 이름이 같음. 같은 대상을 가리킨다는 근거가 없어 재사용하지 않는다 (D13)
     return problem(
         ProblemCode.FK_COLUMN_CONFLICT,
         rel.id,
-        f"{table.name}.{physical}: 기존 속성 {clash.name}과 이름이 같음 (재사용 근거 없음)",
+        f"{table.name}.{physical}: 기존 속성 {clash.name}({clash.attribute_id})과 "
+        f"관계 {rel.id}의 부모 {rel.parent} 키 이름이 같음 (재사용 근거 없음)",
         decision="D13",
     )
 

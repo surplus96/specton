@@ -33,13 +33,13 @@ from specton.contracts import (
 from specton.contracts.base import Contract, NonEmptyText
 from specton.ids import stable_id
 from specton.llm.client import LLMClient
-from specton.nodes.common import NodeRun, build_request
+from specton.nodes.common import NodeRun, build_request, with_design_rework
 from specton.packs.build import DEFAULT_ROOT
 from specton.packs.examples import load_examples
 from specton.packs.loader import PgType, load_pack
 from specton.type_limits import type_limit_problems
 
-PROMPT_VERSION = "a03-v2"
+PROMPT_VERSION = "a03-v3"
 SYSTEM_PROMPT = """\
 너는 업무 시스템의 데이터 모델 설계자다.
 요구사항과 기능으로 저장할 엔티티·속성과 기능별 CRUD를 정한다.
@@ -67,6 +67,13 @@ CRUD 면제(crud_exemptions):
 - 삭제하지 않고 사용 중지하는 엔티티, 확정 후 고치지 않는 이력 엔티티처럼 일부 조작을 제공하지 않는
   근거가 요구사항에 있을 때만 쓴다. reason은 pack.crud_exemption_reasons의 키 중 하나다.
 - operation은 그 reason에 나열된 조작만 쓴다. 면제한 조작은 그 엔티티의 operations에 넣지 않는다.
+
+재작업(rework_context가 있을 때):
+- 직전 엔티티·관계와 지적의 대상·근거·수정 안내를 대조하여 원인이 되는 설계를 고친다.
+- 이름이 같다는 이유만으로 업무 속성이나 키를 삭제하지 않는다. FK를 중복 표현한 속성인지,
+  별개의 업무 값인지 먼저 판단한다. 관계가 표현하는 업무 의미를 없애 충돌을 숨기지 않는다.
+- 사전·명명 지원이 필요한 지적은 약어를 지어내거나 근거 없는 이름 교체로 통과시키지 않는다.
+- 이전 ID는 지적을 찾기 위한 자료다. 출력 형식은 최초 설계와 같으며 ID는 출력하지 않는다.
 
 출력하지 않는 것: 엔티티·속성 ID, FK(외래키) 속성, 관계, 값 범위 제약."""
 
@@ -381,7 +388,10 @@ def run(
         stage="A03",
         prompt_version=PROMPT_VERSION,
         system=SYSTEM_PROMPT,
-        data=input_data(state, terms=context.terms, exemption_reasons=context.exemption_reasons),
+        data=with_design_rework(
+            input_data(state, terms=context.terms, exemption_reasons=context.exemption_reasons),
+            state,
+        ),
         examples=load_examples(pack, "A03", A03Output, root=settings.pack_root),
     )
     output_model = _checked_against(

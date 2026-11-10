@@ -518,6 +518,41 @@ def test_repeated_reference_composite_keys_keep_pairs_and_length_checks() -> Non
     }
 
 
+def test_repeated_reference_policy_does_not_merge_keys_from_different_parents() -> None:
+    other = _entity("ENT-other", "출고", _attr("ATTR-other", "창고코드", is_key=True))
+    design = _design(
+        [WAREHOUSE, other, RECEIPT],
+        [_rel("REL-01", "ENT-wh", "ENT-rc"), _rel("REL-02", "ENT-other", "ENT-rc")],
+    )
+    before = design.model_dump()
+    result = normalize(
+        design,
+        pack=PACK,
+        lexicon=LEXICON,
+        rules=replace(RULES, repeated_foreign_key="relationship_id"),
+    )
+    assert isinstance(result, NormalizeFailed)
+    assert _codes(result) == {(ProblemCode.FK_COLUMN_CONFLICT, "D4")}
+    detail = result.problems[0].detail
+    assert "REL-01" in detail and "REL-02" in detail and "ENT-other" in detail
+    assert design.model_dump() == before
+
+
+def test_repeated_reference_policy_keeps_existing_child_key_collision_blocked() -> None:
+    child = _entity("ENT-rc", "입고", _attr("ATTR-child-key", "창고코드", is_key=True))
+    design = _design([WAREHOUSE, child], [_rel("REL-01", "ENT-wh", "ENT-rc")])
+    result = normalize(
+        design,
+        pack=PACK,
+        lexicon=LEXICON,
+        rules=replace(RULES, repeated_foreign_key="relationship_id"),
+    )
+    assert isinstance(result, NormalizeFailed)
+    assert _codes(result) == {(ProblemCode.FK_COLUMN_CONFLICT, "D13")}
+    assert "ATTR-child-key" in result.problems[0].detail
+    assert child.attributes[0].is_key
+
+
 def test_d5_unregistered_word_is_reported_as_pending() -> None:
     lexicon = FixtureLexicon()
     del lexicon.words["입고수량"]

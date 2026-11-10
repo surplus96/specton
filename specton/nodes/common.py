@@ -14,6 +14,7 @@ from typing import Any, Literal
 from pydantic import BaseModel
 
 from specton.config import Settings
+from specton.contracts import DesignState
 from specton.llm.types import CallRecord, LLMRequest, Message
 from specton.packs.examples import FewShot
 
@@ -47,6 +48,25 @@ def data_block(data: str | Mapping[str, Any]) -> str:
 def unwrap_data(content: str) -> str:
     """data_block의 반대. 테스트에서 프롬프트에 넣은 입력을 꺼낼 때 쓴다."""
     return content.removeprefix(_DATA_OPEN).removesuffix(_DATA_CLOSE)
+
+
+def with_design_rework(data: dict[str, Any], state: DesignState) -> dict[str, Any]:
+    """설계 재작업에 직전 설계·지적을 전달한다. 최초 실행·few-shot 입력은 유지한다.
+
+    이전 ID는 지적의 위치를 찾는 참고 자료다. 출력 ID는 여전히 코드가 붙이며, A03이 바꾼
+    객체를 가리키는 옛 관계는 A04가 그대로 복사하지 않고 현재 엔티티·요구사항으로 다시 판단한다.
+    """
+    if state.iteration <= 0 or not state.findings:
+        return data
+    return {
+        **data,
+        "rework_context": {
+            "iteration": state.iteration,
+            "entities": [e.model_dump(mode="json") for e in state.entities],
+            "relationships": [r.model_dump(mode="json") for r in state.relationships],
+            "findings": [f.model_dump(mode="json") for f in state.findings],
+        },
+    }
 
 
 def build_request(
