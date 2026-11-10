@@ -153,6 +153,10 @@ def openai_agent_nodes(settings: Settings) -> dict[str, Node]:
 def _design_node(agent: _Agent, get_client: Callable[[], LLMClient], settings: Settings) -> Node:
     def node(state: GraphState) -> Mapping[str, Any]:
         design = state["design"]
+        # 사용자가 수정 요청으로 되돌린 재실행에만 요청 문장을 넘긴다 (A09와 같은 기준)
+        feedback = (
+            state.get("review_response", {}).get("feedback", "") if state.get("revising") else ""
+        )
         try:
             result = agent.run(
                 get_client(),
@@ -160,6 +164,7 @@ def _design_node(agent: _Agent, get_client: Callable[[], LLMClient], settings: S
                 settings,
                 pack=_pack(design, agent.agent_id),
                 token_budget=_remaining(state, settings, agent.agent_id),
+                feedback=feedback.strip() or None,
                 **agent.options(design),
             )
         except LLMError as exc:

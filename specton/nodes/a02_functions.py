@@ -17,10 +17,16 @@ from specton.config import Settings
 from specton.contracts import DesignState, Function, FunctionDraft, PrioritySource
 from specton.contracts.base import Contract
 from specton.llm.client import LLMClient
-from specton.nodes.common import NodeRun, assign_ids, build_request
+from specton.nodes.common import (
+    USER_REQUEST_RULE,
+    NodeRun,
+    assign_ids,
+    build_request,
+    with_user_request,
+)
 from specton.packs.examples import load_examples
 
-PROMPT_VERSION = "a02-v1"
+PROMPT_VERSION = "a02-v2"
 SYSTEM_PROMPT = """\
 너는 업무 시스템의 기능 설계자다. 확인된 요구사항을 사용자가 수행하는 기능 단위로 정리한다.
 
@@ -41,6 +47,7 @@ SYSTEM_PROMPT = """\
 - 우선순위가 낮거나 미정이어도 기능을 빼지 않는다.
 
 출력하지 않는 것: 기능 ID, 엔티티·테이블·컬럼, CRUD."""
+SYSTEM_PROMPT += "\n\n" + USER_REQUEST_RULE
 
 
 class A02Output(Contract):
@@ -73,6 +80,7 @@ def run(
     *,
     pack: str,
     token_budget: int | None = None,
+    feedback: str | None = None,
 ) -> NodeRun[tuple[Function, ...]]:
     """요구사항으로 기능을 설계하고 코드가 ID를 붙인 Function을 돌려준다."""
     if not state.requirements:
@@ -83,7 +91,7 @@ def run(
         stage="A02",
         prompt_version=PROMPT_VERSION,
         system=SYSTEM_PROMPT,
-        data=input_data(state),
+        data=with_user_request(input_data(state), feedback),
         examples=load_examples(pack, "A02", A02Output, root=settings.pack_root),
     )
     output_model = _checked_against({r.id: r.text for r in state.requirements})

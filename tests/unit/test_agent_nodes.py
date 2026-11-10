@@ -227,3 +227,51 @@ def test_model_rework_sends_previous_design_and_findings_to_both_design_nodes() 
         assert context["entities"] and context["relationships"]
         assert context["findings"][0]["evidence"][0]["quote"] == "기존 키와 FK 충돌"
     assert previous.iteration == 0 and previous.findings == ()
+
+
+def test_user_revision_request_reaches_every_design_node() -> None:
+    import json
+
+    client, transport = stub_client(
+        reply(_a01_output()),
+        reply(_example_output("A02", A02Output)),
+        reply(_example_output("A03", A03Output)),
+        reply(_a04_output()),
+    )
+    nodes = design_nodes(lambda: client, _settings())
+    state = initial_state(_design(pack_id=PACK))
+    state = {
+        **state,
+        "revising": True,
+        "review_response": {"decision": "revise", "feedback": "고장접수에 접수일시를 넣어 주세요"},
+    }
+
+    for name in ("a01", "a02", "a03", "a04"):
+        state = {**state, **nodes[name](state)}
+        data = json.loads(unwrap_data(transport.sent[-1].messages[-1].content))
+        assert data["user_request"] == "고장접수에 접수일시를 넣어 주세요", name
+        assert "user_request" in transport.sent[-1].messages[0].content, name  # 프롬프트가 설명한다
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {},  # 최초 실행
+        {"revising": False, "review_response": {"decision": "revise", "feedback": "이전 요청"}},
+        {"revising": True, "review_response": {"decision": "revise", "feedback": "  "}},
+    ],
+)
+def test_design_nodes_get_no_user_request_outside_a_revision(extra: dict[str, Any]) -> None:
+    client, transport = stub_client(
+        reply(_a01_output()),
+        reply(_example_output("A02", A02Output)),
+        reply(_example_output("A03", A03Output)),
+        reply(_a04_output()),
+    )
+    nodes = design_nodes(lambda: client, _settings())
+    state = {**initial_state(_design(pack_id=PACK)), **extra}
+
+    for name in ("a01", "a02", "a03", "a04"):
+        state = {**state, **nodes[name](state)}
+
+    assert all('"user_request"' not in r.messages[-1].content for r in transport.sent)

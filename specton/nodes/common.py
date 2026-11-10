@@ -27,6 +27,15 @@ COMMON_RULES = """\
 - ID를 새로 만들지 않는다. 다른 요소를 가리킬 때는 입력에 있는 ID만 쓴다.
 - 입력에 없는 조건을 지어내지 않는다. 근거는 입력 문장을 그대로 인용한다."""
 
+# A01~A04 프롬프트 끝에 붙인다. 사용자가 보낸 문장도 <data> 안에 있어, 따를 대상임을 따로 밝힌다.
+USER_REQUEST_RULE = """\
+수정 요청(user_request가 있을 때):
+- user_request는 사용자가 최종 검토에서 보낸 수정 요청 문장이다.
+  이 단계에서 고칠 수 있는 내용이면 반영한다.
+- 요청이 이름·표현을 지정하면 그대로 따른다. 요청과 관계없는 부분은 바꾸지 않는다.
+- 요청을 반영한 요소도 근거 요구사항 id는 입력에 있는 것에서 고른다.
+  입력에 없는 id를 만들지 않는다."""
+
 _DATA_OPEN = "<data>\n"
 _DATA_CLOSE = "\n</data>"
 
@@ -48,6 +57,11 @@ def data_block(data: str | Mapping[str, Any]) -> str:
 def unwrap_data(content: str) -> str:
     """data_block의 반대. 테스트에서 프롬프트에 넣은 입력을 꺼낼 때 쓴다."""
     return content.removeprefix(_DATA_OPEN).removesuffix(_DATA_CLOSE)
+
+
+def with_user_request(data: dict[str, Any], feedback: str | None) -> dict[str, Any]:
+    """최종 검토의 수정 요청 문장을 설계 입력에 더한다. 요청이 없으면 입력은 그대로다."""
+    return {**data, "user_request": feedback} if feedback else data
 
 
 def with_design_rework(data: dict[str, Any], state: DesignState) -> dict[str, Any]:

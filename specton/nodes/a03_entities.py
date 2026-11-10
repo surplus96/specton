@@ -38,7 +38,13 @@ from specton.contracts.base import Contract, NonEmptyText
 from specton.ids import stable_id
 from specton.llm.client import LLMClient
 from specton.llm.types import LLMResult
-from specton.nodes.common import NodeRun, build_request, with_design_rework
+from specton.nodes.common import (
+    USER_REQUEST_RULE,
+    NodeRun,
+    build_request,
+    with_design_rework,
+    with_user_request,
+)
 from specton.packs.build import DEFAULT_ROOT
 from specton.packs.examples import load_examples
 from specton.packs.loader import PgType, load_pack
@@ -46,7 +52,7 @@ from specton.type_limits import type_limit_problems
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "a03-v5"
+PROMPT_VERSION = "a03-v6"
 SYSTEM_PROMPT = """\
 너는 업무 시스템의 데이터 모델 설계자다.
 요구사항과 기능으로 저장할 엔티티·속성과 기능별 CRUD를 정한다.
@@ -95,6 +101,7 @@ CRUD 면제(crud_exemptions):
   이름을 바꾸면 entity_ops·unique_keys가 가리키는 이름도 같이 바꾼다.
 
 출력하지 않는 것: 엔티티·속성 ID, 관계 전용 FK 속성, 관계, 값 범위 제약."""
+SYSTEM_PROMPT += "\n\n" + USER_REQUEST_RULE
 
 
 class A03Output(EntityDesignDraft):
@@ -394,6 +401,7 @@ def run(
     *,
     pack: str,
     token_budget: int | None = None,
+    feedback: str | None = None,
 ) -> NodeRun[A03Result]:
     """요구사항·기능으로 엔티티를 설계하고 코드가 ID를 붙여 기능의 `entity_ops`를 채운다."""
     if not state.requirements:
@@ -401,8 +409,12 @@ def run(
     if not state.functions:
         raise ValueError("A03: 엔티티를 설계할 기능이 없습니다")
     context = load_pack_context(pack, root=settings.pack_root)
-    data = with_design_rework(
-        input_data(state, terms=context.terms, exemption_reasons=context.exemption_reasons), state
+    data = with_user_request(
+        with_design_rework(
+            input_data(state, terms=context.terms, exemption_reasons=context.exemption_reasons),
+            state,
+        ),
+        feedback,
     )
     examples = load_examples(pack, "A03", A03Output, root=settings.pack_root)
 
