@@ -124,6 +124,12 @@ class EntityDraft(Contract):
     attributes: tuple[AttributeDraft, ...] = Field(min_length=1)
     req_ids: tuple[ReqId, ...] = Field(min_length=1)
     crud_exemptions: tuple[CrudExemption, ...] = ()
+    unique_keys: tuple[tuple[NonEmptyText, ...], ...] | None = None
+
+    @model_validator(mode="after")
+    def _check_unique_keys(self) -> Self:
+        _validate_groups(self.unique_keys, {a.name for a in self.attributes})
+        return self
 
 
 class EntityOpDraft(Contract):
@@ -157,6 +163,37 @@ class Entity(Contract):
     attributes: tuple[Attribute, ...] = Field(min_length=1)
     req_ids: tuple[ReqId, ...] = Field(min_length=1)
     crud_exemptions: tuple[CrudExemption, ...] = ()
+    unique_keys: tuple[tuple[ObjectId, ...], ...] | None = None
+
+    @model_validator(mode="after")
+    def _check_unique_keys(self) -> Self:
+        _validate_groups(self.unique_keys, {a.id for a in self.attributes})
+        return self
+
+
+def _validate_groups(groups: tuple[tuple[str, ...], ...] | None, known: set[str]) -> None:
+    seen: set[frozenset[str]] = set()
+    for group in groups or ():
+        key = frozenset(group)
+        if not group or len(key) != len(group) or not key <= known:
+            raise ValueError(f"UNIQUE 묶음은 존재하는 서로 다른 속성이어야 합니다: {group}")
+        if key in seen:
+            raise ValueError(f"같은 UNIQUE 묶음이 중복됩니다: {group}")
+        seen.add(key)
+
+
+class ForeignKeyBindingDraft(Contract):
+    """부모 키와 같은 사실을 표현하는 자식의 기존 속성. A04가 의미를 명시한다."""
+
+    parent_attribute_name: NonEmptyText
+    child_attribute_name: NonEmptyText
+
+
+class ForeignKeyBinding(Contract):
+    """FK 재사용의 명시적 속성 쌍. 이름·타입만으로 추론하지 않는다."""
+
+    parent_attribute_id: ObjectId
+    child_attribute_id: ObjectId
 
 
 class RelationshipDraft(Contract):
@@ -169,6 +206,15 @@ class RelationshipDraft(Contract):
     identifying: bool = False
     rationale: NonEmptyText
     req_ids: tuple[ReqId, ...] = Field(min_length=1)
+    fk_bindings: tuple[ForeignKeyBindingDraft, ...] | None = None
+
+    @model_validator(mode="after")
+    def _check_bindings(self) -> Self:
+        _validate_bindings(
+            [(b.parent_attribute_name, b.child_attribute_name) for b in self.fk_bindings or ()],
+            self.cardinality,
+        )
+        return self
 
 
 class Relationship(Contract):
@@ -185,4 +231,22 @@ class Relationship(Contract):
     identifying: bool = False
     rationale: NonEmptyText
     req_ids: tuple[ReqId, ...] = Field(min_length=1)
+    fk_bindings: tuple[ForeignKeyBinding, ...] | None = None
     # 참조 키 선택·복합 키 표현은 모델 정리(#12)에서 정한다.
+
+    @model_validator(mode="after")
+    def _check_bindings(self) -> Self:
+        _validate_bindings(
+            [(b.parent_attribute_id, b.child_attribute_id) for b in self.fk_bindings or ()],
+            self.cardinality,
+        )
+        return self
+
+
+def _validate_bindings(bindings: list[tuple[str, str]], cardinality: Cardinality) -> None:
+    if bindings and cardinality is Cardinality.MANY_TO_MANY:
+        raise ValueError("N:M 연결 테이블의 FK 재사용은 지원하지 않습니다")
+    if len({p for p, _ in bindings}) != len(bindings) or len({c for _, c in bindings}) != len(
+        bindings
+    ):
+        raise ValueError("FK 재사용의 부모·자식 속성은 각각 한 번만 선언합니다")

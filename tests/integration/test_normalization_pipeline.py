@@ -278,8 +278,10 @@ def test_actual_missing_key_is_reworked_and_both_revisions_survive_restart(
     assert approved == [{"revision": 1, "model_hash": repaired["model_hash"]}]
 
 
+@pytest.mark.parametrize("reuse", [False, True])
 def test_d13_rework_preserves_business_key_and_stores_both_revisions(
     pipeline: Callable[..., _Pipeline],
+    reuse: bool,
 ) -> None:
     def design(state: GraphState) -> Mapping[str, Any]:
         current = state["design"]
@@ -288,25 +290,25 @@ def test_d13_rework_preserves_business_key_and_stores_both_revisions(
                 "id": "ATTR-ticket",
                 "name": "고장접수번호",
                 "data_type": "varchar",
-                "length": 10,
+                "length": 20,
                 "is_key": True,
                 "nullable": False,
                 "req_ids": ["REQ-01"],
             }
         ]
-        if current.revision == 0:
+        if current.revision == 0 or reuse:
             attributes.append(
                 {
                     "id": "ATTR-duplicate",
                     "name": "설비코드",
                     "data_type": "varchar",
-                    "length": 20,
+                    "length": 10,
                     "is_key": False,
                     "nullable": False,
                     "req_ids": ["REQ-01"],
                 }
             )
-        else:
+        if current.revision > 0:
             assert [f.kind for f in current.findings] == ["fk_column_conflict:D13"]
         child = Entity.model_validate(
             {
@@ -330,6 +332,15 @@ def test_d13_rework_preserves_business_key_and_stores_both_revisions(
                 "req_ids": ["REQ-01"],
             }
         )
+        if current.revision > 0 and reuse:
+            relationship = relationship.evolve(
+                fk_bindings=(
+                    {
+                        "parent_attribute_id": "ATTR-eq",
+                        "child_attribute_id": "ATTR-duplicate",
+                    },
+                )
+            )
         return {
             "design": current.evolve(entities=(_entity(), child), relationships=(relationship,))
         }
@@ -345,7 +356,7 @@ def test_d13_rework_preserves_business_key_and_stores_both_revisions(
     key = next(c for c in child["columns"] if c["attribute_id"] == "ATTR-ticket")
     assert child["primary_key"] == [key["id"]]
     assert len(model["foreign_keys"]) == 1
-    assert all(c["attribute_id"] != "ATTR-duplicate" for c in child["columns"])
+    assert any(c["attribute_id"] == "ATTR-duplicate" for c in child["columns"]) is reuse
     assert not any(revision == 0 for _, revision in world.visited)
     assert world.answer(run_id, "approve").status_code == 202
     world.runner.run_pending()

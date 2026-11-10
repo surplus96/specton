@@ -46,6 +46,7 @@ type FailureMapper = Callable[[DesignState, tuple[Problem, ...]], NormalizationF
 
 # 문제 코드 → (규칙 코드, 사람 확인 여부). #15 댓글 처리안. FK 충돌·입력 추적은 따로 정한다.
 _RULES: dict[ProblemCode, tuple[str, bool]] = {
+    ProblemCode.INVALID_FK_BINDING: ("RULE-04", False),
     ProblemCode.NO_PRIMARY_KEY: ("RULE-03", False),
     ProblemCode.DOMAIN_TYPE_MISMATCH: ("RULE-03", False),
     ProblemCode.PARENT_WITHOUT_KEY: ("RULE-04", False),
@@ -84,6 +85,7 @@ _STAGE_BY_KIND: dict[str, TargetStage] = {
     "relationship": TargetStage.DATA_MODEL,
 }
 _SUGGESTIONS: dict[str, str] = {
+    "invalid_fk_binding": "FK 재사용의 부모 키·자식 속성·타입·NULL 조건을 확인해 선언을 고친다.",
     "no_primary_key": "행을 구분하는 키 속성을 두거나, 부모 키를 물려받는 식별 관계로 바꾼다.",
     "domain_type_mismatch": "속성 타입·길이를 같은 이름 팩 용어의 도메인에 맞추거나 이름을 바꾼다.",
     "parent_without_key": "부모 엔티티에 키 속성을 먼저 둔다.",
@@ -233,6 +235,7 @@ def _stage(objects: tuple[FindingTarget, ...]) -> TargetStage:
 # 문제 코드가 가리키는 대상의 종류. 정리 코드(`codegen/normalize.py`, `naming.py`)가 문제를 만들 때
 # 넣는 ID와 맞춘다. "table"·"column"은 테이블·컬럼 ID를 원래 대상으로 되짚는다.
 _TARGET_SPACES: dict[ProblemCode, tuple[str, ...]] = {
+    ProblemCode.INVALID_FK_BINDING: ("relationship",),
     ProblemCode.NO_PRIMARY_KEY: ("entity",),
     ProblemCode.IDENTIFYING_CYCLE: ("entity",),
     ProblemCode.DOMAIN_TYPE_MISMATCH: ("column",),
