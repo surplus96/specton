@@ -163,6 +163,13 @@ def test_openai_client_requires_api_key() -> None:
         openai_client(Settings(_env_file=None, openai_api_key=None))
 
 
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_blank_api_key_from_env_example_counts_as_missing(blank: str) -> None:
+    # .env.example을 그대로 복사하면 `SPECTON_OPENAI_API_KEY=`가 빈 값으로 읽힌다
+    with pytest.raises(LLMAPIError, match="SPECTON_OPENAI_API_KEY"):
+        openai_client(Settings(_env_file=None, openai_api_key=SecretStr(blank)))
+
+
 def test_openai_client_applies_timeout_and_sdk_retries(monkeypatch: pytest.MonkeyPatch) -> None:
     created: dict[str, Any] = {}
 
