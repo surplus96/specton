@@ -47,12 +47,12 @@ ADR_0007_DEFAULTS = {
     "review_model": "gpt-6-luna",
     "design_reasoning_effort": "medium",
     "review_reasoning_effort": "low",
-    "llm_timeout_seconds": 120,
+    "llm_timeout_seconds": 300,
     "llm_api_retries": 3,
     "llm_concurrency": 4,
-    "max_output_tokens": 8_000,
+    "max_output_tokens": 32_000,
     "max_tokens_per_run": 400_000,
-    "run_timeout_seconds": 900,
+    "run_timeout_seconds": 1800,
     "max_structured_retries": 2,
 }
 

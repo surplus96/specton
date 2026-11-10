@@ -91,6 +91,20 @@ def test_sends_structured_output_request() -> None:
     assert sent["text"]["format"]["name"] == "Answer"
 
 
+def test_reports_output_cut_at_the_token_limit() -> None:
+    response = sdk_response('{"label": "FR", "sco')
+    response.incomplete_details = SimpleNamespace(reason="max_output_tokens")
+    sdk, _ = fake_sdk(response)
+
+    assert OpenAITransport(sdk).send(make_request(), Answer).truncated is True
+
+
+def test_complete_response_is_not_reported_as_cut() -> None:
+    sdk, _ = fake_sdk(sdk_response('{"label": "FR", "score": 1}'))
+
+    assert OpenAITransport(sdk).send(make_request(), Answer).truncated is False
+
+
 def test_omits_reasoning_when_not_set() -> None:
     sdk, responses = fake_sdk(sdk_response("{}"))
 

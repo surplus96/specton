@@ -47,6 +47,8 @@ class OpenAITransport:
             refusal=_refusal(response),
             input_tokens=usage.input_tokens if usage else 0,
             output_tokens=usage.output_tokens if usage else 0,
+            truncated=getattr(getattr(response, "incomplete_details", None), "reason", None)
+            == "max_output_tokens",
         )
 
 
