@@ -24,6 +24,17 @@ function states(input: Partial<PipelineInput> & { run: Run }): Record<string, No
 }
 
 describe('실행 단계 그래프: 모양', () => {
+  it('노드별 서버 이벤트가 설계 묶음 추정보다 우선하며 옛 revision은 섞지 않는다', () => {
+    const done = event('status', 'designing', 'a03 종료', { node: 'a03', phase: 'finished', outcome: 'ok' })
+    expect(states({ run: run('designing'), events: [done] }).a03).toBe('done')
+    expect(states({ run: run('designing', { revision: 1 }), events: [done] }).a03).toBe('running')
+  })
+
+  it('정리 실패로 실행하지 않은 생성·검토를 완료로 표시하지 않는다', () => {
+    const failed = event('status', 'designing', '정리 종료', { node: 'normalize', phase: 'finished', normalization_failed: true })
+    const shown = states({ run: run('awaiting_review'), events: [failed] })
+    for (const id of ['ddl', 'erd', 'rtm', 'rules', 'A05', 'A06', 'A07', 'A08']) expect(shown[id]).toBe('skipped')
+  })
   it('문서 읽기부터 내보내기까지, 생성 3갈래·검토 4갈래가 갈라졌다 모인다', () => {
     expect(PIPELINE.map((d) => d.id)[0]).toBe('parse')
     expect(PIPELINE.slice(-1)[0].id).toBe('export')
@@ -32,6 +43,11 @@ describe('실행 단계 그래프: 모양', () => {
     expect(edges.filter((e) => e.to === 'rules').map((e) => e.from)).toEqual(['ddl', 'erd', 'rtm'])
     expect(edges.filter((e) => e.from === 'rules').map((e) => e.to)).toEqual(['A05', 'A06', 'A07', 'A08'])
     expect(edges.filter((e) => e.rework)).toEqual([{ from: 'a09', to: 'a02', rework: true }])
+  })
+
+  it('검토 관점 이름은 서버 관점 정의(specton/review/perspectives/A05~A08.yaml의 name)와 같다', () => {
+    const titles = PIPELINE.filter((d) => ['A05', 'A06', 'A07', 'A08'].includes(d.id)).map((d) => d.title)
+    expect(titles).toEqual(['A05 관계 모순', 'A06 데이터 누락', 'A07 비기능', 'A08 정규화'])
   })
 })
 

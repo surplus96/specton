@@ -205,9 +205,20 @@ def get_view(
                 for item in model.get(name, [])
             ]
     artifacts = [_artifact_item(conn, run_id, a.ref) for a in _artifacts(conn, run_id, revision)]
+    normalized = _model(conn, run_id, revision).get("normalized")
+    summary = None
+    if normalized is not None:
+        summary = {
+            "tables": len(normalized["tables"]),
+            "columns": sum(len(t["columns"]) for t in normalized["tables"]),
+            "foreign_keys": len(normalized["foreign_keys"]),
+            "pack_id": normalized["pack"],
+            "pack_version": normalized["pack_version"],
+            "common_version": normalized.get("common_version"),
+        }
     return RunView(
         run_id=run_id, revision=revision, section=section, items=tuple(items),
-        artifacts=tuple(artifacts),
+        artifacts=tuple(artifacts), normalization=summary,
     )  # fmt: skip
 
 

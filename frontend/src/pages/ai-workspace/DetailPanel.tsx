@@ -5,7 +5,13 @@ import type { SqlReview } from '../review/sqlValidation.ts'
 import { KIND_LABEL as ARTIFACT_LABEL, missingKinds } from '../workspace/rules.ts'
 import { findingEntities } from './erd.ts'
 import { KIND_LABEL, STATE_LABEL, type PipelineNode } from './pipeline.ts'
+import { stepEvents, stepResult, type StepData } from './stepDetail.ts'
 import { COLUMN_TITLE, MARK_LABEL, refText, type TraceNode } from './trace.ts'
+import type { SseEvent } from '../../api/types.ts'
+import { nodeEvent, nodeState } from './nodeEvents.ts'
+import { useState } from 'react'
+import { downloadArtifact } from '../../api/client.ts'
+import { errorMessage } from '../../api/errors.ts'
 
 // 오른쪽 「상세·검증」 패널 (#281). 위: 고른 항목의 상세 / 아래: 검증 결과(SQL·미완성 가지·지적).
 export type Selection =
@@ -33,6 +39,9 @@ type Props = {
   names: Map<string, string>
   traceNodes: TraceNode[]
   pipeline: PipelineNode[]
+  /** 단계 상세(#289): 실행의 SSE 이벤트와 고른 revision의 중간 결과 */
+  events: readonly SseEvent[]
+  step: StepData | null
   onFinding: (f: Finding) => void
 }
 
@@ -54,21 +63,99 @@ function findingsOf(entityId: string, design: DesignItem[], findings: Finding[])
   return findings.filter((f) => of(f).includes(entityId))
 }
 
-function SelectionDetail({ selection, design, findings, names, traceNodes, pipeline }: Props) {
+// 여러 노드가 한 서버 단계를 같이 쓰는 노드. 상태는 단계 이벤트로 추정한다(노드 단위 이벤트는 #289 2단계)
+const SHARED_STAGE = new Set(['a02', 'a03', 'a04', 'normalize', 'ddl', 'erd', 'rtm', 'rules', 'A05', 'A06', 'A07', 'A08'])
+
+function StepFiles({ node, step }: { node: PipelineNode; step: StepData }) {
+  const [preview, setPreview] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const files = step.artifacts.filter((a) => a.kind === node.id)
+  async function read(file: ArtifactRef, show: boolean) {
+    if (!step.runId) return
+    setError(null)
+    try {
+      const { blob, fileName } = await downloadArtifact(step.runId, file.kind, file.file_format, step.revision)
+      if (show) setPreview((await blob.text()).slice(0, 4000))
+      else {
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = fileName
+        a.click()
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+      }
+    } catch (err) { setError(errorMessage(err)) }
+  }
+  return <div style={{ padding: '0 16px', fontSize: 12 }}>
+    {files.map((file) => <div key={file.file_format}>
+      <button type="button" onClick={() => void read(file, false)}>{file.file_format} 내려받기</button>
+      {file.file_format === 'sql' && <button type="button" onClick={() => void read(file, true)}>SQL 앞부분 보기</button>}
+    </div>)}
+    {error && <p role="alert">{error}</p>}
+    {preview !== null && <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{preview}</pre>}
+  </div>
+}
+
+function StepDetail({ node, events, step }: { node: PipelineNode; events: readonly SseEvent[]; step: StepData | null }) {
+  const rows = step ? stepResult(node.id, step) : []
+  const log = step ? stepEvents(node.id, events, step.revision) : []
+  const recorded = step ? nodeEvent(node.id, events, step.revision) : undefined
+  return (
+    <>
+      <Row label="상태 근거">
+        {recorded ? `서버 노드 이벤트 · revision ${step?.revision}` : SHARED_STAGE.has(node.id) ? '서버 단계 이벤트로 추정 (노드 단위 이벤트 없음)' : '서버 상태·이벤트 기준'}
+      </Row>
+      <Title>중간 결과</Title>
+      {node.state === 'skipped' && <p style={{ padding: '0 16px', fontSize: 13 }}>이 단계는 실행하지 않았습니다. 지적 0건은 검토 통과를 뜻하지 않습니다.</p>}
+      {rows.length === 0 ? (
+        <p style={{ padding: '0 16px', color: dark.inkMuted, fontSize: 13 }}>이 단계는 보여 줄 중간 결과가 없습니다.</p>
+      ) : (
+        rows.map((r) => (
+          <Row key={r.label} label={r.label}>
+            {r.value}
+          </Row>
+        ))
+      )}
+      {step && step.runId && <StepFiles key={`${step.runId}:${step.revision}:${node.id}`} node={node} step={step} />}
+      <Title>이벤트 기록 {log.length}건</Title>
+      {log.length === 0 ? (
+        <p style={{ padding: '0 16px', color: dark.inkMuted, fontSize: 13 }}>이 revision에서 이 단계의 이벤트가 없습니다.</p>
+      ) : (
+        <ol style={{ margin: 0, padding: '0 16px 0 36px', fontSize: 12 }}>
+          {log.map((e) => (
+            <li key={e.id} style={{ padding: '2px 0' }}>
+              <span style={{ color: dark.inkMuted }}>
+                #{e.id} {e.event} {e.at ? new Date(e.at).toLocaleTimeString('ko-KR') : '(시각 기록 없음)'}
+              </span>{' '}
+              {e.message}
+              {e.summary && <div style={{ color: dark.inkMuted }}>{e.summary}</div>}
+            </li>
+          ))}
+        </ol>
+      )}
+    </>
+  )
+}
+
+function SelectionDetail({ selection, design, findings, names, traceNodes, pipeline, events, step }: Props) {
   if (!selection) {
     return <p style={{ padding: '0 16px', color: dark.inkMuted, fontSize: 13 }}>캔버스나 단계 그래프에서 항목을 고르면 여기에 상세가 보입니다.</p>
   }
   if (selection.kind === 'pipeline') {
     const n = pipeline.find((p) => p.id === selection.id)
     if (!n) return null
+    const observed = step ? nodeEvent(n.id, events, step.revision) : undefined
+    const historical = step && step.revision !== step.runRevision
+    const state = observed ? nodeState(observed) : historical ? null : n.state
     return (
       <>
         <Row label="단계">{n.title}</Row>
         <Row label="상태">
-          {STATE_LABEL[n.state].icon} {STATE_LABEL[n.state].text}
+          {state ? `${STATE_LABEL[state].icon} ${STATE_LABEL[state].text}` : '선택 revision의 노드 상태 기록 없음'}
         </Row>
         <Row label="처리">{KIND_LABEL[n.kind]}</Row>
         {n.note && <Row label="설명">{n.note}</Row>}
+        <StepDetail node={n} events={events} step={step} />
       </>
     )
   }

@@ -66,7 +66,11 @@ describe('문서 추적: 연결 만들기', () => {
     expect(mark('requirement:REQ-01')).toBeNull()
     expect(mark('block:B3')).toBe('excluded')
     expect(mark('block:B4')).toBe('no-source')
-    expect(traceSummary(graph)).toEqual({ requirements: 3, unlinkedRequirements: 1, excludedBlocks: 1, noSourceBlocks: 1 })
+    expect(traceSummary(graph)).toEqual({ requirements: 3, unlinkedRequirements: 1, unlinkedBlocks: 0, excludedBlocks: 1, noSourceBlocks: 1 })
+    // 요구사항으로 이어지지 않은 원문은 「원문 미연결」로 따로 센다 (요약과 원문 열 표시가 맞도록)
+    const withLoose = buildTrace({ ...input, blocks: [...input.blocks, block('B9', 99)] })
+    expect(withLoose.nodes.find((n) => n.key === 'block:B9')!.mark).toBe('unlinked')
+    expect(traceSummary(withLoose).unlinkedBlocks).toBe(1)
   })
 
   it('없는 대상을 가리키면 잇지 않는다 (메우지 않음)', () => {

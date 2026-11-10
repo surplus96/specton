@@ -17,6 +17,7 @@ import PipelineGraph from './PipelineGraph.tsx'
 import TraceCanvas from './TraceCanvas.tsx'
 import { erdModel, findingEntities } from './erd.ts'
 import { pipelineNodes, pipelineProgress } from './pipeline.ts'
+import type { StepData } from './stepDetail.ts'
 import { buildTrace, traceSummary } from './trace.ts'
 
 // AI Workspace: 개발용 결과 확인 페이지 (/workspace?run=<id>, #281).
@@ -31,6 +32,7 @@ type Loaded = {
   requirements: AnalysedRequirement[]
   blocks: ExtractionBlock[]
   rawArtifacts: unknown[]
+  normalization?: Record<string, unknown> | null
 }
 
 type Tab = 'erd' | 'trace'
@@ -76,6 +78,7 @@ function Workspace({ runId }: { runId: string }) {
 
   const revision = picked ?? run?.revision ?? 0
   const artifactEvents = events.filter((e) => e.event === 'artifact').length
+  const finishedNodes = events.filter((e) => e.data.revision === revision && e.data.payload?.phase === 'finished').length
   const ready = run !== null
   const status = run?.status
   const stage = run?.stage
@@ -100,17 +103,34 @@ function Workspace({ runId }: { runId: string }) {
           requirements: requirements.items as AnalysedRequirement[],
           blocks: extraction.items as ExtractionBlock[],
           rawArtifacts: design.artifacts ?? [],
+          normalization: design.normalization,
         })
       })
       .catch((err: unknown) => alive && setViewError(err))
     return () => {
       alive = false
     }
-  }, [runId, revision, ready, status, stage, artifactEvents])
+  }, [runId, revision, ready, status, stage, artifactEvents, finishedNodes])
 
   // 고른 revision의 데이터만 쓴다. revision을 바꾼 직후 받기 전에는 이전 revision 데이터를 섞어 보이지 않고 「불러오는 중」
   const shown = data && data.revision === revision ? data : null
   const artifacts = useMemo(() => toArtifacts(shown?.rawArtifacts), [shown])
+  // 단계 상세(#289): 고른 revision의 view 값만 쓴다
+  const step = useMemo<StepData | null>(
+    () =>
+      shown && {
+        runId,
+        revision: shown.revision,
+        runRevision: run?.revision ?? 0,
+        blocks: shown.blocks,
+        requirements: shown.requirements,
+        design: shown.design,
+        findings: shown.findings,
+        artifacts,
+        normalization: shown.normalization,
+      },
+    [shown, runId, run?.revision, artifacts],
+  )
   const names = useMemo(() => nameIndex(shown?.design ?? []), [shown])
   const erd = useMemo(() => erdModel(shown?.design ?? [], shown?.findings ?? []), [shown])
   const trace = useMemo(
@@ -244,7 +264,8 @@ function Workspace({ runId }: { runId: string }) {
             <span style={{ flex: 1 }} />
             {tab === 'trace' && (
               <span style={{ fontSize: 13, color: dark.inkMuted }}>
-                요구사항 {summary.requirements} · 미연결 {summary.unlinkedRequirements} · 제외 {summary.excludedBlocks} · 확인(원문 없음) {summary.noSourceBlocks}
+                요구사항 {summary.requirements} · 요구사항 미연결 {summary.unlinkedRequirements} · 원문 미연결 {summary.unlinkedBlocks} · 제외{' '}
+                {summary.excludedBlocks} · 확인(원문 없음) {summary.noSourceBlocks}
               </span>
             )}
           </div>
@@ -285,6 +306,8 @@ function Workspace({ runId }: { runId: string }) {
               names={names}
               traceNodes={trace.nodes}
               pipeline={pipeline}
+              events={events}
+              step={step}
               onFinding={onFinding}
             />
           )}

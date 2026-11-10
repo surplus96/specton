@@ -9,6 +9,7 @@ import type { RunStatus, SseEvent } from '../../api/types.ts'
 import type { ArtifactRef, Finding } from '../../api/viewItems.ts'
 import { reviewNotices } from '../review/rules.ts'
 import { displayStage, requirementsCheckSkipped } from '../run/screens.ts'
+import { nodeEvent, nodeState } from './nodeEvents.ts'
 
 export type NodeState = 'waiting' | 'running' | 'awaiting' | 'done' | 'failed' | 'skipped' | 'cancelled'
 
@@ -68,7 +69,7 @@ export const PIPELINE: readonly Def[] = [
   { id: 'A05', title: 'A05 관계 모순', kind: 'ai', step: 10, lane: 0 },
   { id: 'A06', title: 'A06 데이터 누락', kind: 'ai', step: 10, lane: 1 },
   { id: 'A07', title: 'A07 비기능', kind: 'ai', step: 10, lane: 2 },
-  { id: 'A08', title: 'A08 업무 흐름', kind: 'ai', step: 10, lane: 3 },
+  { id: 'A08', title: 'A08 정규화', kind: 'ai', step: 10, lane: 3 },
   { id: 'a09', title: 'A09 재작업 판단', kind: 'ai', step: 11 },
   { id: 'final_review', title: '최종 검토', kind: 'human', step: 12 },
   { id: 'export', title: '내보내기', kind: 'code', step: 13 },
@@ -105,6 +106,13 @@ const NODES_OF_STAGE: Record<string, readonly PipelineNodeId[]> = {
   awaiting_review: ['final_review'],
   review: ['final_review'],
   exporting: ['export'],
+}
+
+/** 이 노드가 속한 서버 단계(`stage`) 목록. 단계 상세에서 그 단계의 SSE 이벤트를 고를 때 쓴다 (#289) */
+export function stagesOf(id: PipelineNodeId): string[] {
+  return Object.entries(NODES_OF_STAGE)
+    .filter(([, nodes]) => nodes.includes(id))
+    .map(([stage]) => stage)
 }
 
 function stepOf(id: PipelineNodeId): number {
@@ -162,6 +170,17 @@ export function pipelineNodes({ run, events, artifacts, findings }: PipelineInpu
 
   return PIPELINE.map((def): PipelineNode => {
     const at = (state: NodeState, note: string | null = null): PipelineNode => ({ ...def, state, note })
+    const observed = nodeEvent(def.id, events, run.revision)
+    if (observed) {
+      const state = nodeState(observed)
+      if (state === 'running' && stopped) return at(status === 'failed' ? 'failed' : 'cancelled', '종료 이벤트 없이 실행이 멈춤')
+      return at(state, '서버 노드 이벤트 기준')
+    }
+    const normalizeEvent = nodeEvent('normalize', events, run.revision)
+    const normalizationFailed = normalizeEvent?.data.payload?.normalization_failed === true
+    const ddlValidation = nodeEvent('ddl', events, run.revision)?.data.payload?.validation_status
+    if (normalizationFailed && [...GENERATORS, 'rules', ...REVIEWERS].includes(def.id)) return at('skipped', '정리 실패로 실행하지 않음')
+    if ((ddlValidation === 'failed' || ddlValidation === 'error') && ['rules', ...REVIEWERS].includes(def.id)) return at('skipped', 'SQL 검증 실패로 실행하지 않음')
     // 사람 확인 노드를 건너뛴 경우 (ADR-0015 조건부 확인)
     if (def.id === 'extraction_check' && !askedExtraction && current > def.step) return at('skipped', '확인할 원문이 없어 생략')
     if (def.id === 'requirements_check' && skippedRequirements) return at('skipped', '확인할 항목이 없어 생략')

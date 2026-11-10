@@ -268,6 +268,28 @@ def record_events(
         return _append_events(conn, run_id, revision, events)
 
 
+def record_node_event(
+    conn: Connection[DictRow], run_id: UUID, holder: str, revision: int, event: NewEvent
+) -> None:
+    """task ID·phase로 중복을 막는다. last_checkpoint나 run 상태는 바꾸지 않는다.
+
+    그래프 task ID는 체크포인트 재실행에도 유지된다. 새 revision의 작업은 별도 ID다.
+    """
+    with conn.transaction():
+        current = _lock_run(conn, run_id)
+        check_holder(conn, run_id, holder)
+        key = {k: event.payload[k] for k in ("task_id", "phase")}
+        exists = conn.execute(
+            "SELECT 1 FROM run_event WHERE run_id = %s AND payload->'payload' @> %s LIMIT 1",
+            (run_id, Jsonb(key)),
+        ).fetchone()
+        if exists is not None:
+            return
+        if current["status"] in (S.CANCEL_REQUESTED, S.CANCELLED):
+            event.payload["outcome"] = "cancelled"
+        _append_events(conn, run_id, revision, (event,))
+
+
 def request_cancel(
     conn: Connection[DictRow], run_id: UUID, owner_ref: str, expected_revision: int
 ) -> tuple[RunState, list[SseEvent]]:

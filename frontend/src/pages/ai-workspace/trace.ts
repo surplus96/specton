@@ -210,6 +210,8 @@ export function connected(graph: TraceGraph, selected: string): Set<string> {
 export function traceSummary(graph: TraceGraph): {
   requirements: number
   unlinkedRequirements: number
+  /** 요구사항으로 이어지지 않은 원문 (제외·확인(원문 없음)은 세지 않음) */
+  unlinkedBlocks: number
   excludedBlocks: number
   noSourceBlocks: number
 } {
@@ -218,6 +220,7 @@ export function traceSummary(graph: TraceGraph): {
   return {
     requirements: reqs.length,
     unlinkedRequirements: reqs.filter((n) => n.mark === 'unlinked').length,
+    unlinkedBlocks: blocks.filter((n) => n.mark === 'unlinked').length,
     excludedBlocks: blocks.filter((n) => n.mark === 'excluded').length,
     noSourceBlocks: blocks.filter((n) => n.mark === 'no-source').length,
   }

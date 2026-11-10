@@ -17,14 +17,17 @@ import logging
 import os
 import socket
 import threading
+import time
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command, StateSnapshot
+from psycopg.types.json import Jsonb
 
 from specton.artifacts import GeneratedArtifact
 from specton.config import Settings
@@ -47,6 +50,8 @@ from specton.graph import (
     initial_state,
 )
 from specton.llm.errors import LLMError
+from specton.llm.types import CallRecord
+from specton.node_progress import NODES, STAGES, node_result
 from specton.persistence import lease, runs, snapshots
 from specton.persistence.artifacts import publish_artifacts
 from specton.persistence.db import Pool
@@ -223,6 +228,9 @@ class _Job:
         self.lost = lost
         self.config: RunnableConfig = {"configurable": {"thread_id": str(run_id)}}
         self.status = S.QUEUED  # 마지막으로 저장한 run 상태
+        self.node_tasks: dict[str, dict[str, Any]] = {}
+        self.node_calls: dict[str, list[dict[str, Any]]] = {}
+        self.finished_nodes: list[tuple[int, NewEvent]] = []
 
     def run(self) -> None:
         graph = self.runner.graph
@@ -234,9 +242,27 @@ class _Job:
             notes: list[RunNote] = []
             pending = False
             for event in graph.stream(
-                start, self.config, stream_mode=["updates", "checkpoints"], durability="sync"
+                start,
+                self.config,
+                stream_mode=["updates", "checkpoints", "tasks", "custom"],
+                durability="sync",
             ):
                 mode, chunk = cast(tuple[str, dict[str, Any]], event)
+                if mode == "tasks":
+                    self._node_progress(chunk)
+                    continue
+                if mode == "custom":
+                    if "llm_call" in chunk:
+                        call = CallRecord.model_validate(chunk["llm_call"])
+                        node = (
+                            "A05"
+                            if call.stage == "REVIEW"
+                            else call.stage.lower()
+                            if call.stage in ("A01", "A02", "A03", "A04", "A09")
+                            else call.stage
+                        )
+                        self.node_calls.setdefault(node, []).append(call.model_dump(mode="json"))
+                    continue
                 if mode == "updates":
                     notes.extend(_notes(chunk))
                     pending = True
@@ -276,6 +302,73 @@ class _Job:
             except Exception:
                 logger.exception("run %s의 완료된 SQL 검증 결과를 복구하지 못했습니다", self.run_id)
             self._fail(exc)
+
+    def _node_progress(self, chunk: Mapping[str, Any]) -> None:
+        name = str(chunk.get("name", ""))
+        if name not in NODES:
+            return
+        task_id = str(chunk["id"])
+        phase = "started" if "input" in chunk else "finished"
+        now = datetime.now(UTC).isoformat()
+        if phase == "started":
+            design = chunk["input"]["design"]
+            self.node_tasks[task_id] = {
+                "revision": design.revision,
+                "stage": STAGES.get(name, design.status.value),
+                "clock": time.monotonic(),
+            }
+            self.node_calls[name] = []
+        info = self.node_tasks.get(task_id)
+        if info is None and phase == "finished":
+            # 완료된 pending write를 재생하면 task 시작이 다시 오지 않을 수 있다.
+            with self.runner.pool.connection() as conn:
+                row = conn.execute(
+                    "SELECT payload FROM run_event WHERE run_id = %s AND "
+                    "payload->'payload' @> %s ORDER BY event_id DESC LIMIT 1",
+                    (self.run_id, Jsonb({"task_id": task_id, "phase": "started"})),
+                ).fetchone()
+            if row:
+                info = {
+                    "revision": row["payload"]["revision"],
+                    "stage": row["payload"]["stage"],
+                    "clock": None,
+                }
+        if info is None:
+            return  # 재개 중 이미 저장된 task 결과만 전달되는 경우
+        payload: dict[str, Any] = {"node": name, "task_id": task_id, "phase": phase, "at": now}
+        if phase == "finished":
+            payload.update(node_result(name, chunk.get("result") or {}))
+            if info["clock"] is not None:
+                payload["duration_ms"] = max(0, int((time.monotonic() - info["clock"]) * 1000))
+            else:
+                payload["recovered"] = True  # 재실행 벽시계 소요를 0으로 꾸미지 않는다
+            payload["outcome"] = (
+                "error" if chunk.get("error") or payload.get("failed_branches") else "ok"
+            )
+            payload["result_saved"] = False
+            summaries = (chunk.get("result") or {}).get("call_summaries", {})
+            payload["calls"] = (
+                [c for calls in summaries.values() for c in calls]
+                if summaries
+                else self.node_calls.pop(name, [])
+            )
+        event = NewEvent(
+            E.STATUS,
+            f"{name} {'시작' if phase == 'started' else '종료'}",
+            stage=info["stage"],
+            payload=payload,
+        )
+        if phase == "finished" and not chunk.get("error"):
+            self.finished_nodes.append((info["revision"], event))
+            return  # 모델·산출물의 확정 체크포인트와 같은 트랜잭션으로 게시
+        with self.runner.pool.connection() as conn:
+            runs.record_node_event(
+                conn,
+                self.run_id,
+                self.runner.holder,
+                info["revision"],
+                event,
+            )
 
     def _save_completed_sql(self) -> None:
         """다른 병렬 가지의 예외로 step이 끝나지 못해도 완료된 SQL·시도는 보존한다.
@@ -471,11 +564,15 @@ class _Job:
                         self.runner.settings.storage_dir,
                     )
                     publish_validation_attempts(conn, self.runner.holder, design, attempts)
+                for revision, event in self.finished_nodes:
+                    event.payload["result_saved"] = True
+                    runs.record_node_event(conn, self.run_id, self.runner.holder, revision, event)
         except InvalidTransitionError:
             if self._load().status is S.CANCEL_REQUESTED:
                 raise _Cancelled from None  # 저장 직전에 취소 요청이 들어왔다
             raise
         self.status = design.status
+        self.finished_nodes.clear()
         if validation_status == ValidationStatus.ERROR:
             # 동일 SQL과 안전한 검증 기록을 먼저 commit한 뒤 기존 실패 기록 경로로 넘긴다.
             raise SqlValidationExecutionError("SQL 검증을 완료하지 못했습니다")
@@ -503,7 +600,10 @@ class _Job:
         """취소·실패로 끝낸다. 진행 중이던 노드 결과는 저장하지 않는다."""
         current = self._load()
         checkpoint = _checkpoint_id(self.runner.graph.get_state(self.config))
-        with self.runner.pool.connection() as conn:
+        with self.runner.pool.connection() as conn, conn.transaction():
+            for revision, finished in self.finished_nodes:
+                finished.payload["result_saved"] = False
+                runs.record_node_event(conn, self.run_id, self.runner.holder, revision, finished)
             runs.record_progress(
                 conn,
                 self.run_id,
@@ -514,6 +614,7 @@ class _Job:
                 error=error,
                 events=[event],
             )
+        self.finished_nodes.clear()
 
     def _load(self) -> RunStatus:
         with self.runner.pool.connection() as conn:
