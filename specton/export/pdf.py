@@ -9,7 +9,8 @@
 
 ERD PDF 구성 (ADR-0004):
 1. 표지: 실행 정보 표 (#14 출력 manifest와 같은 이름: run_id·revision·model_hash·pack·pack_version)
-2. 전체 관계 개요: 속성 없이 엔티티와 관계만. 나누지 않으며 인쇄 글자가 6pt보다 작으면 경고 (#236)
+2. 전체 관계 개요: 속성·관계 이름 없이 엔티티와 관계선만(이름 겹침 방지 #261). 나누지 않으며
+   인쇄 글자가 6pt보다 작으면 경고 (#236)
 3. 업무 영역별 상세도: 키 속성(PK·FK·UK)만, 좌우 배치. 인쇄 글자가 6pt보다 작으면 경고
 4. 테이블 정의서: 전체 속성. 긴 표는 쪽마다 머리글 반복
 
@@ -252,7 +253,9 @@ def erd_sources(
 
     팩에 영역이 없으면 모든 테이블이 「기타」 하나에 들어가 상세도가 한 장이다.
     """
-    sources = [("overview", "전체 관계 개요", render_erd(model, relationships, attributes=False))]
+    # 개요는 관계 이름 없이 선과 끝 기호만. 관계 ID는 영역 상세도에서 본다 (#261)
+    overview = render_erd(model, relationships, attributes=False, labels=False)
+    sources = [("overview", "전체 관계 개요", overview)]
     split = assign_areas(model.tables, areas)
     for area, table_ids in split.areas:
         title = f"영역 상세 · {area} ({len(table_ids)}개)"

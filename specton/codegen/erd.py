@@ -89,11 +89,14 @@ def render_erd(
     relationships: Sequence[Relationship],
     *,
     attributes: bool = True,
+    labels: bool = True,
     direction: Direction | None = None,
 ) -> str:
     """Mermaid `erDiagram` 원문.
 
     `attributes=False`면 속성 없이 엔티티와 관계만 그린다 (전체 관계 개요).
+    `labels=False`면 관계선에 관계 ID(`REL-xx`)를 쓰지 않는다(빈 이름 `""`). Mermaid는 이름을 선의
+    가운데에 두어, 부모 둘이 같은 자식으로 모이면 두 이름이 겹친다 (#261). PDF 개요가 쓴다.
     `direction`을 주면 배치 방향을 정한다 (`LR`: 좌우, ADR-0004 PDF 상세도).
     """
     idents = _identifiers(model.tables)
@@ -111,7 +114,8 @@ def render_erd(
     for edge in erd_edges(model, relationships):
         parent, child = idents[edge.parent_table_id], idents[edge.child_table_id]
         marker = f"{edge.parent_marker}{edge.line}{edge.child_marker}"
-        lines.append(f'    {parent} {marker} {child} : "{edge.relationship_id}"')
+        label = edge.relationship_id if labels else ""
+        lines.append(f'    {parent} {marker} {child} : "{label}"')
     return "\n".join(lines) + "\n"
 
 
