@@ -133,7 +133,7 @@ class World:
         ]
         digest = model_hash(design)
         assert design.normalized is not None and design.revision == revision
-        assert design.versions.pack_id == "inventory" and design.versions.pack_version == "0.1.22"
+        assert design.versions.pack_id == "inventory" and design.versions.pack_version == "0.1.23"
         assert design.normalized.common_version == "0.1.7"
         assert design.normalized.policy_digest == policy_digest(
             self.settings.pack_root, "inventory"
@@ -142,7 +142,7 @@ class World:
         exported = json.loads(content[("manifest", "json")])
         assert exported["run_id"] == run_id and int(exported["revision"]) == revision
         assert exported["model_hash"] == digest and exported["approved"] is True
-        assert exported["pack"] == "inventory" and exported["pack_version"] == "0.1.22"
+        assert exported["pack"] == "inventory" and exported["pack_version"] == "0.1.23"
         assert exported["source_hash"] == design.versions.document_hash
         assert exported["generator_versions"]["common_version"] == "0.1.7"
         assert exported["generator_versions"]["policy_digest"] == design.normalized.policy_digest

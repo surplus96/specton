@@ -3,6 +3,9 @@ domain_packs/common/words.yaml        linguist-generated=true
 domain_packs/common/domains.yaml      linguist-generated=true
 domain_packs/*/terms.yaml             linguist-generated=true
 domain_packs/sources/*.csv            linguist-generated=true -diff
+# #291 출처 사본은 CP949·CRLF 원본 바이트와 기준 YAML의 해시를 그대로 보존한다.
+domain_packs/inventory/sources/*      -text
+domain_packs/inventory/sources/*.csv  linguist-vendored=true -diff
 uv.lock                               linguist-generated=true
 frontend/package-lock.json            linguist-generated=true
 

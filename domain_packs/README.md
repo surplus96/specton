@@ -31,6 +31,11 @@ inventory/ · maintenance/
 
 ## 작업 방법
 
+운영 확장 어휘는 `inventory/lexicon_sources.yaml`에 기준 사전·공개 CSV 사본·포함/제외 근거를
+기록하고 manifest.lexicon_sources로 선언한다(#291). build·loader가 동일한 형식·행·해시 검증을
+수행한다. 원본은 inventory/sources 아래에 두며 CP949 CSV 바이트를 변환하지 않는다.
+자세한 형식과 기존 팩 호환은 [문서 입출력·팩](../docs/10-io-and-packs.md)을 따른다.
+
 ```bash
 uv run python -m specton.packs.build          # ✍ 입력을 고친 뒤 ⚙ 파일 재생성
 uv run python -m specton.packs.build --check  # ⚙ 파일이 최신인지 검사 (CI에서 실행)

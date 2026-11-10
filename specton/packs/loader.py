@@ -54,6 +54,7 @@ class Manifest(_Strict):
     source: NonEmpty
     origin: Literal["synthetic", "public", "approved"]
     status: Literal["draft", "approved"]
+    lexicon_sources: Literal["lexicon_sources.yaml"] | None = None
 
 
 class Word(_Strict):
@@ -330,6 +331,12 @@ def load_pack(pack: str, *, root: Path = DEFAULT_ROOT) -> Pack:
     common = load_common(root=root)
     folder = root / pack
     words = _validate(_PackWordsFile, folder / "words.yaml").words
+    from specton.packs.lexicon_sources import LexiconSourceError, validate_lexicon_sources
+
+    try:
+        validate_lexicon_sources(folder)
+    except LexiconSourceError as exc:
+        raise PackError(str(exc)) from exc
     terms_path = folder / "terms.yaml"
     raw_terms = _read_data(terms_path)
     terms = _parse(_TermsFile, raw_terms, terms_path).terms
