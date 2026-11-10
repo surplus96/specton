@@ -294,3 +294,13 @@ class TestMain:
 
         assert code == 2
         assert "SPECTON_OPENAI_API_KEY" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(("kind", "category"), [("NFR", None), ("FR", "security")])
+def test_requirement_category_is_rejected_when_loading_the_fixture(
+    tmp_path: Path, kind: str, category: str | None
+) -> None:
+    data = _sample()
+    data["cases"][0]["requirements"][0].update(type=kind, nfr_category=category)
+    with pytest.raises(FixtureError, match="nfr_category"):
+        load_fixture_set(_write(tmp_path, data))
