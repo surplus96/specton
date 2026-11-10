@@ -225,7 +225,7 @@ MODEL = NormalizedModel.model_validate(
     }
 )
 
-EDGE_LINE = re.compile(r'^    (\w+) (\|\||\|o)(--|\.\.)(o\{|o\|) (\w+) : "([\w-]+)"$')
+EDGE_LINE = re.compile(r'^    (\w+) (\|\||\|o)(--|\.\.)(o\{|o\|) (\w+) : "([\w-]*)"$')
 
 
 def _edge_lines(text: str) -> list[tuple[str, ...]]:
@@ -307,6 +307,16 @@ def test_overview_has_no_attributes() -> None:
     assert "{\n" not in text and "PK" not in text
     assert '    wrhus["창고"]' in text.splitlines()
     assert len(_edge_lines(text)) == len(MODEL.foreign_keys)
+
+
+def test_labels_can_be_left_out_without_losing_edges_or_markers() -> None:
+    """관계 이름만 빈 글자로 바꾸고 선·끝 기호·참조는 그대로다 (#261 개요 겹침)."""
+    with_labels = _edge_lines(render_erd(MODEL, RELATIONSHIPS, attributes=False))
+    text = render_erd(MODEL, RELATIONSHIPS, attributes=False, labels=False)
+    without = _edge_lines(text)
+    assert [line[:5] for line in without] == [line[:5] for line in with_labels]
+    assert {line[5] for line in without} == {""}
+    assert "REL-" not in text
 
 
 # ── Mermaid 문법 (11.15.0·11.17.2 실측) ────────────────────
