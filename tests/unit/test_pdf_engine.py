@@ -11,6 +11,7 @@ WeasyPrint가 필요한 시험은 WeasyPrint를 불러올 수 없는 곳(Windows
 실제 mermaid-cli(`mmdc`) 시험은 `mmdc`가 있을 때만 돈다 (실행 이미지 #25, Docker).
 """
 
+import builtins
 import json
 import logging
 import os
@@ -19,6 +20,7 @@ import shutil
 import subprocess
 import threading
 import zlib
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -327,16 +329,51 @@ def test_mermaid_cli_failure_is_a_pdf_error(monkeypatch: pytest.MonkeyPatch) -> 
 # ── PDF 변환 (WeasyPrint 필요) ─────────────────────────────
 
 
+@pytest.fixture
+def fresh_weasyprint_load() -> Iterator[None]:
+    """불러오기 기억을 비우고 시작하고, 끝나면 다시 비워 다른 시험이 실제로 불러오게 한다."""
+    pdf._import_weasyprint.cache_clear()
+    yield
+    pdf._import_weasyprint.cache_clear()
+
+
+def test_failed_weasyprint_load_is_not_retried(
+    monkeypatch: pytest.MonkeyPatch, fresh_weasyprint_load: None
+) -> None:
+    """실패한 불러오기를 다시 하지 않는다.
+
+    macOS conda 파이썬은 gobject까지 열고 pango에서 실패한다. 다시 열면 gobject 초기화가
+    끊긴 포인터를 읽어 프로세스가 죽는다 (2026-11-10 시험 중 세그폴트).
+    """
+    attempts: list[str] = []
+    real_import = builtins.__import__
+
+    def failing_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name.startswith("weasyprint"):
+            attempts.append(name)
+            raise OSError("cannot load library 'libpango-1.0-0'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", failing_import)
+    for _ in range(3):
+        with pytest.raises(PdfError, match="libpango"):
+            pdf.html_to_pdf("<p>x</p>")
+    assert attempts == ["weasyprint"]
+
+
 def _weasyprint(*, korean: bool = False) -> Any:
     """WeasyPrint를 불러온다. 없으면 건너뛴다. `korean`이면 한글 폰트도 있어야 한다.
 
     GitHub CI(ubuntu)에는 Pango는 있지만 한글 폰트(fonts-noto-cjk)가 없다. 한글이 필요한 시험은
     실행 이미지·Docker에서 돌고, 폰트가 없을 때 멈추는지는 CI에서도 시험한다.
+    불러오기는 `pdf.load_weasyprint`로 한 번만 한다. 시험마다 다시 불러오면 프로세스가 죽을 수 있다.
     """
     try:
-        import weasyprint
-    except (ImportError, OSError):  # Windows에서 GTK가 없으면 OSError
+        pdf.load_weasyprint()
+    except PdfError:
         pytest.skip("WeasyPrint를 불러올 수 없는 환경 (Docker·CI 리눅스에서 실행)")
+    import weasyprint  # 위에서 이미 불러왔다
+
     if korean and not _has_korean_font():
         pytest.skip("한글 폰트(fonts-noto-cjk)가 없는 환경 (실행 이미지·Docker에서 실행)")
     return weasyprint
