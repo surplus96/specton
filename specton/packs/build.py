@@ -252,6 +252,9 @@ def build(root: Path) -> dict[Path, str]:
     from specton.packs.selection import SelectionError, validate_selection
 
     for pack in discover_packs(root):
+        from specton.packs.lexicon_sources import validate_lexicon_sources
+
+        validate_lexicon_sources(pack)
         project_words = {w["word"]: w for w in read_yaml(pack / "words.yaml").get("words") or []}
         try:
             validate_selection(pack, map(word_entry, word_rows), registered_words=project_words)

@@ -287,6 +287,9 @@ def load_pack_lexicon(pack: str, root: Path = DEFAULT_PACK_ROOT) -> PackLexicon:
 
     시각 타입 용어의 소수 초 자릿수는 naming.yaml `type_profile`에 맞는 도메인 설정에서 읽는다.
     """
+    from specton.packs.lexicon_sources import validate_lexicon_sources
+
+    validate_lexicon_sources(root / pack)
     files = [
         root / "common" / "naming.yaml",
         root / "common" / "domains.yaml",
