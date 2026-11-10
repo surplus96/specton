@@ -26,7 +26,7 @@ jobs:
           SPECTON_REQUIRE_ENGINE: "1"
         run: |
           test -f "$FREETYPE" || { echo "시스템 libfreetype이 없음: $FREETYPE"; exit 1; }
-          LD_PRELOAD="$FREETYPE" uv run pytest -rs tests/unit/test_ingest_hangul.py tests/unit/test_hangul_engine_lazy_import.py
+          LD_PRELOAD="$FREETYPE" uv run pytest -rs tests/unit/test_ingest_hangul.py tests/unit/test_hangul_engine_lazy_import.py tests/unit/test_hangul_input.py
       - run: uv run python -m specton.packs.build --check
 
   frontend:

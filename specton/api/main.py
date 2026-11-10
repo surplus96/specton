@@ -23,9 +23,10 @@ from specton.graph import GraphState, Node, build_graph
 from specton.manifest_node import manifest_node
 from specton.normalization_node import normalization_node
 from specton.parse_node import parse_node
-from specton.pdf_adapter import erd_pdf_renderer
+from specton.pdf_adapter import erd_pdf_renderer, function_spec_pdf_renderer
 from specton.persistence.db import Pool, apply_schema, create_checkpointer, create_pool
 from specton.review.normalization_findings import failure_mapper, rule_severities
+from specton.review.rule_policy import load_policies
 from specton.runner import Runner
 
 
@@ -39,16 +40,23 @@ def create_graph(
     checkpointer: BaseCheckpointSaver[Any],
     agent_nodes: Mapping[str, Node] | None = None,
 ) -> CompiledStateGraph[GraphState, None, GraphState, GraphState]:
-    """문서·에이전트·정리·생성·SQL 검증·RULE-02·06을 연결한다. SC는 후속 범위다.
+    """문서·에이전트·정리·생성·SQL 검증·RULE·SC를 연결한다.
 
     `agent_nodes`(A01~A09)를 주지 않으면 실제 OpenAI client 노드를 쓴다. 시험은 고정 규칙 LLM
     노드를 넣어 나머지 실제 노드를 그대로 끝까지 돌린다 (#19 기본 흐름 검증).
     """
-    mapper = failure_mapper(rule_severities(root=settings.pack_root))
+    mapper = failure_mapper(
+        rule_severities(root=settings.pack_root), policies=load_policies(root=settings.pack_root)
+    )
     erd = (
         erd_node(settings.storage_dir, pdf=erd_pdf_renderer(settings))
         if settings.enable_erd_pdf
         else erd_node(settings.storage_dir)
+    )
+    documents = (
+        document_node(settings.storage_dir, pdf=function_spec_pdf_renderer(settings))
+        if settings.enable_function_spec_pdf
+        else document_node(settings.storage_dir)
     )
     nodes = {
         **(agent_nodes if agent_nodes is not None else openai_agent_nodes(settings)),
@@ -56,7 +64,7 @@ def create_graph(
         "normalize": normalization_node(mapper, root=settings.pack_root),
         "erd": erd,
         "ddl": ddl_node(settings),
-        "rtm": document_node(settings.storage_dir),
+        "rtm": documents,
         "rules": design_rules_node(root=settings.pack_root),
         "wait_review": manifest_node(settings.storage_dir),
         "export": export_node(settings.storage_dir),

@@ -143,11 +143,11 @@ def test_row_without_text_becomes_a_review_block_without_source_text(tmp_path: P
     assert block.notice
 
 
-def test_hwpx_is_not_read_until_its_parser_exists(tmp_path: Path) -> None:
-    """HWPX 파서는 #24에서 만든다. 그때까지 읽지 못한 파일로 끝낸다."""
-    doc = DocumentRef(document_id="doc-1", file_format="hwpx", storage_ref="a.hwpx")
+def test_format_without_a_parser_ends_as_unreadable(tmp_path: Path) -> None:
+    """파서가 없는 형식(PDF, 이번 범위 밖)은 읽지 못한 파일로 끝낸다. 한글은 #24로 읽는다."""
+    doc = DocumentRef(document_id="doc-1", file_format="pdf", storage_ref="a.pdf")
 
-    with pytest.raises(ExtractionFailedError):
+    with pytest.raises(ExtractionFailedError, match="읽을 수 없는 형식"):
         _parse(tmp_path, doc)
 
 

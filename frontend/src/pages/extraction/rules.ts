@@ -38,6 +38,7 @@ export function locationText(ref: SourceRef): string {
       return `${ref.row ?? '?'}행`
     case 'pdf':
       return `${ref.page ?? '?'}쪽 ${ref.block ?? '?'}번째 블록`
+    case 'hwp':
     case 'hwpx': {
       const base = `${ref.section ?? '?'}구역 ${ref.paragraph ?? '?'}문단`
       return ref.table != null ? `${base} · 표 ${ref.table}` : base

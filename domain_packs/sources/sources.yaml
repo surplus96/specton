@@ -1,10 +1,12 @@
 # 공식 표준 원본 사본. 판을 바꿀 때는 CSV를 교체하고 이 파일을 고친 뒤 build를 다시 실행한다.
+# sha256: 표준 준수 검사(#15 SC-01~06)가 실행 때 이 원본을 읽으며 내용이 같은지 확인하는 값. CRLF를 LF로
+#   맞춘 뒤의 sha256이다(체크아웃 줄바꿈 설정과 관계없이 같게). CSV를 바꾸면 같이 고친다.
 edition: 공공데이터 공통표준 8차 제·개정 (2025-11)
 publisher: 행정안전부
 legal_basis: 공공기관의 데이터베이스 표준화 지침 (행정안전부고시 제2025-19호)
 license: 이용허락범위 제한 없음 (data.go.kr)
 retrieved_on: 2026-10-23
 files:
-  words:   { path: common_standard_words_20251101.csv,   dataset_id: "15156439" }
-  terms:   { path: common_standard_terms_20251101.csv,   dataset_id: "15156379" }
-  domains: { path: common_standard_domains_20251101.csv, dataset_id: "15156442" }
+  words:   { path: common_standard_words_20251101.csv,   dataset_id: "15156439", sha256: 9f6c4db4c4031df9b99f805cb389dc138fae518447b32f0fadf8c5ca84c34991 }
+  terms:   { path: common_standard_terms_20251101.csv,   dataset_id: "15156379", sha256: 0800f7e5830679c54e56c9eb7d40450f0ab4078d2f3ec4db7356f9d9e832e574 }
+  domains: { path: common_standard_domains_20251101.csv, dataset_id: "15156442", sha256: 7e73d91055917746c075a4f761f1aecbc1cd0c9c9537e900e26017b2bb166d29 }

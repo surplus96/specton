@@ -8,7 +8,7 @@
   다른 이름은 다른 ID다.
   한계: 같은 이름은 같은 객체로 보고, 이름이 바뀌면 새 객체로 본다 (최종 형식은 #12).
 - 다시 실행하면 `entity_ops`는 누적하지 않고 새 결과로 바꾼다.
-- 팩 타입은 `naming.yaml`의 `type_profile`로 고른다 (ADR-0009 미확정, 임시(#11)).
+- 팩 타입은 `naming.yaml`의 `type_profile`로 고른다 (ADR-0009 재고·공통 결정, #11).
 """
 
 import unicodedata
@@ -37,6 +37,7 @@ from specton.nodes.common import NodeRun, build_request
 from specton.packs.build import DEFAULT_ROOT
 from specton.packs.examples import load_examples
 from specton.packs.loader import PgType, load_pack
+from specton.type_limits import type_limit_problems
 
 PROMPT_VERSION = "a03-v2"
 SYSTEM_PROMPT = """\
@@ -75,22 +76,26 @@ class A03Output(EntityDesignDraft):
 
     @model_validator(mode="after")
     def _check_names_and_ops(self) -> Self:
+        # 이름은 한글 조합 방식(NFC·NFD)만 다르면 같은 이름으로 본다. ID 계산(`stable_id`)과
+        # 같은 기준이라, 여기서 거르지 않으면 같은 ID가 되어 재요청 없이 멈춘다 (#255).
+        # 저장하는 이름은 바꾸지 않고 비교할 때만 NFC로 맞춘다.
         names = [e.name for e in self.entities]
-        duplicated = sorted({n for n in names if names.count(n) > 1})
+        duplicated = _nfc_duplicates(names)
         if duplicated:
-            raise ValueError(f"엔티티 이름이 중복됩니다: {', '.join(duplicated)}")
+            raise ValueError(f"엔티티 이름이 중복됩니다: {duplicated}")
         for entity in self.entities:
-            attr_names = [a.name for a in entity.attributes]
-            same = sorted({n for n in attr_names if attr_names.count(n) > 1})
+            same = _nfc_duplicates([a.name for a in entity.attributes])
             if same:
-                raise ValueError(f"{entity.name}의 속성 이름이 중복됩니다: {', '.join(same)}")
-        unknown = sorted({op.entity_name for op in self.entity_ops} - set(names))
+                raise ValueError(f"{entity.name}의 속성 이름이 중복됩니다: {same}")
+        known = {_nfc(n) for n in names}
+        unknown = sorted(
+            {op.entity_name for op in self.entity_ops if _nfc(op.entity_name) not in known}
+        )
         if unknown:
             raise ValueError(f"entity_ops가 출력에 없는 엔티티를 가리킵니다: {', '.join(unknown)}")
-        pairs = [(op.function_id, op.entity_name) for op in self.entity_ops]
-        repeated = sorted({f"{f}/{n}" for f, n in pairs if pairs.count((f, n)) > 1})
+        repeated = _nfc_duplicates([f"{op.function_id}/{op.entity_name}" for op in self.entity_ops])
         if repeated:
-            raise ValueError(f"같은 기능·엔티티 쌍이 중복됩니다: {', '.join(repeated)}")
+            raise ValueError(f"같은 기능·엔티티 쌍이 중복됩니다: {repeated}")
         same_ops = [
             f"{op.function_id}/{op.entity_name}"
             for op in self.entity_ops
@@ -105,11 +110,24 @@ class A03Output(EntityDesignDraft):
             if any(
                 x.operation in op.operations
                 for op in self.entity_ops
-                if op.entity_name == entity.name
+                if _nfc(op.entity_name) == _nfc(entity.name)
             )
         ]
         if contradicted:
             raise ValueError(f"면제한 조작이 entity_ops에 있습니다: {', '.join(contradicted)}")
+        return self
+
+    @model_validator(mode="after")
+    def _check_type_limits(self) -> Self:
+        """PostgreSQL 상한을 넘는 길이·자릿수는 DDL 단계에서 멈추기 전에 재요청한다 (#255)."""
+        over = [
+            f"{e.name}.{a.name}: {problem}"
+            for e in self.entities
+            for a in e.attributes
+            for problem in type_limit_problems(a.length, a.precision)
+        ]
+        if over:
+            raise ValueError(f"타입 크기가 PostgreSQL 상한을 넘습니다: {', '.join(over)}")
         return self
 
 
@@ -135,6 +153,9 @@ class PackTerm(Contract):
             scale=self.scale,
             req_ids=("REQ-00",),  # 형식만 맞춘 자리표시
         )
+        over = type_limit_problems(self.length, self.precision)
+        if over:
+            raise ValueError(f"팩 용어 {self.term}: {', '.join(over)}")
         return self
 
 
@@ -244,6 +265,22 @@ def _nfc(name: str) -> str:
     return unicodedata.normalize("NFC", name)
 
 
+def _nfc_duplicates(names: Sequence[str]) -> str:
+    """NFC로 맞췄을 때 두 번 이상 나오는 이름. 없으면 빈 문자열이다.
+
+    조합 방식만 다른 이름은 화면에서 같은 글자로 보이므로, 그때는 LLM이 무엇을 고칠지
+    알 수 있게 설명을 덧붙인다.
+    """
+    groups: dict[str, list[str]] = {}
+    for name in names:
+        groups.setdefault(_nfc(name), []).append(name)
+    found = []
+    for key in sorted(k for k, v in groups.items() if len(v) > 1):
+        note = "" if len(set(groups[key])) == 1 else " (같은 글자를 다른 한글 조합 방식으로 씀)"
+        found.append(f"{key}{note}")
+    return ", ".join(found)
+
+
 def _compact(name: str) -> str:
     """조합 방식(NFC·NFD)과 띄어쓰기 차이를 무시하고 비교하기 위한 이름."""
     return "".join(_nfc(name).split())
@@ -291,7 +328,7 @@ def load_pack_context(pack: str, *, root: Path = DEFAULT_ROOT) -> PackContext:
     실행 노드는 Settings.pack_root를 넘겨 예시와 같은 위치의 팩을 읽는다.
     """
     loaded = load_pack(pack, root=root)
-    # 임시(#11): 프로필은 naming.yaml의 type_profile에서 온다 (ADR-0009 미확정).
+    # 확정(#11): 프로필은 naming.yaml의 type_profile에서 온다 (ADR-0009).
     profile = loaded.common.naming.type_profile
     domains = {d.name: d for d in loaded.common.domains}
     terms = tuple(
@@ -354,11 +391,12 @@ def run(
     result = client.complete(request, output_model, token_budget=token_budget)
     draft = result.output
     entities = _with_ids(draft.entities, pack)
-    id_by_name = {e.name: e.id for e in entities}
+    # 출력 검사와 같이 NFC로 찾는다. 엔티티는 NFC, entity_ops는 NFD로 써도 같은 엔티티다 (#255)
+    id_by_name = {_nfc(e.name): e.id for e in entities}
     ops_by_function: dict[str, list[EntityOp]] = {}
     for op in draft.entity_ops:
         ops_by_function.setdefault(op.function_id, []).append(
-            EntityOp(entity_id=id_by_name[op.entity_name], operations=op.operations)
+            EntityOp(entity_id=id_by_name[_nfc(op.entity_name)], operations=op.operations)
         )
     functions = tuple(
         f.evolve(entity_ops=tuple(ops_by_function.get(f.id, ()))) for f in state.functions

@@ -1,28 +1,89 @@
-"""#225 최종 설계 검사를 API 그래프에 연결한다. DB 저장·재작업 판단은 기존 경로를 쓴다."""
+"""최종 설계의 RULE·SC를 API 그래프에 연결한다. DB 저장·재작업 판단은 기존 경로를 쓴다."""
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from specton.contracts import DesignState, Finding
 from specton.graph import GraphState, Node
+from specton.packs.build import pack_content_hash
 from specton.packs.loader import load_common
+from specton.packs.provenance import policy_digest
 from specton.review.design_rules import check_design_rules
 from specton.review.normalization_findings import rule_severities
+from specton.review.rule_policy import apply_policy, load_policies
+from specton.review.standard_compliance import (
+    OfficialStandard,
+    Profile,
+    check_standard_compliance,
+    compliance_severities,
+    load_official_standard,
+    pack_words,
+)
 
 
 def design_rules_node(*, root: Path) -> Node:
-    """설정된 팩의 RULE-02·06 심각도·CRUD 면제 사유로 검사한다. SC는 후속 인계 범위다."""
+    """같은 root의 심각도·처리 정책·선별 적용을 사용한다. 기본 팩으로 우회하지 않는다."""
     severities = rule_severities(root=root)
-    exemptions = load_common(root=root).rules.crud_exemption_reasons
+    common = load_common(root=root)
+    policies = load_policies(root=root)
+    common_digest = pack_content_hash(root / "common")
+
+    def official() -> OfficialStandard:
+        return load_official_standard(root=root)
 
     def check(state: GraphState) -> Mapping[str, Any]:
         design = state["design"]
         if state.get("normalization_failed") or design.normalized is None:
             raise ValueError("규칙 검사: 성공한 정리 결과가 없습니다")
-        findings = check_design_rules(
-            design, severities=severities, crud_exemption_reasons=exemptions
+        if common_digest != pack_content_hash(root / "common"):
+            raise ValueError("규칙 검사: 공통 정책이 바뀌었습니다. 실행기를 재시작해야 합니다")
+        recorded = design.normalized.policy_digest
+        if recorded is not None and recorded != policy_digest(root, design.normalized.pack):
+            raise ValueError("규칙 검사: 정리 후 팩·표준 원본이 바뀌었습니다. 새 실행이 필요합니다")
+        routed = [
+            apply_policy(f, policies)
+            for f in check_design_rules(
+                design,
+                severities=severities,
+                crud_exemption_reasons=common.rules.crud_exemption_reasons,
+            )
+        ]
+        compliance, manual = _compliance(design, root, common.naming.type_profile, official)
+        findings: tuple[Finding, ...] = (
+            *state.get("rule_findings", ()),
+            *(f for f, _ in routed),
+            *compliance,
         )
-        # 기존 SQL·정리 지적을 덮어쓰지 않는다. 최종 지문 중복 병합은 merge_review가 맡는다.
-        return {"rule_findings": (*state.get("rule_findings", ()), *findings)}
+        return {
+            "rule_findings": findings,
+            "requires_manual_review": (
+                state.get("requires_manual_review", False) or manual or any(m for _, m in routed)
+            ),
+        }
 
     return check
+
+
+def _compliance(
+    design: DesignState,
+    root: Path,
+    profile: Profile,
+    official: Callable[[], OfficialStandard],
+) -> tuple[tuple[Finding, ...], bool]:
+    assert design.normalized is not None
+    if not any(
+        c.domain is None and c.attribute_id is not None
+        for t in design.normalized.tables
+        for c in t.columns
+    ):
+        return (), False
+    result = check_standard_compliance(
+        design,
+        official=official(),
+        words=pack_words(design.normalized.pack, root=root),
+        severities=compliance_severities(root=root),
+        profile=profile,
+        root=root,
+    )
+    return result["findings"], result["requires_manual_review"]

@@ -113,6 +113,8 @@ class NormalizedModel(Contract):
     pack_version: str
     rules_version: str
     lexicon_digest: str
+    common_version: str | None = None  # 이전 체크포인트에는 없음. 새 정리 결과부터 보존
+    policy_digest: str | None = None  # 공통·도메인 팩 전체와 공식 표준 출처 내용 해시
     tables: tuple[Table, ...]
     foreign_keys: tuple[ForeignKey, ...]
 

@@ -122,7 +122,8 @@ class ExtractionStatus(StrEnum):
     """원문 한 건의 추출 판정. `SourceRequirement`와 함께 코드가 채운다.
 
     `review`는 확인하거나 제외하고, `fail`은 제외해야 진행한다 (ADR-0015, #95).
-    `fail`을 정하는 기준은 #24에서 HWP·HWPX를 시험한 뒤 정한다.
+    지금 입력 형식에는 `fail` 기준을 두지 않는다 (#253). 읽지 못한 파일은 파일 단위로 멈추고
+    블록 문제는 `review`로 둔다. 값과 처리 규칙은 새 입력 형식에 기준이 생길 때를 위해 남긴다.
     """
 
     PASS = "pass"
@@ -144,10 +145,10 @@ class SourceRef(Contract):
     - xlsx: sheet, row
     - csv: row
     - pdf: page, block
-    - hwpx: section, paragraph (표 안이면 table, cell도)
+    - hwp·hwpx: section, paragraph (표 안이면 table, cell도). .hwp는 변환 없이 바로 읽는다 (#24)
     """
 
-    file_format: Literal["xlsx", "csv", "pdf", "hwpx"]
+    file_format: Literal["xlsx", "csv", "pdf", "hwp", "hwpx"]
     sheet: str | None = None
     row: int | None = Field(default=None, ge=1)
     page: int | None = Field(default=None, ge=1)
@@ -163,6 +164,7 @@ class SourceRef(Contract):
             "xlsx": ("sheet", "row"),
             "csv": ("row",),
             "pdf": ("page", "block"),
+            "hwp": ("section", "paragraph"),
             "hwpx": ("section", "paragraph"),
         }
         missing = [f for f in required[self.file_format] if getattr(self, f) is None]
@@ -183,7 +185,7 @@ class SourceRef(Contract):
                 return f"{self.row}행"
             case "pdf":
                 return f"{self.page}쪽 블록{self.block}"
-            case "hwpx":
+            case "hwp" | "hwpx":
                 where = f"구역{self.section} 문단{self.paragraph}"
                 if self.table is not None:
                     where += f" 표{self.table} {self.cell}"

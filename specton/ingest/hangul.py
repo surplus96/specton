@@ -17,20 +17,21 @@
 - 원문 위치(`SourceRef`)는 아래 `_source_ref`의 독스트링을 본다.
 - `source_text`는 「정의」 값과 「세부내용」 값을 줄바꿈으로 이은 글이다. 칸마다 글자는 원문
   그대로(앞뒤 공백만 뺌, tabular와 같음)다.
-- 판정은 `pass`와 `review`만 만든다. `fail`을 정하는 기준은 #24 시험 뒤 정한다고 계약
-  (`ExtractionStatus`)에 적혀 있어, 이번에는 기준 없이 `fail`을 만들지 않는다.
+- 판정은 `pass`와 `review`만 만든다. 한글 입력에는 `fail` 기준을 두지 않는다(#253 시험,
+  ADR-0015): 읽지 못한 파일은 아래처럼 파일 단위로 멈추고, 블록 문제는 `review`로 둔다.
 - 파일 단위로 멈추는 경우(`UnsupportedInput`): ① 엔진이 파일을 못 읽음(깨짐·형식 불량)
   ② 읽었지만 상세표가 하나도 없음 ③ 엔진 연결부 오류·표 해석 오류. 빈 결과나 `pass`로 넘기지 않는다.
 - 구현 범위 밖: 서술형 요구사항, 수정된 요구사항(취소선 등 변경 표시),
   암호 전용 안내(업로드 단 팝업으로 따로 정함).
   시험함: 암호 걸린 .hwp 1개는 엔진이 거절해 파일 단위 안내로 멈춘다(2026-11-09).
-  아직 시험하지 않음: 읽기 전용(배포용) 문서(시험 파일을 구하지 못함),
+  아직 시험하지 않음: 읽기 전용(배포용) 문서(시험 파일을 구하지 못함, #253),
   HWP 5.0 이전 버전(사용 현황 조사 전).
 """
 
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from specton.contracts.base import ExtractionStatus, SourceRef
 from specton.contracts.requirements import SourceRequirement
@@ -110,7 +111,17 @@ def _column_letters(col: int) -> str:
     return letters
 
 
-def _source_ref(table: HangulTable, index: int, cell: HangulCell) -> SourceRef:
+HangulFormat = Literal["hwp", "hwpx"]
+
+
+def _hangul_format(path: Path) -> HangulFormat:
+    """원문 위치에 적을 형식. .hwp는 변환하지 않고 읽으므로 `hwp`로 적는다 (#24)."""
+    return "hwp" if path.suffix.lower() == ".hwp" else "hwpx"
+
+
+def _source_ref(
+    table: HangulTable, index: int, cell: HangulCell, file_format: HangulFormat
+) -> SourceRef:
     """원문 위치를 만든다.
 
     `paragraph`에는 엔진의 para_idx(문서 B의 347·359처럼 표가 든 맨 위 문단 번호, 표 안 문단은
@@ -121,7 +132,7 @@ def _source_ref(table: HangulTable, index: int, cell: HangulCell) -> SourceRef:
     """
     address = f"{_column_letters(cell.col)}{cell.row + 1}"
     return SourceRef(
-        file_format="hwpx",
+        file_format=file_format,
         section=table.section,
         paragraph=table.paragraph,
         table=index,
@@ -190,7 +201,11 @@ def _location_id(table: HangulTable) -> str:
 
 
 def _build_detail(
-    detail: _Detail, document_id: str, block_id: str, duplicated: bool
+    detail: _Detail,
+    document_id: str,
+    block_id: str,
+    duplicated: bool,
+    file_format: HangulFormat,
 ) -> SourceRequirement:
     """상세표 1개 → 원문 한 건. 판정 이유는 이유마다 한 줄이다."""
     table, values = detail.table, detail.values
@@ -226,7 +241,7 @@ def _build_detail(
         document_id=document_id,
         block_id=block_id,
         source_id=source_id,
-        source_ref=_source_ref(table, detail.index, ref_cell),
+        source_ref=_source_ref(table, detail.index, ref_cell, file_format),
         source_text=text,
         source_acceptance_level=_text(values.get("level")) or None,
         # 「관련 요구사항」 칸 원문. 비어 있으면 None(엑셀 읽기와 같음)
@@ -238,7 +253,10 @@ def _build_detail(
 
 
 def _list_only(
-    tables: list[tuple[HangulTable, int]], detail_ids: set[str], document_id: str
+    tables: list[tuple[HangulTable, int]],
+    detail_ids: set[str],
+    document_id: str,
+    file_format: HangulFormat,
 ) -> list[tuple[SourceRequirement, str | None]]:
     """목록표에만 있는 고유번호 → 이름만으로 review 블록. (블록, 고유번호) 쌍을 돌려준다."""
     out: list[tuple[SourceRequirement, str | None]] = []
@@ -263,7 +281,7 @@ def _list_only(
                         document_id=document_id,
                         block_id=source_id,
                         source_id=source_id,
-                        source_ref=_source_ref(table, index, id_cell),
+                        source_ref=_source_ref(table, index, id_cell, file_format),
                         source_text=name or None,
                         extraction_status=ExtractionStatus.REVIEW,
                         notice=NOTICE_LIST_ONLY if name else NOTICE_EMPTY,
@@ -314,7 +332,7 @@ def read_hangul(path: Path, document_id: str) -> TabularResult:
         ) from exc
 
     try:
-        return _read_tables(document.tables, document_id)
+        return _read_tables(document.tables, document_id, _hangul_format(path))
     except UnsupportedInput:
         raise
     except (ValueError, KeyError, IndexError, TypeError) as exc:
@@ -325,7 +343,9 @@ def read_hangul(path: Path, document_id: str) -> TabularResult:
         ) from exc
 
 
-def _read_tables(tables: tuple[HangulTable, ...], document_id: str) -> TabularResult:
+def _read_tables(
+    tables: tuple[HangulTable, ...], document_id: str, file_format: HangulFormat
+) -> TabularResult:
     """표 목록(문서 순서)에서 상세표를 모아 원문으로 만든다."""
     # 구역 안 표 순번(0부터)을 문서 순서로 매긴다
     per_section: Counter[int] = Counter()
@@ -353,9 +373,9 @@ def _read_tables(tables: tuple[HangulTable, ...], document_id: str) -> TabularRe
         duplicated = bool(source_id) and counts[source_id] > 1
         # 같은 고유번호가 두 번 이상이면 block_id가 겹치므로 위치 형식을 쓴다
         block_id = source_id if source_id and not duplicated else _location_id(detail.table)
-        requirements.append(_build_detail(detail, document_id, block_id, duplicated))
+        requirements.append(_build_detail(detail, document_id, block_id, duplicated, file_format))
 
-    only = _list_only(list_tables, set(counts), document_id)
+    only = _list_only(list_tables, set(counts), document_id, file_format)
     only_counts = Counter(sid for _, sid in only)
     for req, sid in only:
         if sid is not None and only_counts[sid] > 1:  # 목록표에서 같은 고유번호가 반복됨

@@ -327,7 +327,7 @@ export interface operations {
                 "multipart/form-data": {
                     /**
                      * Format: binary
-                     * @description 허용 확장자: .xlsx, .csv, .hwpx (.hwp는 415로 HWPX 변환 안내, PDF는 이번 범위 밖)
+                     * @description 허용 확장자: .xlsx, .csv, .hwpx, .hwp (한글은 요구사항 상세표를 읽음, PDF는 이번 범위 밖)
                      */
                     file: string;
                     /** @enum {string} */

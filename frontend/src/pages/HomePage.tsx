@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import { Flex } from 'antd'
 import { useNavigate } from 'react-router'
 import { colors, type, weights } from '../theme.ts'
+import { FORMATS_LABEL } from './upload/rules.ts'
 
 // 첫 화면: 팀·프로젝트 소개 (/). 가운데 버튼을 누르면 UI-01(업로드, /start)로 간다.
 // 흰 바탕 + 가운데 정렬의 단순한 모양. 남색 글자에 「ton」만 파랑으로 강조한다.
@@ -65,7 +66,7 @@ function HomePage() {
           Spec<span style={{ color: colors.primary }}>ton</span>
         </h1>
         <p style={{ fontSize: 'clamp(19px, 2.2vw, 24px)', color: colors.inkMuted, margin: '28px 0 40px' }}>
-          요구사항 정의서를 올리면 설계 산출물을 만들어 드려요
+          요구사항 정의서({FORMATS_LABEL})를 올리면 설계 산출물을 만들어 드려요
         </p>
 
         {/* 시작 버튼: 알약 모양 긴 버튼 */}

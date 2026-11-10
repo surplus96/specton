@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from specton.api import main
 from specton.config import Settings
-from specton.contracts import BranchResult, Entity, Function, Requirement
+from specton.contracts import Attribute, BranchResult, Entity, Function, Requirement
 from specton.contracts.base import TargetStage
 from specton.graph import REVIEWERS, GraphState
 from specton.persistence.db import Pool, create_checkpointer
@@ -101,7 +101,22 @@ class _World:
                 "is_key": True, "nullable": False, "req_ids": ["REQ-01"],
             }],
         })  # fmt: skip
-        used = not (self.kind == "unused_entity" and self._broken(state))
+        if self.kind.startswith("sc_") and self._broken(state):
+            attr_name, attr_type, length = {
+                "sc_minor": ("창고", "varchar", 10),
+                "sc_rework": ("창고수", "varchar", 10),
+                "sc_manual": ("수작업여부", "char", 1),
+                "sc_manual_critical": ("수작업여부", "char", 1),
+            }[self.kind]
+            extra = Attribute(
+                id="ATTR-02",
+                name=attr_name,
+                data_type=attr_type,
+                length=length,
+                req_ids=("REQ-01",),
+            )
+            entity = entity.evolve(attributes=(*entity.attributes, extra))
+        used = not (self.kind in {"unused_entity", "sc_manual_critical"} and self._broken(state))
         functions = tuple(
             f.evolve(entity_ops=({"entity_id": entity.id, "operations": ("R",)},) if used else ())
             for f in design.functions
@@ -361,3 +376,43 @@ def test_held_checkpoint_keeps_critical_findings_after_restart(
     restarted.runner.run_pending()
     assert restarted.findings(run_id) == expected and restarted.visited == []
     assert restarted.answer(run_id, "approve").status_code == 422
+
+
+@pytest.mark.parametrize(
+    "kind,code,revision",
+    [
+        ("sc_minor", "SC-02", 0),
+        ("sc_manual", "SC-05", 0),
+        ("sc_rework", "SC-03", 1),
+    ],
+)
+def test_sc_policies_use_real_api_and_allow_reviewed_or_repaired_approval(
+    world, kind, code, revision
+):
+    w = world(kind=kind, repair=(kind == "sc_rework"))
+    run_id = w.create()
+    w.prepare(run_id)
+    status = w.status(run_id)
+    assert (status["status"], status["revision"]) == ("awaiting_review", revision)
+    first = w.findings(run_id, 0)
+    assert {f["rule_code"] for f in first} == {code}
+    assert w.routed == []
+    if revision:
+        assert w.findings(run_id) == []
+        assert ("data_model", 1) in w.visited
+    assert w.answer(run_id, "approve").status_code == 202
+    w.runner.run_pending()
+    assert w.status(run_id)["status"] == "completed"
+
+
+def test_manual_sc_takes_priority_over_auto_rework_but_never_bypasses_critical_gate(world):
+    w = world(kind="sc_manual_critical")
+    run_id = w.create()
+    w.prepare(run_id)
+    before = w.status(run_id)
+    assert (before["status"], before["revision"]) == ("awaiting_review", 0)
+    assert w.routed == []
+    findings = w.findings(run_id)
+    assert {f["rule_code"] for f in findings} == {"SC-05", "RULE-06"}
+    assert w.answer(run_id, "approve").status_code == 422
+    assert w.status(run_id) == before

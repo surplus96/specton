@@ -23,6 +23,7 @@ inventory/ · maintenance/
   terms.yaml                   ⚙ 물리명·출처(official/project) 확정
   words.yaml                   ✍ 공통표준에 없는 팩 전용 단어 + common/words.yaml에 오르지 않는 공통표준 단어
   patterns.yaml                ✍
+  standard_selection.yaml      ✍ 공식 이음동의어·금칙어 선별 적용 (있을 때만)
   examples/A01.yaml … A09.yaml ✍ 에이전트별 few-shot 예시 (각 에이전트 담당 소유)
   pack.lock                    ⚙ version별 팩 내용 sha256 기록
   RATIONALE.md                 ✍ 팩 자료 선택 근거 (maintenance)
@@ -46,3 +47,11 @@ uv run python -m specton.packs.build --check  # ⚙ 파일이 최신인지 검�
 - 작업 방법: 팩 폴더의 `.yaml`(예시 포함) 중 하나라도 고치면 그 팩의 `manifest.yaml`에서 `version`을 먼저 올리고, 그다음 재생성한다. `pack.lock`은 `versions: {버전: sha256}` 기록이라 지난 버전도 남는다. 버전을 올리지 않고 내용만 바꾼 채 재생성하면 같은 버전에 다른 해시가 걸려 생성 자체가 실패하고(`BuildError`), 버전만 올리고 재생성을 하지 않으면 `pack.lock`에 새 버전 항목이 없어 `--check`가 실패한다.
 - `manifest.yaml`의 `status`를 `draft`에서 `approved`로 바꾸는 것도 내용이 바뀐 것이라 `version`을 함께 올려야 한다.
 - `--check`가 이 에러로 실패하면 해당 팩의 `manifest.yaml`에서 `version`을 올리고 다시 생성한다.
+
+## 재고·공통 팩 고정 (#11, 2026-11-09)
+
+현재 범위는 common 0.1.4·inventory 0.1.21(approved)이다. 설비 팩은 후속으로 유지한다.
+처리 방식은 `common/rules.yaml`의 `handling`으로 명시한다. fixed만 target_stage가 있으며,
+dynamic·manual·informational의 null은 미정값이 아니다. SC critical과 major 참고 의견은 거절한다.
+선별 적용에는 낱말·표준어·사유를 모두 적고, 목록에 없는 공식 이음동의어·금칙어 등록은 금지한다.
+정리 모델·manifest는 공통 버전과 전체 팩·출처의 정책 해시를 보존한다. 자세한 결정은 ADR-0009를 따른다.

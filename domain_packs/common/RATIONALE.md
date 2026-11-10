@@ -109,7 +109,7 @@ NUMERIC·VARCHAR·DATETIME은 그대로 옮겨지지만 CHAR 기반인 일자·�
 | 금액N15 | `numeric(15)` | `bigint` (`money` 금지) |
 | 내용V4000 | `varchar(4000)` | `text` + 길이 CHECK |
 
-- 기본은 `strict`다. 팩의 목적이 공통표준 준수를 보이는 것이기 때문이다 (제안, ADR-0009).
+- 기본은 `strict`다. 팩의 목적이 공통표준 준수를 보이는 것이기 때문이다 (확정, ADR-0009).
 - `char(n)`은 PostgreSQL에서 공백 패딩 때문에 느리다고 문서가 안내한다 ([PostgreSQL 18 §8.3](https://www.postgresql.org/docs/18/datatype-character.html)). 그래서 코드는 `varchar(n)` + CHECK로 둔다.
 - 진단 도구가 `date`·`boolean`을 연월일C8·여부C1에 적합하다고 인정하는지는 확인하지 못했다. `pg_native`는 편차 목록과 함께 쓰는 선택 프로필이다.
 
@@ -117,3 +117,11 @@ NUMERIC·VARCHAR·DATETIME은 그대로 옮겨지지만 CHAR 기반인 일자·�
 
 - 「공공데이터베이스 표준화 관리 매뉴얼」(2023.4)과 연도별 「품질관리 수준진단·평가 매뉴얼」을 확보하면 `observed`·`project` 항목 일부를 `official`로 바꾸거나 고칠 수 있다.
 - 8차 단어 집합의 약어 중 PostgreSQL 예약어와 충돌하는 것은 아직 전수 검증하지 않았다(`reserved_words_source`).
+
+## 선별 적용·고정 (#11)
+
+공식 이음동의어·금칙어를 도메인 낱말로 등록하는 선택은 각 팩의 `standard_selection.yaml`에
+낱말·표준어·사유를 적는다. 현재 재고의 장부→대장 선택만 있으며, 이는 공식 표준어라는 뜻이 아니다.
+목록 밖 등록과 잘못된·비어 있는·남은 예외는 로더와 build 검사에서 거절한다.
+SC-04 이음동의어의 별도 런타임 지적은 아직 내지 않는다. 향후 이를 내면
+`subtypes.synonym`(minor·informational)을 쓰며 금칙어(major·manual)와 구분한다.

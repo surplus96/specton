@@ -17,6 +17,7 @@
 
 | PR | 내용 |
 |---|---|
+| #252 | 정리 결과에 선택적 common_version·policy_digest. 새 실행의 팩·표준 정책 근거를 보존하며, 두 값이 없는 옛 스냅샷의 모델 해시에는 null 키를 추가하지 않음 |
 | #73 | `critical` 심각도는 규칙 지적만 (ADR-0010) |
 | #87 | 표준 준수 검사 규칙 코드 `SC-01~06` |
 | #94 | 이름 규칙 `source_`·`draft_` 통일, 원문 위치 `kind` → `file_format` |
@@ -30,6 +31,8 @@
 | #176 | SQL 검증 결과 공용 계약 `SqlValidation`·`ValidationStep`·`ValidationIssue` 추가 (#167). 저장·승인 검사는 후속 |
 | #204 | `Error.detail`(「자세히 보기」 문장, 없으면 null) 추가 (#19). `GET /runs/{id}`의 `error`에서도 다시 받을 수 있다 |
 | #222 | `ArtifactRef.kind`에 `manifest`, `file_format`에 `json` 추가. manifest JSON은 승인 전 비공개 후보로 저장하고 승인 근거와 같은 바이트를 공개 |
+| #250 | `SourceRef.file_format`에 `hwp` 추가(#24). .hwp는 HWPX로 변환하지 않고 읽어 위치 칸은 `hwpx`와 같다 |
+| #256 | `ExtractionStatus.fail`: 지금 입력 형식에는 기준을 두지 않는다(#253, ADR-0015). 값과 처리 규칙은 그대로 |
 
 남은 작업: FK 파생·참조 키 (#12), 값 범위 제약 (#15)
 
@@ -57,7 +60,7 @@
 | Entity / Attribute | `pack`, `name`, `description`, `attributes`, `req_ids`, `crud_exemptions` / 타입·길이·정밀도·키·NULL·제약 | 허용 타입 고정, 안정적 내부 참조 키. FK는 관계에서 파생 |
 | Relationship | `id`, `parent`, `child`, `cardinality`, `optional`, `identifying`, `rationale`, `req_ids` | 참조 키 선택·복합 키 표현 |
 | Finding | `id`, `severity`, `kind`, `source`, `targets`, `evidence`, `suggestion`, `target_stage`, `fingerprint`, `iteration` | `reviewer_id`, 근거 위치, 필터 결과 |
-| NormalizedModel | `pack`, `pack_version`, `rules_version`, `lexicon_digest`, `tables`(`Table`: 컬럼·PK·UNIQUE), `foreign_keys`(`ForeignKey`) | 모델 정리(#12) 성공 결과(`specton/contracts/normalized.py`). PK·FK·UNIQUE는 컬럼 ID 묶음(순서 있음). 실패는 `NormalizeFailed`(`problems`)로 따로 돌려주며 상태에 두지 않는다. ID 기준은 ADR-0016 |
+| NormalizedModel | `pack`, `pack_version`, `rules_version`, `lexicon_digest`, `common_version?`, `policy_digest?`, `tables`(`Table`: 컬럼·PK·UNIQUE), `foreign_keys`(`ForeignKey`) | 모델 정리(#12) 성공 결과(`specton/contracts/normalized.py`). PK·FK·UNIQUE는 컬럼 ID 묶음(순서 있음). 실패는 `NormalizeFailed`(`problems`)로 따로 돌려주며 상태에 두지 않는다. ID 기준은 ADR-0016 |
 | SqlValidation | `status`, `artifact_hash`, `validator_version`, `policy_version`, `postgres_version`, `steps`(`ValidationStep`: `name`·`status`·`issues`) | SQL 파일 하나의 검증 결과(`specton/contracts/validation.py`, #167). 단계는 `parse` → `allowed_statements` → `execute` → `rollback` → `cleanup`이 순서대로 한 번씩 있고, 실행하지 않은 단계는 `not_run`이다. 단계 상태 `failed`는 SQL 결함, `error`는 검증 환경·정리 장애이며(`rollback`·`cleanup`에는 `failed`가 없다) 둘 다 `issues`(`ValidationIssue`: `code`·`message`·`statement_index`·`sqlstate`)가 1건 이상이다. 전체 `status`는 `error` > `failed` > `unverified`(실패 없이 `not_run`이 있음) > `passed` 순으로 단계에서 정해지고 계약이 일치를 검사한다. 파싱·허용 문장 검사를 통과하지 않으면 `execute`는 `not_run`이다. `postgres_version`은 대상 DB이며 DDL 생성기의 `DDL_TARGET`과 같은 값(`postgresql-18`)이다. `message`에는 보여도 되는 문장만 넣는다. run·revision·`model_hash`·검증 시도 ID는 검증기가 모르며 실행기·저장 쪽이 붙인다. 최종 승인 근거는 `passed`뿐이다 |
 | DesignState | `source_requirements`, `requirements`, `functions`, `entities`, `relationships`, `normalized`, `artifacts`, `findings`, `iteration` | `normalized`는 모델 정리 성공 결과이며 설계가 바뀌면 비우고 다시 채운다(ADR-0016). `run_id`, `revision`, `status`, `interrupt_id`, 문서·팩·프롬프트·모델 버전, 병렬 가지 결과 |
 
@@ -74,12 +77,12 @@
 | `xlsx` | `sheet`, `row` | | `sheet`는 시트 이름, `row`는 엑셀에 보이는 행 번호 (1부터, 머리글 행 포함) |
 | `csv` | `row` | | 파일의 행 번호 (1부터, 머리글 행 포함) |
 | `pdf` | `page`, `block` | | `page`는 1부터, `block`은 페이지 안 추출 순서로 0부터 |
-| `hwpx` | `section`, `paragraph` | `table`+`cell` (표 안일 때 함께) | `section`·`paragraph`·`table`은 문서 순서로 0부터, `cell`은 엑셀 셀 주소 형식 (열 문자+행 번호) |
+| `hwp`·`hwpx` | `section`, `paragraph` | `table`+`cell` (표 안일 때 함께) | `section`은 0부터, `paragraph`는 표가 든 맨 위 문단 번호(엔진 순서, 0부터), `table`은 그 구역 안 표 순번(0부터), `cell`은 엑셀 셀 주소 형식 (열 문자+행 번호) |
 
 - 사람이 원본 파일에서 바로 찾는 번호(행·쪽)는 1부터, 파서가 매기는 순서(블록·구역·문단·표)는 0부터다.
 - 화면 표기는 `SourceRef.display()`가 만든다. 저장·비교는 구조체로 한다.
 - 엑셀·CSV는 **요구사항 1건 = 1행**을 전제로 한다. 한 요구사항이 여러 행에 걸치는 양식은 입력 양식 결정(ADR-0003)에서 다룬다.
-- HWP 5.0 파일은 HWPX로 변환한 뒤 추출한다. 그래서 `file_format`에 `hwp`는 없고 위치는 `hwpx` 기준으로 기록한다. 변환 방법은 ADR-0004·#24에서 정한다.
+- HWP 5.0 파일은 HWPX로 변환하지 않고 같은 엔진으로 바로 읽는다(ADR-0004, #24). 위치 칸은 HWPX와 같고 `file_format`만 `hwp`로 기록해 원본 형식을 남긴다.
 
 ### LLM 출력 모델과 저장 모델
 

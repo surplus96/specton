@@ -115,7 +115,11 @@ RTM Excel·CSV 생성기를 순서대로 호출하고 세 파일을 같은 고�
 RTM의 원문 분할·제외·원문 없음 행은 저장된 설계에서 그대로 계산한다. 보류·재시작에는
 체크포인트의 파일을 재사용하고 설계 수정에는 새 revision 파일을 만든다.
 이 연결 전 최종 검토에 도달한 실행에는 새 문서를 소급 생성하지 않는다.
-기능 명세 PDF는 후속 범위다.
+`SPECTON_ENABLE_FUNCTION_SPEC_PDF=true`이면 같은 문서 가지에서 기능이 있을 때 기능 명세서 PDF 후보도
+만든다. 저장하는 `.md`와 같은 Markdown을 #243 엔진(`render_function_spec_pdf`)에 넘기고, 실행에 기록된
+팩·버전으로 쪽 머리 표식을 채운다. 후보·승인·재시작·실패 규칙은 아래 ERD PDF와 같다(`approved=false`로
+저장, 승인 근거에 해시 기록, 내보내기는 같은 바이트 승격, 실패는 실행 실패). Mermaid가 필요 없어
+WeasyPrint·한글 폰트만 있으면 된다.
 
 기존 `wait_review` 노드에는 `specton.manifest_node`를 연결한다. 리뷰·라우팅 뒤의 최종 버전 정보를
 포함해 현재 revision 산출물의 manifest JSON을 비공개 승인 후보로 준비한다. 자신의 해시는

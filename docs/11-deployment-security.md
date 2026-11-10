@@ -1,6 +1,6 @@
 # 배포·운영·보안
 
-> 상태: **초안** (AWS 구성은 회의 결정 전)
+> 상태: **초안** (AWS 구성은 ADR-0013 승인, 2026-11-09)
 
 ## 실행 환경
 
@@ -13,6 +13,9 @@
 | 파일 저장소 | 원문·추출본·출력 | `storage_ref`로 접근, 파일명을 경로로 쓰지 않음 |
 
 - 로컬: `docker compose up -d db` (PostgreSQL 18, 127.0.0.1에만 노출). 초기화 스크립트는 `docker/postgres/init/`.
+  - 초기화 스크립트는 DB 볼륨을 처음 만들 때만 돈다. 격리 DB(`specton_sandbox`)를 만드는 `01_sandbox.sh`는 #171(2026-11-08)에서 들어왔으므로, 그 전에 만든 개발 DB 볼륨에는 격리 DB·역할이 없어 SQL 검증이 연결 오류(`error`)로 끝나고 실행이 실패한다. 볼륨을 지우고 다시 만들면(`docker compose down -v` 뒤 `up -d db`, 개발 DB 내용은 사라짐) 생긴다.
+  - `*.sh`는 `.gitattributes`로 LF를 쓴다(#171). 그 전에 받은 Windows 작업 폴더는 `01_sandbox.sh`가 CRLF로 남아 bash가 실패할 수 있다. 파일을 지우고 `git checkout -- docker/postgres/init/01_sandbox.sh`로 다시 받으면 LF가 된다.
+  - Windows Docker Desktop에서는 DB 주소를 `localhost`가 아닌 `127.0.0.1`로 쓴다(`.env.example` 기본값). 아래 「격리 DB (sandbox)」의 IPv6 설명과 같은 원인이다.
 - 로컬과 AWS는 같은 컨테이너 이미지를 쓴다. PDF 렌더러 의존성·한글 폰트·모델 다운로드를 이미지에 포함한다.
 - 배포 구성 (#25): `compose.deploy.yml`이 db·api(`Dockerfile`)·web(`frontend/Dockerfile`, Caddy)을 띄운다.
   밖으로 여는 포트는 web의 80·443뿐이고 db·api는 내부 네트워크에만 둔다. web이 `/runs`·`/health`를 api로 넘기고
@@ -22,7 +25,7 @@
 - 같은 이미지 보장 (#226 리뷰): 이미지는 한 곳에서 한 번 빌드해 레지스트리에 올리고(`compose build`·`push`), 서버는
   `pull` 뒤 `up -d --no-build`로 받은 이미지를 그대로 쓴다. 서버에서 다시 빌드하지 않는다. 이름·태그는
   `SPECTON_API_IMAGE`·`SPECTON_WEB_IMAGE`(예: `ghcr.io/<owner>/specton-api:<커밋>`). 서버가 x86_64면 amd64로 빌드한다.
-- AWS 제안: EC2 또는 Lightsail 1대 + Docker Compose, IP 제한·HTTPS, 키는 환경 변수 주입, 예산 알림 (ADR-0013). App Runner는 신규 고객을 받지 않아 제외.
+- AWS (ADR-0013 승인): EC2 1대(서울) + Docker Compose, 키는 환경 변수 주입, 예산 알림. 보안 그룹은 80번 전체 공개(Caddy 인증서 발급·HTTPS로 넘기기만), 443번은 팀·시연 장소 IP만, 22번은 팀 IP만 또는 닫고 SSM. HTTPS에는 도메인(`SPECTON_SITE_ADDRESS`)이 필요하다. App Runner는 신규 고객을 받지 않아 제외.
 - 배포 전 할 일: compose의 DB 기본 비밀번호를 없애고 환경 변수를 필수로 받는다. → 배포 구성(`compose.deploy.yml`)에 반영 (#25)
 
 ### 배포 절차 주의 (#25, #228 리뷰)
@@ -133,6 +136,7 @@
 - MIME·확장자·크기·페이지 수를 확인하고 PDF 리소스를 제한한다.
 - 실패 로그는 run·stage·error_code·호출 ID 중심. 원문 전문은 기본 제외. 근거 확인에 실패한 지적의 인용문도 로그에 넣지 않고 길이만 남긴다 (#21).
 - 업로드 내용 검사 (#21): 확장자 확인 뒤 xlsx·hwpx는 zip 항목을 실제로 풀어 보며 크기를 센다. zip에 적힌 크기는 믿지 않고, 합이 `SPECTON_MAX_UNZIPPED_MB`(기본 200)를 넘는 순간 멈춘다. 구조가 깨졌거나 선언 크기와 실제 크기가 다르면 415다. csv는 NUL 바이트가 없어야 하고, BOM 있는 UTF-16은 해독되면 통과한다. 어긋나면 파일을 지우고 파서에 넘기지 않는다(415·413). 저장 이름은 사용자 파일명을 쓰지 않는다.
+- **잔여 — 행 수 한도:** 행이 아주 많은 정상 파일은 업로드에서 막지 않고 실행 토큰 한도(`max_tokens_per_run`, 기본 400,000, ADR-0007)에서 멈춘다. 일찍 막아야 하면 업로드가 아니라 파싱 직후, A01 호출 전에 막는다. 업로드에서 막으려면 API가 파일을 한 번 더 파싱해야 해서 택하지 않는다 (#216, R1 결정).
 - HTTPS로 배포하면 `SPECTON_SESSION_COOKIE_SECURE=true`로 세션 쿠키에 `Secure`를 붙인다(기본 끔, 로컬 HTTP 시연 때문). 쿠키는 항상 `HttpOnly`·`SameSite=Lax`다 (#21, PR #108 리뷰).
 - 고객 문서를 외부 LLM으로 보내도 되는지 확인 전까지 **합성·비식별 데이터만** 쓴다 (ADR-0007).
 - GitHub 저장소는 비밀값 스캔·push 차단, Dependabot 보안 업데이트를 켜 두었다.

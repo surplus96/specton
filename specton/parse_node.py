@@ -3,7 +3,7 @@
 - 실행기가 첫 상태의 `documents`에 넣은 업로드 문서를 형식별 파서(`specton/ingest/`)로 읽어
   `DesignState.source_requirements`에 둔다. 판정(`pass`·`review`·`fail`)은 파서가 정한다.
 - 파일 단위로 읽지 못하면(`UnsupportedInput`) `ExtractionFailedError`로 실행을 끝낸다.
-- HWPX 파서는 #24에서 만든다. 그때까지 HWPX는 읽지 못한 파일로 끝낸다.
+- 한글(.hwp·.hwpx)은 요구사항 상세표를 읽는 `read_hangul`(#24)로 읽는다. .hwp도 변환하지 않는다.
 - 요구사항명·상세 내용이 모두 빈 행은 파서가 원문 문장 없는 `review` 블록으로 돌려준다(#10).
   `ExtractionIssue`는 지금 표 파서가 만들지 않지만 오면 로그에 남긴다.
 - 건너뛴 시트(요구사항 표가 없거나 빈 표)는 확인·제외 대상이 아니라 안내 한 줄이다 (#95 결론,
@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from specton.graph import DocumentRef, ExtractionFailedError, GraphState, Node, RunNote
+from specton.ingest.hangul import read_hangul
 from specton.ingest.tabular import TabularResult, UnsupportedInput, read_csv, read_excel
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,8 @@ logger = logging.getLogger(__name__)
 _READERS: Mapping[str, Callable[[Path, str], TabularResult]] = {
     "xlsx": read_excel,
     "csv": read_csv,
+    "hwp": read_hangul,
+    "hwpx": read_hangul,
 }
 
 
@@ -54,7 +57,7 @@ def _read(storage_dir: Path, doc: DocumentRef) -> TabularResult:
     reader = _READERS.get(doc["file_format"])
     if reader is None:
         raise ExtractionFailedError(
-            "아직 읽을 수 없는 형식이에요. 엑셀(.xlsx)이나 CSV로 올려 주세요.",
+            "아직 읽을 수 없는 형식이에요. 엑셀(.xlsx)·CSV·한글(.hwpx·.hwp)로 올려 주세요.",
             f"{doc['file_format']} 파서가 아직 없습니다",
         )
     try:
