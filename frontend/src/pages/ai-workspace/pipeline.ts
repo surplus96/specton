@@ -107,6 +107,13 @@ const NODES_OF_STAGE: Record<string, readonly PipelineNodeId[]> = {
   exporting: ['export'],
 }
 
+/** 이 노드가 속한 서버 단계(`stage`) 목록. 단계 상세에서 그 단계의 SSE 이벤트를 고를 때 쓴다 (#289) */
+export function stagesOf(id: PipelineNodeId): string[] {
+  return Object.entries(NODES_OF_STAGE)
+    .filter(([, nodes]) => nodes.includes(id))
+    .map(([stage]) => stage)
+}
+
 function stepOf(id: PipelineNodeId): number {
   return PIPELINE.find((d) => d.id === id)!.step
 }

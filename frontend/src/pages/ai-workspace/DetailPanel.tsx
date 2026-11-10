@@ -5,7 +5,9 @@ import type { SqlReview } from '../review/sqlValidation.ts'
 import { KIND_LABEL as ARTIFACT_LABEL, missingKinds } from '../workspace/rules.ts'
 import { findingEntities } from './erd.ts'
 import { KIND_LABEL, STATE_LABEL, type PipelineNode } from './pipeline.ts'
+import { stepEvents, stepResult, type StepData } from './stepDetail.ts'
 import { COLUMN_TITLE, MARK_LABEL, refText, type TraceNode } from './trace.ts'
+import type { SseEvent } from '../../api/types.ts'
 
 // 오른쪽 「상세·검증」 패널 (#281). 위: 고른 항목의 상세 / 아래: 검증 결과(SQL·미완성 가지·지적).
 export type Selection =
@@ -33,6 +35,9 @@ type Props = {
   names: Map<string, string>
   traceNodes: TraceNode[]
   pipeline: PipelineNode[]
+  /** 단계 상세(#289): 실행의 SSE 이벤트와 고른 revision의 중간 결과 */
+  events: readonly SseEvent[]
+  step: StepData | null
   onFinding: (f: Finding) => void
 }
 
@@ -54,7 +59,48 @@ function findingsOf(entityId: string, design: DesignItem[], findings: Finding[])
   return findings.filter((f) => of(f).includes(entityId))
 }
 
-function SelectionDetail({ selection, design, findings, names, traceNodes, pipeline }: Props) {
+// 여러 노드가 한 서버 단계를 같이 쓰는 노드. 상태는 단계 이벤트로 추정한다(노드 단위 이벤트는 #289 2단계)
+const SHARED_STAGE = new Set(['a02', 'a03', 'a04', 'normalize', 'ddl', 'erd', 'rtm', 'rules', 'A05', 'A06', 'A07', 'A08'])
+
+function StepDetail({ node, events, step }: { node: PipelineNode; events: readonly SseEvent[]; step: StepData | null }) {
+  const rows = step ? stepResult(node.id, step) : []
+  const log = step ? stepEvents(node.id, events, step.revision) : []
+  return (
+    <>
+      <Row label="상태 근거">
+        {SHARED_STAGE.has(node.id) ? '서버 단계 이벤트로 추정 (노드 단위 이벤트 없음)' : '서버 상태·이벤트 기준'}
+      </Row>
+      <Title>중간 결과</Title>
+      {rows.length === 0 ? (
+        <p style={{ padding: '0 16px', color: dark.inkMuted, fontSize: 13 }}>이 단계는 보여 줄 중간 결과가 없습니다.</p>
+      ) : (
+        rows.map((r) => (
+          <Row key={r.label} label={r.label}>
+            {r.value}
+          </Row>
+        ))
+      )}
+      <Title>이벤트 기록 {log.length}건</Title>
+      {log.length === 0 ? (
+        <p style={{ padding: '0 16px', color: dark.inkMuted, fontSize: 13 }}>이 revision에서 이 단계의 이벤트가 없습니다.</p>
+      ) : (
+        <ol style={{ margin: 0, padding: '0 16px 0 36px', fontSize: 12 }}>
+          {log.map((e) => (
+            <li key={e.id} style={{ padding: '2px 0' }}>
+              <span style={{ color: dark.inkMuted }}>
+                #{e.id} {e.event}
+              </span>{' '}
+              {e.message}
+              {e.summary && <div style={{ color: dark.inkMuted }}>{e.summary}</div>}
+            </li>
+          ))}
+        </ol>
+      )}
+    </>
+  )
+}
+
+function SelectionDetail({ selection, design, findings, names, traceNodes, pipeline, events, step }: Props) {
   if (!selection) {
     return <p style={{ padding: '0 16px', color: dark.inkMuted, fontSize: 13 }}>캔버스나 단계 그래프에서 항목을 고르면 여기에 상세가 보입니다.</p>
   }
@@ -69,6 +115,7 @@ function SelectionDetail({ selection, design, findings, names, traceNodes, pipel
         </Row>
         <Row label="처리">{KIND_LABEL[n.kind]}</Row>
         {n.note && <Row label="설명">{n.note}</Row>}
+        <StepDetail node={n} events={events} step={step} />
       </>
     )
   }

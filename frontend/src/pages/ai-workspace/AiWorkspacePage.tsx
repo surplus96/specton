@@ -17,6 +17,7 @@ import PipelineGraph from './PipelineGraph.tsx'
 import TraceCanvas from './TraceCanvas.tsx'
 import { erdModel, findingEntities } from './erd.ts'
 import { pipelineNodes, pipelineProgress } from './pipeline.ts'
+import type { StepData } from './stepDetail.ts'
 import { buildTrace, traceSummary } from './trace.ts'
 
 // AI Workspace: 개발용 결과 확인 페이지 (/workspace?run=<id>, #281).
@@ -111,6 +112,20 @@ function Workspace({ runId }: { runId: string }) {
   // 고른 revision의 데이터만 쓴다. revision을 바꾼 직후 받기 전에는 이전 revision 데이터를 섞어 보이지 않고 「불러오는 중」
   const shown = data && data.revision === revision ? data : null
   const artifacts = useMemo(() => toArtifacts(shown?.rawArtifacts), [shown])
+  // 단계 상세(#289): 고른 revision의 view 값만 쓴다
+  const step = useMemo<StepData | null>(
+    () =>
+      shown && {
+        revision: shown.revision,
+        runRevision: run?.revision ?? 0,
+        blocks: shown.blocks,
+        requirements: shown.requirements,
+        design: shown.design,
+        findings: shown.findings,
+        artifacts,
+      },
+    [shown, run?.revision, artifacts],
+  )
   const names = useMemo(() => nameIndex(shown?.design ?? []), [shown])
   const erd = useMemo(() => erdModel(shown?.design ?? [], shown?.findings ?? []), [shown])
   const trace = useMemo(
@@ -285,6 +300,8 @@ function Workspace({ runId }: { runId: string }) {
               names={names}
               traceNodes={trace.nodes}
               pipeline={pipeline}
+              events={events}
+              step={step}
               onFinding={onFinding}
             />
           )}
