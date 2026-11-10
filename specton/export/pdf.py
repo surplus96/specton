@@ -28,6 +28,7 @@ import되므로 PDF로 바꿀 때만 불러온다.
 """
 
 import base64
+import functools
 import html
 import json
 import logging
@@ -511,20 +512,42 @@ def _glyph_watch() -> _MissingGlyphs:
     return _GLYPHS
 
 
-def html_to_pdf(document: str) -> PdfResult:
-    """HTML → PDF. `data:` 외의 주소는 가져오지 않고 막은 주소를 돌려준다.
+_WEASYPRINT_LOCK = threading.Lock()
 
-    폰트에 없는 글자가 있으면(한글 폰트 미설치 등) 깨진 PDF를 내지 않고 `PdfError`로 멈춘다.
+
+@functools.cache
+def _import_weasyprint() -> tuple[Any, Any] | str:
+    """WeasyPrint를 프로세스에서 한 번만 불러온다. 실패하면 그 이유를 기억하고 다시 시도하지 않는다.
+
+    불러오기가 중간에 실패하면 이미 연 네이티브 라이브러리(gobject)가 닫히고 glib만 남는다.
+    다시 열면 gobject 초기화가 끊긴 포인터를 읽어 프로세스가 죽는다 (macOS conda 파이썬).
     """
     try:
         from weasyprint import HTML  # type: ignore[import-untyped]
         from weasyprint.urls import URLFetcher  # type: ignore[import-untyped]
     except (ImportError, OSError) as exc:  # Windows에서 GTK가 없으면 OSError
-        raise PdfError(f"WeasyPrint를 불러오지 못했습니다: {exc}") from exc
+        return f"WeasyPrint를 불러오지 못했습니다: {exc}"
+    return HTML, URLFetcher
 
+
+def load_weasyprint() -> tuple[Any, Any]:
+    """(HTML, URLFetcher). 불러올 수 없는 환경이면 매번 같은 `PdfError`를 낸다."""
+    with _WEASYPRINT_LOCK:  # 실행기가 PDF를 동시에 만들 때도 불러오기는 한 번
+        loaded = _import_weasyprint()
+    if isinstance(loaded, str):
+        raise PdfError(loaded)
+    return loaded
+
+
+def html_to_pdf(document: str) -> PdfResult:
+    """HTML → PDF. `data:` 외의 주소는 가져오지 않고 막은 주소를 돌려준다.
+
+    폰트에 없는 글자가 있으면(한글 폰트 미설치 등) 깨진 PDF를 내지 않고 `PdfError`로 멈춘다.
+    """
+    HTML, URLFetcher = load_weasyprint()
     blocked: list[str] = []
 
-    class _DataOnly(URLFetcher):  # type: ignore[misc]
+    class _DataOnly(URLFetcher):  # type: ignore[misc,valid-type]
         """엔진이 직접 넣은 data URI만 허용한다 (ADR-0004 외부 URL·임의 파일 차단)."""
 
         def fetch(self, url: str, headers: Any = None) -> Any:
