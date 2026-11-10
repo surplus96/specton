@@ -25,18 +25,29 @@ def unique(values: list[str], where: str) -> None:
         raise ValueError(f"{where}: ID 중복")
 
 
-class Truth(Record):
-    id: Text
-    source_id: Text
-    label: Label
+class WarningPolicy(Record):
+    """필수 경고·필수 대안 그룹·참고 경고를 서로 겹치지 않게 둔다."""
+
     required_warnings: frozenset[Text] = frozenset()
+    required_warning_groups: tuple[frozenset[Text], ...] = ()
     allowed_warnings: frozenset[Text] = frozenset()
 
     @model_validator(mode="after")
     def disjoint(self) -> Self:
         if self.required_warnings & self.allowed_warnings:
             raise ValueError("필수·허용 경고는 겹치지 않아야 합니다")
+        used = set(self.required_warnings | self.allowed_warnings)
+        for group in self.required_warning_groups:
+            if len(group) < 2 or used & group:
+                raise ValueError("경고 대안 그룹은 두 종류 이상이며 다른 정책과 겹치면 안 됩니다")
+            used.update(group)
         return self
+
+
+class Truth(WarningPolicy):
+    id: Text
+    source_id: Text
+    label: Label
 
 
 class Prediction(Record):
@@ -55,6 +66,10 @@ class Classification(Record):
     gold: tuple[Truth, ...] = ()
     predicted: tuple[Prediction, ...] = ()
     alignments: tuple[Alignment, ...] = ()
+    source_warnings: dict[Text, WarningPolicy] = Field(default_factory=dict)
+    allowed_split_counts: dict[Text, frozenset[Annotated[int, Field(gt=0)]]] = Field(
+        default_factory=dict
+    )
 
     @model_validator(mode="after")
     def references(self) -> Self:
@@ -63,6 +78,14 @@ class Classification(Record):
         unique([i.gold for i in self.alignments], "정답 정렬")
         unique([i.predicted for i in self.alignments], "출력 정렬")
         gold, predicted = {i.id: i for i in self.gold}, {i.id: i for i in self.predicted}
+        self.check_split_counts()
+        if self.source_warnings.keys() - {i.source_id for i in self.gold}:
+            raise ValueError("경고 정책이 없는 정답 원문을 가리킵니다")
+        for item in self.gold:
+            if item.source_id in self.source_warnings and (
+                item.required_warnings or item.required_warning_groups or item.allowed_warnings
+            ):
+                raise ValueError("원문·분할 항목에 경고를 이중 배치할 수 없습니다")
         for match in self.alignments:
             if match.gold not in gold or match.predicted not in predicted:
                 raise ValueError("분류 정렬이 없는 요구사항을 가리킵니다")
@@ -70,13 +93,19 @@ class Classification(Record):
                 raise ValueError("서로 다른 원문 블록을 정렬할 수 없습니다")
         return self
 
+    def check_split_counts(self) -> None:
+        for source, counts in self.allowed_split_counts.items():
+            primary = sum(item.source_id == source for item in self.gold)
+            if primary == 0 or primary not in counts:
+                raise ValueError("허용 분할 수에 원문 정답의 분할 수가 포함돼야 합니다")
+
 
 class MatchGroup(Record):
     gold: frozenset[Text] = Field(min_length=1)
     predicted: frozenset[Text] = Field(min_length=1)
 
 
-class Matching(Record):
+class MatchSet(Record):
     """승인된 동등 그룹 하나를 TP 하나로 센다. 분할·병합의 경계를 추측하지 않는다."""
 
     gold: frozenset[Text] = frozenset()
@@ -101,6 +130,24 @@ class Matching(Record):
                 raise ValueError("대상을 여러 매칭 그룹에 중복 사용할 수 없습니다")
             used_gold.update(match.gold)
             used_predicted.update(match.predicted)
+        return self
+
+
+class Matching(MatchSet):
+    """필수 대응과 허용 대응을 분리한다. 선택 객체도 분모·오탐에서 제외한다."""
+
+    permitted: MatchSet = Field(default_factory=MatchSet)
+
+    @model_validator(mode="after")
+    def separate_permitted(self) -> Self:
+        if self.gold & self.permitted.gold:
+            raise ValueError("필수·허용 대상은 겹치지 않아야 합니다")
+        required_hits = {p for match in self.matches for p in match.predicted}
+        permitted_hits = {p for match in self.permitted.matches for p in match.predicted}
+        if self.permitted.predicted != permitted_hits:
+            raise ValueError("허용 대상 제외에는 승인된 대응이 필요합니다")
+        if not permitted_hits <= self.predicted or permitted_hits & required_hits:
+            raise ValueError("허용 대상은 실제 출력이며 필수 대응과 겹치지 않아야 합니다")
         return self
 
 

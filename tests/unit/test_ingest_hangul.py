@@ -206,6 +206,27 @@ class TestRules:
         assert req.extraction_status is ExtractionStatus.PASS
         assert (req.source_ref.paragraph, req.source_ref.cell) == (236, "B2")
 
+    @pytest.mark.parametrize("label", ["요구사항 ID", "요구사항ID", "요구사항 id"])
+    def test_detail_table_accepts_the_requirement_id_label_of_list_tables(
+        self, monkeypatch: pytest.MonkeyPatch, label: str
+    ) -> None:
+        """#258: 목록표 머리에서 받던 「요구사항 ID」를 상세표 고유번호 라벨로도 받는다."""
+        table = _table(
+            40,
+            [
+                (0, 0, 1, 1, label),
+                (0, 1, 1, 1, "SFR-007"),
+                (1, 0, 1, 1, "요구사항명"),
+                (1, 1, 1, 1, "명칭"),
+                (2, 0, 1, 1, "정의"),
+                (2, 1, 1, 1, "정의 글"),
+            ],
+        )
+        [req] = _read(monkeypatch, table).requirements
+        assert req.source_id == "SFR-007"
+        assert req.extraction_status is ExtractionStatus.PASS
+        assert req.source_ref.cell == "B1"
+
     def test_pair_order_in_row_does_not_matter(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """응락수준 쌍이 고유번호 쌍보다 왼쪽에 있어도 짝이 바뀌지 않는다."""
         table = _table(
