@@ -27,12 +27,12 @@ class Settings(BaseSettings):
     review_reasoning_effort: ReasoningEffort = "low"
     review_mode: ReviewMode = "combined"
 
-    llm_timeout_seconds: float = Field(default=120, gt=0)
+    llm_timeout_seconds: float = Field(default=300, gt=0)
     llm_api_retries: int = Field(default=3, ge=0)
     llm_concurrency: int = Field(default=4, gt=0)
-    max_output_tokens: int = Field(default=8_000, gt=0)
+    max_output_tokens: int = Field(default=32_000, gt=0)
     max_tokens_per_run: int = Field(default=400_000, gt=0)
-    run_timeout_seconds: int = Field(default=900, gt=0)
+    run_timeout_seconds: int = Field(default=1800, gt=0)
 
     app_database_url: PostgresDsn = PostgresDsn(
         "postgresql://specton:specton@localhost:5432/specton_app"
