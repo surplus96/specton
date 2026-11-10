@@ -1,0 +1,200 @@
+{
+  "date": "2026-11-11",
+  "scope": "post-observation regression/diagnosis; unchanged five private inputs and gold; not blind evaluation",
+  "code_commit": "d62f16b4476d182044ca5b48edbcedded343404d",
+  "condition_id": "post_observation_common017_inventory0123_a03v6_a04v5_20261111",
+  "pack_versions": {
+    "common": "0.1.7",
+    "inventory": "0.1.23"
+  },
+  "policy_digest": "f2fe73f722263bbc231f59ddd01300684143aa2783c8b156f9164ded2228b37c",
+  "prompts": {
+    "A01": "a01-v2",
+    "A02": "a02-v2",
+    "A03": "a03-v6",
+    "A04": "a04-v5",
+    "A09": "a09-v2",
+    "A05": "a05-v1",
+    "A06": "a06-v2",
+    "A07": "a07-v1",
+    "A08": "a08-v2"
+  },
+  "models": {
+    "design": "gpt-6.1-sol",
+    "review": "gpt-6-luna"
+  },
+  "settings": {
+    "design_model": "gpt-6.1-sol",
+    "review_model": "gpt-6-luna",
+    "design_reasoning_effort": "medium",
+    "review_reasoning_effort": "low",
+    "review_mode": "combined",
+    "max_output_tokens": 8000,
+    "max_tokens_per_run": 400000,
+    "run_timeout_seconds": 900,
+    "llm_timeout_seconds": 120,
+    "max_structured_retries": 2,
+    "max_rework_iterations": 3,
+    "llm_concurrency": 4,
+    "llm_api_retries": 3,
+    "max_source_blocks": 1000,
+    "require_sql_validation": true,
+    "enable_erd_pdf": true,
+    "enable_function_spec_pdf": true,
+    "run_concurrency": 1
+  },
+  "verified_private_input_and_gold_hashes": 15,
+  "approved_A05_A08_fixtures_located": false,
+  "provenance_records": "origin/source/hash/approval table and reuse discussion found in private evaluation guide; independent fixed fixtures absent from local folders and two archives",
+  "completed": 0,
+  "incomplete": 5,
+  "quality_scores": null,
+  "quality_score_reason": "no completed runs; no new approved semantic alignments or complete fixed fixtures; do not reuse old matching approvals",
+  "problems": {
+    "unresolved_name": 29,
+    "invalid_fk_binding": 4,
+    "fk_column_conflict": 1
+  },
+  "calls": 26,
+  "input_tokens": 227157,
+  "output_tokens": 87393,
+  "structured_retries": 1,
+  "estimated_cost_usd": 1.3128411,
+  "cost_basis": "2026-11-11 OpenAI Standard token rates with reported cached input and cache-write tokens; estimated not invoice; SDK hidden retries not counted",
+  "cost_source": "https://developers.openai.com/api/docs/pricing",
+  "unknown_cost_calls": 0,
+  "runtime": {
+    "image": "specton-api:pr236-check",
+    "image_id": "35740eaaaf7a",
+    "source_mount": "read-only frozen d62f16b",
+    "python": "3.12.16",
+    "openai": "3.37.0",
+    "pydantic": "2.14.1",
+    "langgraph": "1.2.16",
+    "weasyprint": "70.0",
+    "postgres": "18.6"
+  },
+  "documents": [
+    {
+      "document_id": "inventory-document-1",
+      "status": "incomplete",
+      "reason": "manual_review_required",
+      "calls": 5,
+      "wall_time_ms": 200182,
+      "input_tokens": 43864,
+      "output_tokens": 19242,
+      "estimated_cost_usd": 0.2814949,
+      "structured_retries": 0,
+      "sdk_retry_count": null,
+      "a01_requirements": 27,
+      "normalization_problems": {
+        "unresolved_name": 11
+      },
+      "rule_findings": {
+        "RULE-05": 11
+      },
+      "ddl": "not_generated",
+      "downstream_review": "not_run",
+      "export": "not_run"
+    },
+    {
+      "document_id": "inventory-document-2",
+      "status": "incomplete",
+      "reason": "manual_review_required",
+      "calls": 6,
+      "wall_time_ms": 203659,
+      "input_tokens": 57527,
+      "output_tokens": 21403,
+      "estimated_cost_usd": 0.3112065,
+      "structured_retries": 1,
+      "sdk_retry_count": null,
+      "a01_requirements": 26,
+      "normalization_problems": {
+        "invalid_fk_binding": 2,
+        "unresolved_name": 6
+      },
+      "rule_findings": {
+        "RULE-04": 2,
+        "RULE-05": 6
+      },
+      "ddl": "not_generated",
+      "downstream_review": "not_run",
+      "export": "not_run"
+    },
+    {
+      "document_id": "inventory-document-3",
+      "status": "incomplete",
+      "reason": "manual_review_required",
+      "calls": 5,
+      "wall_time_ms": 152595,
+      "input_tokens": 41352,
+      "output_tokens": 15132,
+      "estimated_cost_usd": 0.2341149,
+      "structured_retries": 0,
+      "sdk_retry_count": null,
+      "a01_requirements": 26,
+      "normalization_problems": {
+        "fk_column_conflict": 1,
+        "unresolved_name": 3
+      },
+      "rule_findings": {
+        "RULE-05": 4
+      },
+      "ddl": "not_generated",
+      "downstream_review": "not_run",
+      "export": "not_run"
+    },
+    {
+      "document_id": "inventory-document-4",
+      "status": "incomplete",
+      "reason": "manual_review_required",
+      "calls": 5,
+      "wall_time_ms": 138949,
+      "input_tokens": 42557,
+      "output_tokens": 14786,
+      "estimated_cost_usd": 0.23366739999999997,
+      "structured_retries": 0,
+      "sdk_retry_count": null,
+      "a01_requirements": 29,
+      "normalization_problems": {
+        "unresolved_name": 2
+      },
+      "rule_findings": {
+        "RULE-05": 2
+      },
+      "ddl": "not_generated",
+      "downstream_review": "not_run",
+      "export": "not_run"
+    },
+    {
+      "document_id": "inventory-document-5",
+      "status": "incomplete",
+      "reason": "manual_review_required",
+      "calls": 5,
+      "wall_time_ms": 179192,
+      "input_tokens": 41857,
+      "output_tokens": 16830,
+      "estimated_cost_usd": 0.25235739999999995,
+      "structured_retries": 0,
+      "sdk_retry_count": null,
+      "a01_requirements": 24,
+      "normalization_problems": {
+        "invalid_fk_binding": 2,
+        "unresolved_name": 7
+      },
+      "rule_findings": {
+        "RULE-04": 2,
+        "RULE-05": 7
+      },
+      "ddl": "not_generated",
+      "downstream_review": "not_run",
+      "export": "not_run"
+    }
+  ],
+  "next_actions": [
+    "unsupported names and role-FK conflict require human source/meaning decisions without evaluation-driven production dictionary edits",
+    "A04 NULL binding violations detected before normalization in separate #22 followup; offline replay rejects exactly four; five-document API rerun of fix not performed",
+    "locate approved private A05/A08 fixed fixtures; retrieve via private Drive when connected",
+    "define and freeze pack-applied/unapplied comparison conditions and semantic alignments before scoring; do not call current results a pack-effect F1 comparison"
+  ]
+}
