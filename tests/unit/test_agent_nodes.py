@@ -24,6 +24,7 @@ from specton.nodes.a01_requirements import A01Output
 from specton.nodes.a02_functions import A02Output
 from specton.nodes.a03_entities import A03Output
 from specton.nodes.a04_relationships import A04Output
+from specton.nodes.common import unwrap_data
 from specton.packs.examples import load_examples
 
 PACK = "maintenance"
@@ -187,3 +188,42 @@ def test_design_nodes_run_through_the_graph_to_the_final_review() -> None:
     ]
     assert set(design.versions.prompt_versions) == {"A01", "A02", "A03", "A04"}
     assert [r.stage for r in transport.sent] == ["A01", "A02", "A03", "A04"]
+
+
+def test_model_rework_sends_previous_design_and_findings_to_both_design_nodes() -> None:
+    import json
+
+    from specton.codegen.model import ProblemCode, problem
+    from specton.contracts.findings import Severity
+    from specton.review.normalization_findings import map_normalization_failure
+
+    client, transport = stub_client(
+        reply(_a01_output()),
+        reply(_example_output("A02", A02Output)),
+        reply(_example_output("A03", A03Output)),
+        reply(_a04_output()),
+        reply(_example_output("A03", A03Output)),
+        reply(_a04_output()),
+    )
+    nodes = design_nodes(lambda: client, _settings())
+    state = initial_state(_design(pack_id=PACK))
+    for name in ("a01", "a02", "a03", "a04"):
+        state = {**state, **nodes[name](state)}
+    assert all("rework_context" not in r.messages[-1].content for r in transport.sent)
+    previous = state["design"]
+    failure = map_normalization_failure(
+        previous,
+        (problem(ProblemCode.FK_COLUMN_CONFLICT, "REL-01", "기존 키와 FK 충돌", decision="D13"),),
+        severities={"RULE-04": Severity.CRITICAL},
+    )
+    state["design"] = previous.evolve(iteration=1, revision=1, findings=failure["findings"])
+    for name in ("a03", "a04"):
+        state = {**state, **nodes[name](state)}
+        context = json.loads(unwrap_data(transport.sent[-1].messages[-1].content))["rework_context"]
+        assert context["iteration"] == 1
+        assert context["findings"][0]["kind"] == "fk_column_conflict:D13"
+        assert context["findings"][0]["targets"] == [{"kind": "relationship", "id": "REL-01"}]
+        assert context["findings"][0]["target_stage"] == "data_model"
+        assert context["entities"] and context["relationships"]
+        assert context["findings"][0]["evidence"][0]["quote"] == "기존 키와 FK 충돌"
+    assert previous.iteration == 0 and previous.findings == ()
