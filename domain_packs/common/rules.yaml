@@ -14,13 +14,13 @@ rules:
 # 데이터 표준 준수 검사. 공식 산식·기준값은 공개 자료에서 확인하지 못해 항목은 프로젝트 정의(project)다.
 # 심각도: #247 R1 리뷰(2026-11-09)에서 SC-01~06 확정. ADR-0010 SC 예외.
 # 규칙 위반(RULE)과 달리 critical을 쓰지 않는다. minor는 참고로만
-# 남고, major는 SC-03·06이 데이터 설계 재작업, SC-04(금칙어)·05는 사람 조치다. SC-04 이음동의어는 아직 내지 않는다.
+# 남고, major는 SC-03·06이 데이터 설계 재작업, SC-04(금칙어)·05는 사람 조치다. SC-04 이음동의어는 minor 참고다(#260).
 standard_compliance:
   checks:
     - { id: SC-01, name: unregistered_word,          severity: minor, target_stage: null, handling: informational }  # 사전에 없는 단어
     - { id: SC-02, name: missing_classifier,         severity: minor, target_stage: null, handling: informational }  # 마지막 단어가 분류어가 아님
     - { id: SC-03, name: classifier_domain_mismatch, severity: major, target_stage: data_model, handling: fixed }  # 분류어의 도메인 분류와 다른 도메인
-    - { id: SC-04, name: forbidden_synonym,          severity: major, target_stage: null, handling: manual, subtypes: { synonym: { severity: minor, target_stage: null, handling: informational } } }  # 금칙어는 사람 조치; 이음동의어 진단은 후속
+    - { id: SC-04, name: forbidden_synonym,          severity: major, target_stage: null, handling: manual, subtypes: { synonym: { severity: minor, target_stage: null, handling: informational } } }  # 금칙어는 사람 조치, 이음동의어(synonym)는 참고. 팩 선별 적용 목록의 낱말은 둘 다 지적하지 않음
     - { id: SC-05, name: official_term_conflict,     severity: major, target_stage: null, handling: manual }  # 공식 용어와 약어가 다름 (도메인은 SC-06)
     - { id: SC-06, name: type_length_mismatch,       severity: major, target_stage: data_model, handling: fixed }  # 도메인과 다른 타입·길이
   compliance_rate: compliant_columns / diagnosed_columns * 100   # project 정의, 항목별로 함께 보고

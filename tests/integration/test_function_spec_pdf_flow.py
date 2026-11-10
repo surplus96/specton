@@ -101,7 +101,7 @@ def test_function_spec_pdf_is_private_until_approval_and_published_as_the_same_b
         assert exported["model_hash"] == snapshot["model_hash"]
         assert exported["generator_versions"]["common_version"] == normalized["common_version"]
         assert exported["generator_versions"]["policy_digest"] == normalized["policy_digest"]
-        assert normalized["common_version"] == "0.1.4" and normalized["policy_digest"]
+        assert normalized["common_version"] == "0.1.5" and normalized["policy_digest"]
         listed = {
             (f["kind"], f["file_format"]): f["hash"] for f in json.loads(manifest.content)["files"]
         }

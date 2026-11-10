@@ -30,10 +30,10 @@
 | 공유 용어·패턴 | 단어·도메인·명명·검사 정책은 common. 사용여부·변경일시·변경사유와 사용 중지 패턴은 도메인 용어·패턴에 유지. 실행기가 읽지 않는 `common/terms.yaml`·`common/patterns.yaml` 신설·이동 제안은 채택하지 않음 |
 | 명명 | 단어 수 제한 없음, 접두어 없음, 사전 약어 그대로, 연결 테이블 parent_child, PK 용어 물리명, FK 부모 키, 자기참조 접두어 상위(UP) |
 | 규칙 처리 | `handling`: fixed(고정 복귀) / dynamic(대상·문제별 계산) / manual(사람 조치) / informational(minor 참고). fixed만 target_stage를 채우며, 나머지 null은 확정된 값 |
-| SC 세부 유형 | SC-04 기본은 금칙어 major·manual, `subtypes.synonym`은 minor·informational. 이음동의어의 별도 런타임 진단은 후속이며 현재 검사기는 금칙어만 발행 |
+| SC 세부 유형 | SC-04 기본은 금칙어 major·manual, `subtypes.synonym`은 minor·informational. 팩에 없는 공식 이음동의어 진단은 #260에서 추가(common 0.1.5) |
 | 선별 적용 | `standard_selection.yaml`에 낱말·표준어·사유를 기록. 목록에 없는 공식 이음동의어·금칙어 등록, 빈 사유, 잘못된 표준어, 남은 예외는 로더·build 검사가 거절 |
 | 공통표준 판 | 8차 CSV와 `sources.yaml` sha256 고정. 9차를 자동 도입하지 않음 |
-| 버전 고정 | common 0.1.4 approved, inventory 0.1.21 approved. 각 내용·선별 적용을 pack.lock에 기록. 정리 결과에 common_version·policy_digest를 보존하고 모델 해시·manifest에 포함 |
+| 버전 고정 | common 0.1.5 approved (#260), inventory 0.1.21 approved. 각 내용·선별 적용을 pack.lock에 기록. 정리 결과에 common_version·policy_digest를 보존하고 모델 해시·manifest에 포함 |
 | 재개 | 정리 후 팩·표준 원본 해시가 다르면 새 실행을 요구. 옛 결과에 없는 새 메타데이터를 채워 옛 승인 해시를 바꾸지 않음 |
 | 평가 자료 | 비공개 보관, 팩·프롬프트·공개 저장소에 입력하지 않음. R1이 정답 검토와 R2 팩 후속을 겸하므로 작성자 미열람 평가로 주장하지 않으며 이 제한을 평가 기록에 남김 |
 | 형식·인수 | Pydantic·정책·선별 적용·내용 해시 검증. R2 잔여는 R1이 인수, 계약 영향은 R3 확인 대상 |
