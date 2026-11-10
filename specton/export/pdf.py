@@ -253,7 +253,7 @@ def erd_sources(
 
     팩에 영역이 없으면 모든 테이블이 「기타」 하나에 들어가 상세도가 한 장이다.
     """
-    # 개요는 관계 이름 없이 선과 끝 기호만. 관계 ID는 영역 상세도·테이블 정의서에서 본다 (#261)
+    # 개요는 관계 이름 없이 선과 끝 기호만. 관계 ID는 영역 상세도에서 본다 (#261)
     overview = render_erd(model, relationships, attributes=False, labels=False)
     sources = [("overview", "전체 관계 개요", overview)]
     split = assign_areas(model.tables, areas)
