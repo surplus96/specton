@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Handle, Position, ReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react'
 import { darkTones } from '../../theme.ts'
+import { pickedNode } from './select.ts'
 import { KIND_LABEL, STATE_LABEL, pipelineEdges, type PipelineNode } from './pipeline.ts'
 
 // 왼쪽 「실행 단계 그래프」 (#281). 위→아래로 고정 배치하고 끌지 않는다.
@@ -109,7 +110,7 @@ function PipelineGraph({ nodes, selected, onSelect }: Props) {
   )
 
   return (
-    <div style={{ height: 14 * ROW + 40 }} aria-label="실행 단계 그래프">
+    <div role="region" style={{ height: 14 * ROW + 40 }} aria-label="실행 단계 그래프. Tab으로 단계 이동, Enter로 선택">
       <ReactFlow<FlowNode>
         nodes={flowNodes}
         edges={edges}
@@ -124,6 +125,10 @@ function PipelineGraph({ nodes, selected, onSelect }: Props) {
         zoomOnDoubleClick={false}
         preventScrolling={false}
         onNodeClick={(_, n) => n.id !== 'spacer' && onSelect(n.id === selected ? null : n.id)}
+        onNodesChange={(changes) => {
+          const picked = pickedNode(changes, selected)
+          if (picked && picked !== 'spacer') onSelect(picked)
+        }}
       />
     </div>
   )

@@ -15,7 +15,7 @@ import DetailPanel, { type Selection } from './DetailPanel.tsx'
 import ErdCanvas from './ErdCanvas.tsx'
 import PipelineGraph from './PipelineGraph.tsx'
 import TraceCanvas from './TraceCanvas.tsx'
-import { erdModel } from './erd.ts'
+import { erdModel, findingEntities } from './erd.ts'
 import { pipelineNodes, pipelineProgress } from './pipeline.ts'
 import { buildTrace, traceSummary } from './trace.ts'
 
@@ -108,19 +108,21 @@ function Workspace({ runId }: { runId: string }) {
     }
   }, [runId, revision, ready, status, stage, artifactEvents])
 
-  const artifacts = useMemo(() => toArtifacts(data?.rawArtifacts), [data])
-  const names = useMemo(() => nameIndex(data?.design ?? []), [data])
-  const erd = useMemo(() => erdModel(data?.design ?? [], data?.findings ?? []), [data])
+  // 고른 revision의 데이터만 쓴다. revision을 바꾼 직후 받기 전에는 이전 revision 데이터를 섞어 보이지 않고 「불러오는 중」
+  const shown = data && data.revision === revision ? data : null
+  const artifacts = useMemo(() => toArtifacts(shown?.rawArtifacts), [shown])
+  const names = useMemo(() => nameIndex(shown?.design ?? []), [shown])
+  const erd = useMemo(() => erdModel(shown?.design ?? [], shown?.findings ?? []), [shown])
   const trace = useMemo(
-    () => buildTrace({ blocks: data?.blocks ?? [], requirements: data?.requirements ?? [], design: data?.design ?? [], findings: data?.findings ?? [] }),
-    [data],
+    () => buildTrace({ blocks: shown?.blocks ?? [], requirements: shown?.requirements ?? [], design: shown?.design ?? [], findings: shown?.findings ?? [] }),
+    [shown],
   )
   const pipeline = useMemo(() => {
     if (!run) return []
     // 실행 단계 그래프는 지금 revision 기준이다. 지난 revision을 볼 때는 산출물·지적을 섞지 않는다
-    const current = data && data.revision === run.revision
-    return pipelineNodes({ run, events, artifacts: current ? artifacts : [], findings: current ? data.findings : [] })
-  }, [run, events, artifacts, data])
+    const current = shown && shown.revision === run.revision
+    return pipelineNodes({ run, events, artifacts: current ? artifacts : [], findings: current ? shown.findings : [] })
+  }, [run, events, artifacts, shown])
 
   if (loadError) {
     return (
@@ -134,21 +136,36 @@ function Workspace({ runId }: { runId: string }) {
   const progress = pipelineProgress(pipeline)
   const approved = isApproved(artifacts)
   const summary = traceSummary(trace)
-  const sql = sqlReview(data?.rawArtifacts, revision)
+  const sql = sqlReview(shown?.rawArtifacts, revision)
 
   function onFinding(f: Finding) {
     setSelection({ kind: 'finding', id: f.id })
-    const owner = new Map((data?.design ?? []).flatMap((d) => (d.type === 'entity' ? d.attributes.map((a) => [a.id, d.id] as const) : [])))
-    const rel = (data?.design ?? []).find((d) => d.type === 'relationship' && f.targets.some((t) => t.id === d.id))
-    const target = f.targets.find((t) => t.kind === 'entity' || t.kind === 'attribute' || t.kind === 'relationship')
-    const entityId =
-      target?.kind === 'entity' ? target.id : target?.kind === 'attribute' ? owner.get(target.id) : rel?.type === 'relationship' ? rel.parent : undefined
+    // 카드 배지·상세 목록과 같은 규칙(erd.ts findingEntities)으로 이동할 엔티티를 고른다
+    const entityId = findingEntities(shown?.design ?? [])(f)[0]
     if (entityId) {
       setTab('erd')
       setFocus({ id: entityId, at: Date.now() })
     } else {
+      setFocus(null) // 이전 이동 대상을 남기지 않는다 (ERD로 돌아갔을 때 상관없는 엔티티 강조 방지)
       setTab('trace') // 요구사항·기능 지적은 추적에서 그 지적까지의 길을 밝힌다
     }
+  }
+
+  const TABS = [
+    ['erd', `ERD (${erd.cards.length})`],
+    ['trace', '문서 추적'],
+  ] as const
+
+  // 탭은 좌우 방향키·Home·End로도 옮긴다 (WAI-ARIA 탭 패턴)
+  function onTabKey(e: React.KeyboardEvent) {
+    const order = TABS.map(([key]) => key)
+    const at = order.indexOf(tab)
+    const next =
+      e.key === 'ArrowRight' ? order[(at + 1) % order.length] : e.key === 'ArrowLeft' ? order[(at + order.length - 1) % order.length] : e.key === 'Home' ? order[0] : e.key === 'End' ? order[order.length - 1] : null
+    if (!next) return
+    e.preventDefault()
+    setTab(next)
+    document.getElementById(`aiws-tab-${next}`)?.focus()
   }
 
   const traceSelected = selection?.kind === 'trace' ? selection.key : selection?.kind === 'finding' ? `finding:${selection.id}` : null
@@ -207,18 +224,16 @@ function Workspace({ runId }: { runId: string }) {
         </aside>
 
         <main className="aiws-center">
-          <div role="tablist" aria-label="캔버스" style={{ display: 'flex', gap: 4, padding: '8px 12px', borderBottom: `1px solid ${dark.border}`, alignItems: 'center' }}>
-            {(
-              [
-                ['erd', `ERD (${erd.cards.length})`],
-                ['trace', '문서 추적'],
-              ] as const
-            ).map(([key, label]) => (
+          <div role="tablist" aria-label="캔버스" onKeyDown={onTabKey} style={{ display: 'flex', gap: 4, padding: '8px 12px', borderBottom: `1px solid ${dark.border}`, alignItems: 'center' }}>
+            {TABS.map(([key, label]) => (
               <button
                 key={key}
+                id={`aiws-tab-${key}`}
                 type="button"
                 role="tab"
                 aria-selected={tab === key}
+                aria-controls="aiws-tabpanel"
+                tabIndex={tab === key ? 0 : -1}
                 className={`aiws-list-item${tab === key ? ' active' : ''}`}
                 style={{ width: 'auto' }}
                 onClick={() => setTab(key)}
@@ -233,12 +248,12 @@ function Workspace({ runId }: { runId: string }) {
               </span>
             )}
           </div>
-          <div style={{ minHeight: 0 }}>
+          <div id="aiws-tabpanel" role="tabpanel" aria-labelledby={`aiws-tab-${tab}`} style={{ minHeight: 0 }}>
             {viewError ? (
               <p role="alert" style={{ padding: 20 }}>
                 {errorMessage(viewError)}
               </p>
-            ) : !data ? (
+            ) : !shown ? (
               <p style={{ padding: 20, color: dark.inkMuted }}>불러오는 중…</p>
             ) : tab === 'erd' ? (
               erd.cards.length === 0 ? (
@@ -258,12 +273,13 @@ function Workspace({ runId }: { runId: string }) {
           </div>
         </main>
 
-        <aside className="aiws-right" aria-hidden={!panelOpen}>
-          {data && (
+        {/* 닫힌 패널은 inert: 보이지 않는 버튼에 Tab 포커스가 들어가지 않는다 */}
+        <aside className="aiws-right" inert={!panelOpen}>
+          {shown && (
             <DetailPanel
               selection={selection}
-              design={data.design}
-              findings={data.findings}
+              design={shown.design}
+              findings={shown.findings}
               artifacts={artifacts}
               sql={sql}
               names={names}

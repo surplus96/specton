@@ -60,28 +60,35 @@ function cardSize(name: string, rows: readonly AttributeRow[]): { width: number;
   return { width, height: HEAD_HEIGHT + Math.max(1, rows.length) * ROW_HEIGHT + 8 }
 }
 
-/** 엔티티를 가리키는 지적 수 (엔티티 자신·그 속성·그 엔티티가 끝인 관계) */
-function findingCounts(entities: readonly DesignEntity[], rels: readonly DesignRelationship[], findings: readonly Finding[]) {
+/**
+ * 지적이 가리키는 엔티티: 엔티티 자신, 속성이면 그 엔티티, 관계면 부모·자식 (targets 순서, 중복 없음).
+ * 카드 배지·상세 패널 목록·지적에서 ERD로 이동이 모두 이 규칙 하나를 쓴다. 없는 엔티티는 넣지 않는다.
+ */
+export function findingEntities(design: readonly DesignItem[]): (f: Finding) => string[] {
+  const entities = design.filter((d): d is DesignEntity => d.type === 'entity')
+  const ids = new Set(entities.map((e) => e.id))
   const owner = new Map(entities.flatMap((e) => e.attributes.map((a) => [a.id, e.id] as const)))
-  const relEnds = new Map(rels.map((r) => [r.id, [r.parent, r.child]]))
-  const counts = new Map<string, number>()
-  for (const f of findings) {
+  const relEnds = new Map(
+    design.filter((d): d is DesignRelationship => d.type === 'relationship').map((r) => [r.id, [r.parent, r.child]] as const),
+  )
+  return (f) => {
     const hit = new Set<string>()
     for (const t of f.targets) {
       if (t.kind === 'entity') hit.add(t.id)
       else if (t.kind === 'attribute' && owner.has(t.id)) hit.add(owner.get(t.id)!)
       else if (t.kind === 'relationship') relEnds.get(t.id)?.forEach((e) => hit.add(e))
     }
-    for (const e of hit) counts.set(e, (counts.get(e) ?? 0) + 1)
+    return [...hit].filter((e) => ids.has(e))
   }
-  return counts
 }
 
 export function erdModel(design: readonly DesignItem[], findings: readonly Finding[]): { cards: EntityCard[]; lines: RelationshipLine[] } {
   const entities = design.filter((d): d is DesignEntity => d.type === 'entity')
   const rels = design.filter((d): d is DesignRelationship => d.type === 'relationship')
   const ids = new Set(entities.map((e) => e.id))
-  const counts = findingCounts(entities, rels, findings)
+  const of = findingEntities(design)
+  const counts = new Map<string, number>()
+  for (const f of findings) for (const e of of(f)) counts.set(e, (counts.get(e) ?? 0) + 1)
   const cards = entities.map((e): EntityCard => {
     const attributes = e.attributes.map(
       (a): AttributeRow => ({ id: a.id, name: a.name, type: typeText(a), pk: a.is_key, uq: a.is_unique, nullable: a.nullable }),

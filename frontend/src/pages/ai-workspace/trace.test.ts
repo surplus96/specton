@@ -70,8 +70,18 @@ describe('문서 추적: 연결 만들기', () => {
   })
 
   it('없는 대상을 가리키면 잇지 않는다 (메우지 않음)', () => {
-    const graph = buildTrace({ ...input, design: [fn('FN-09', ['REQ-99'], ['E9'])], findings: [finding('F9', [{ kind: 'entity', id: 'E9' }])] })
-    expect(graph.edges.some((e) => e.from.includes('REQ-99') || e.to.includes('E9'))).toBe(false)
+    const findings = [
+      finding('F9', [{ kind: 'entity', id: 'E9' }]),
+      finding('F8', [{ kind: 'relationship', id: 'REL-99' }, { kind: 'requirement', id: 'REQ-99' }, { kind: 'function', id: 'FN-99' }]),
+    ]
+    const graph = buildTrace({ ...input, design: [fn('FN-09', ['REQ-99'], ['E9'])], findings })
+    const missing = ['REQ-99', 'E9', 'REL-99', 'FN-99']
+    // 선의 양 끝을 모두 본다 (없는 대상은 출발점 쪽에 온다)
+    expect(graph.edges.filter((e) => missing.some((m) => e.from.endsWith(`:${m}`) || e.to.endsWith(`:${m}`)))).toEqual([])
+    // 모든 선의 양 끝은 화면에 있는 항목이다
+    const keys = new Set(graph.nodes.map((n) => n.key))
+    expect(graph.edges.every((e) => keys.has(e.from) && keys.has(e.to))).toBe(true)
+    expect([...connected(graph, 'finding:F9')]).toEqual(['finding:F9'])
   })
 })
 

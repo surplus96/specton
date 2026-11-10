@@ -3,6 +3,7 @@ import { dark } from '../../theme.ts'
 import { SEVERITY_LABEL, STAGE_LABEL, sortFindings, sourceText, targetText } from '../review/rules.ts'
 import type { SqlReview } from '../review/sqlValidation.ts'
 import { KIND_LABEL as ARTIFACT_LABEL, missingKinds } from '../workspace/rules.ts'
+import { findingEntities } from './erd.ts'
 import { KIND_LABEL, STATE_LABEL, type PipelineNode } from './pipeline.ts'
 import { COLUMN_TITLE, MARK_LABEL, refText, type TraceNode } from './trace.ts'
 
@@ -49,12 +50,8 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 function findingsOf(entityId: string, design: DesignItem[], findings: Finding[]): Finding[] {
-  const entity = design.find((d): d is DesignEntity => d.type === 'entity' && d.id === entityId)
-  const attrs = new Set(entity?.attributes.map((a) => a.id) ?? [])
-  const rels = new Set(design.filter((d) => d.type === 'relationship' && (d.parent === entityId || d.child === entityId)).map((d) => d.id))
-  return findings.filter((f) =>
-    f.targets.some((t) => (t.kind === 'entity' && t.id === entityId) || (t.kind === 'attribute' && attrs.has(t.id)) || (t.kind === 'relationship' && rels.has(t.id))),
-  )
+  const of = findingEntities(design)
+  return findings.filter((f) => of(f).includes(entityId))
 }
 
 function SelectionDetail({ selection, design, findings, names, traceNodes, pipeline }: Props) {

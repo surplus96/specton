@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes, useSearchParams } from 'react-router'
 import AppLayout from './layout/AppLayout.tsx'
+import LazyBoundary from './layout/LazyBoundary.tsx'
 import HomePage from './pages/HomePage.tsx'
 import UploadPage from './pages/UploadPage.tsx'
 import RunPage from './pages/RunPage.tsx'
@@ -31,9 +32,11 @@ function App() {
       <Route
         path="workspace"
         element={
-          <Suspense fallback={<div style={{ padding: 32 }}>작업공간을 불러오는 중…</div>}>
-            <AiWorkspacePage />
-          </Suspense>
+          <LazyBoundary>
+            <Suspense fallback={<div style={{ padding: 32 }}>작업공간을 불러오는 중…</div>}>
+              <AiWorkspacePage />
+            </Suspense>
+          </LazyBoundary>
         }
       />
       <Route element={<AppLayout />}>

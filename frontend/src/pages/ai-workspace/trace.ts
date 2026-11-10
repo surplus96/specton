@@ -110,8 +110,14 @@ export function buildTrace({ blocks, requirements, design, findings }: TraceInpu
   // 엔티티 → 관계 (부모·자식 모두)
   for (const rel of relationships)
     for (const end of new Set([rel.parent, rel.child])) if (entityIds.has(end)) add(key('entity', end), key('relationship', rel.id))
-  // 대상 → 지적 (속성은 그 엔티티로)
+  // 대상 → 지적 (속성은 그 엔티티로). 화면에 있는 대상만 잇는다 (없는 대상을 메우지 않음, TC-F12)
   const attrOwner = new Map(entities.flatMap((e) => e.attributes.map((a) => [a.id, e.id] as const)))
+  const present = new Set([
+    ...requirements.map((r) => key('requirement', r.id)),
+    ...functions.map((f) => key('function', f.id)),
+    ...entities.map((e) => key('entity', e.id)),
+    ...relationships.map((r) => key('relationship', r.id)),
+  ])
   for (const f of findings) {
     for (const t of f.targets) {
       const target =
@@ -120,7 +126,7 @@ export function buildTrace({ blocks, requirements, design, findings }: TraceInpu
             ? key('entity', attrOwner.get(t.id)!)
             : null
           : key(t.kind === 'requirement' ? 'requirement' : t.kind, t.id)
-      if (target) add(target, key('finding', f.id))
+      if (target && present.has(target)) add(target, key('finding', f.id))
     }
   }
 

@@ -34,6 +34,25 @@
 
 출처: [shadcn vs MUI vs Ant Design](https://adminlte.io/blog/shadcn-ui-vs-mui-vs-ant-design/) · [React UI libraries 2026](https://www.thebcms.com/blog/react-ui-libraries/)
 
+## 추가 결정 (2026-11-10, #281·#282)
+
+개발용 AI Workspace(`/workspace`)의 실행 단계 그래프·ERD 캔버스·문서 추적은 노드 캔버스로 그린다.
+
+- React Flow(`@xyflow/react`)로 노드·선·확대·미니맵·키보드 조작을 쓴다.
+- 배치는 elkjs(ELK `layered`, 위→아래)로 한다. 서버 PDF ERD 개요(#273)와 같은 엔진·방향이다.
+- 두 라이브러리는 `/workspace`에서만 불러온다(lazy·dynamic import). 첫 화면과 UI-00~07 번들에는 들어가지 않는다.
+- 기존 화면의 Ant Design·Mermaid 결정은 바꾸지 않는다.
+
+### 서드파티 라이선스
+
+웹 번들로 브라우저에 배포되는 라이브러리라 고지한다. 모두 수정하지 않고 공개 npm 패키지 그대로 쓴다.
+
+| 패키지 | 버전 | 라이선스 | 비고 |
+|---|---|---|---|
+| `elkjs` | 0.12.1 | EPL-2.0 OR GPL-3.0-or-later | **EPL-2.0을 택한다**(#282 R1 결정). 소스: https://github.com/kieler/elkjs |
+| `@xyflow/react`, `@xyflow/system` | 12.12.1 | MIT | https://github.com/xyflow/xyflow |
+| `zustand`, `classcat`, `use-sync-external-store` | lock 기준 | MIT | React Flow 하위 패키지 |
+
 ## 결과
 
 - 좋아지는 점: 표·폼·단계·탭 컴포넌트를 바로 쓸 수 있다.

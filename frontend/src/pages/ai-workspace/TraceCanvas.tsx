@@ -13,6 +13,7 @@ import {
   type NodeProps,
 } from '@xyflow/react'
 import { dark } from '../../theme.ts'
+import { pickedNode } from './select.ts'
 import { COLUMNS, COLUMN_TITLE, MARK_LABEL, connected, type TraceGraph, type TraceNode } from './trace.ts'
 
 // 가운데 「문서 추적」 (#281): 원문 → 요구사항 → 기능 → 엔티티 → 관계 → 지적을 열로 놓는다.
@@ -150,12 +151,21 @@ function Canvas({ graph, selected, onSelect }: Props) {
   }
 
   return (
-    <div style={{ height: '100%' }} onKeyDown={onKeyDown} aria-label="문서 추적. 항목을 고르면 이어진 앞뒤 항목이 강조됩니다. Esc 선택 해제">
+    <div
+      role="region"
+      style={{ height: '100%' }}
+      onKeyDown={onKeyDown}
+      aria-label="문서 추적. Tab으로 항목 이동, Enter로 선택하면 이어진 앞뒤 항목이 강조됩니다. Esc 선택 해제"
+    >
       <ReactFlow
         nodes={[...headers, ...nodes]}
         edges={edges}
         nodeTypes={nodeTypes}
         onNodeClick={(_, n) => !n.id.startsWith('head:') && onSelect(n.id === selected ? null : n.id)}
+        onNodesChange={(changes) => {
+          const picked = pickedNode(changes, selected)
+          if (picked && !picked.startsWith('head:')) onSelect(picked)
+        }}
         onPaneClick={() => onSelect(null)}
         nodesConnectable={false}
         nodesDraggable={false}

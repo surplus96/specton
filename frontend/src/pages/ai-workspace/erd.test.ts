@@ -1,7 +1,7 @@
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { describe, expect, it } from 'vitest'
 import type { DesignItem, Finding } from '../../api/viewItems.ts'
-import { ELK_OPTIONS, erdModel, positionsFrom, relationshipLabel, toElk, typeText } from './erd.ts'
+import { ELK_OPTIONS, erdModel, findingEntities, positionsFrom, relationshipLabel, toElk, typeText } from './erd.ts'
 
 const attr = (id: string, name: string, extra: Record<string, unknown> = {}) => ({
   id,
@@ -51,6 +51,15 @@ describe('ERD 캔버스: 카드와 선', () => {
     expect(cards.map((c) => c.findingCount)).toEqual([2, 2])
   })
 
+  it('지적이 가리키는 엔티티: 카드 배지·상세 목록·이동이 쓰는 한 가지 규칙, 없는 엔티티는 빼기', () => {
+    const of = findingEntities([entity('E1'), entity('E2'), rel('REL-01', 'E1', 'E2'), rel('REL-09', 'E1', 'E9')])
+    const f = (targets: Finding['targets']) => ({ targets }) as Finding
+    expect(of(f([{ kind: 'relationship', id: 'REL-01' }]))).toEqual(['E1', 'E2']) // 부모 먼저
+    expect(of(f([{ kind: 'attribute', id: 'E2-K' }, { kind: 'entity', id: 'E2' }]))).toEqual(['E2'])
+    expect(of(f([{ kind: 'entity', id: 'E9' }, { kind: 'relationship', id: 'REL-09' }]))).toEqual(['E1'])
+    expect(of(f([{ kind: 'requirement', id: 'REQ-01' }]))).toEqual([])
+  })
+
   it('타입·선 글자', () => {
     expect(typeText({ data_type: 'date', length: null, precision: null, scale: null })).toBe('date')
     expect(relationshipLabel({ id: 'R', cardinality: 'N:M', optional: false, identifying: false })).toBe('R · N:M · 필수')
@@ -70,8 +79,10 @@ describe('ERD 캔버스: ELK 배치', () => {
     const design: DesignItem[] = Array.from({ length: 50 }, (_, i) =>
       entity(`E${i}`, Array.from({ length: 1 + (i % 6) }, (__, j) => attr(`E${i}-${j}`, `속성${j}`))),
     )
-    for (let i = 0; i < 60; i++) design.push(rel(`R${i}`, `E${i % 25}`, `E${25 + (i % 25)}`))
+    // 60개 모두 다른 부모·자식 쌍 (부모 25개가 자식 2~3개씩, 자식도 부모 2~3개씩 받는다)
+    for (let i = 0; i < 60; i++) design.push(rel(`R${i}`, `E${i % 25}`, `E${25 + (((i % 25) + 7 * Math.floor(i / 25) + 3) % 25)}`))
     const { cards, lines } = erdModel(design, [])
+    expect(new Set(lines.map((l) => `${l.source}>${l.target}`)).size).toBe(60)
     const started = performance.now()
     const laidOut = await new ELK().layout(toElk(cards, lines))
     const elapsed = performance.now() - started

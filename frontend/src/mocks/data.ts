@@ -434,8 +434,9 @@ export const LARGE_DESIGN_ITEMS = (() => {
   const relationships = Array.from({ length: 60 }, (_, i) => ({
     type: 'relationship',
     id: `REL-${String(i + 1).padStart(3, '0')}`,
+    // 부모 25개 × 한 부모당 자식 2~3개. i와 i+25는 자식을 7칸 밀어 60개가 모두 다른 부모·자식 쌍이 된다
     parent: entities[i % 25].id,
-    child: entities[25 + ((i * 7) % 25)].id,
+    child: entities[25 + (((i % 25) + 7 * Math.floor(i / 25) + 3) % 25)].id,
     cardinality: i % 10 === 0 ? 'N:M' : '1:N',
     optional: i % 3 === 0,
     identifying: i % 5 === 0,
