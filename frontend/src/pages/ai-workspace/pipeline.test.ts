@@ -33,6 +33,11 @@ describe('실행 단계 그래프: 모양', () => {
     expect(edges.filter((e) => e.from === 'rules').map((e) => e.to)).toEqual(['A05', 'A06', 'A07', 'A08'])
     expect(edges.filter((e) => e.rework)).toEqual([{ from: 'a09', to: 'a02', rework: true }])
   })
+
+  it('검토 관점 이름은 서버 관점 정의(specton/review/perspectives/A05~A08.yaml의 name)와 같다', () => {
+    const titles = PIPELINE.filter((d) => ['A05', 'A06', 'A07', 'A08'].includes(d.id)).map((d) => d.title)
+    expect(titles).toEqual(['A05 관계 모순', 'A06 데이터 누락', 'A07 비기능', 'A08 정규화'])
+  })
 })
 
 describe('실행 단계 그래프: 상태', () => {

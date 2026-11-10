@@ -244,7 +244,8 @@ function Workspace({ runId }: { runId: string }) {
             <span style={{ flex: 1 }} />
             {tab === 'trace' && (
               <span style={{ fontSize: 13, color: dark.inkMuted }}>
-                요구사항 {summary.requirements} · 미연결 {summary.unlinkedRequirements} · 제외 {summary.excludedBlocks} · 확인(원문 없음) {summary.noSourceBlocks}
+                요구사항 {summary.requirements} · 요구사항 미연결 {summary.unlinkedRequirements} · 원문 미연결 {summary.unlinkedBlocks} · 제외{' '}
+                {summary.excludedBlocks} · 확인(원문 없음) {summary.noSourceBlocks}
               </span>
             )}
           </div>

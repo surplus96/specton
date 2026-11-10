@@ -13,6 +13,7 @@ import {
   type NodeProps,
 } from '@xyflow/react'
 import { dark } from '../../theme.ts'
+import { MINIMAP_STYLE, ariaLabels } from './flowText.ts'
 import { pickedNode } from './select.ts'
 import { COLUMNS, COLUMN_TITLE, MARK_LABEL, connected, type TraceGraph, type TraceNode } from './trace.ts'
 
@@ -168,6 +169,9 @@ function Canvas({ graph, selected, onSelect }: Props) {
         }}
         onPaneClick={() => onSelect(null)}
         nodesConnectable={false}
+        deleteKeyCode={null}
+        edgesFocusable={false}
+        ariaLabelConfig={ariaLabels(false)}
         nodesDraggable={false}
         onInit={() => showTop()}
         minZoom={0.1}
@@ -175,7 +179,7 @@ function Canvas({ graph, selected, onSelect }: Props) {
       >
         <Background color={dark.border} gap={24} />
         <Controls showInteractive={false} />
-        <MiniMap pannable zoomable nodeColor={dark.card} maskColor="rgba(2,6,23,0.6)" />
+        <MiniMap pannable zoomable nodeColor={dark.card} maskColor="rgba(2,6,23,0.35)" style={MINIMAP_STYLE} />
       </ReactFlow>
     </div>
   )

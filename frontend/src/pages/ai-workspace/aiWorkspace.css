@@ -170,8 +170,15 @@
 .aiws .react-flow__controls-button:hover {
   background: var(--aiws-card-hover);
 }
+/* 미니맵은 카드를 덜 가리게 반투명. 마우스를 올리거나 포커스하면 진해진다 (#281 후속) */
 .aiws .react-flow__minimap {
-  background: var(--aiws-panel);
+  background: rgba(15, 23, 42, 0.55);
+  opacity: 0.7;
+  transition: opacity 150ms ease;
+}
+.aiws .react-flow__minimap:hover,
+.aiws .react-flow__minimap:focus-within {
+  opacity: 1;
 }
 .aiws .react-flow__attribution {
   background: transparent;

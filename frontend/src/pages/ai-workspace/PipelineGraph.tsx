@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Handle, Position, ReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react'
 import { darkTones } from '../../theme.ts'
+import { ariaLabels } from './flowText.ts'
 import { pickedNode } from './select.ts'
 import { KIND_LABEL, STATE_LABEL, pipelineEdges, type PipelineNode } from './pipeline.ts'
 
@@ -119,6 +120,9 @@ function PipelineGraph({ nodes, selected, onSelect }: Props) {
         fitViewOptions={{ padding: 0.08 }}
         nodesDraggable={false}
         nodesConnectable={false}
+        deleteKeyCode={null}
+        edgesFocusable={false}
+        ariaLabelConfig={ariaLabels(false)}
         panOnDrag={false}
         zoomOnScroll={false}
         zoomOnPinch={false}
