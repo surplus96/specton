@@ -141,7 +141,7 @@ def test_api_registers_real_erd_and_skips_it_after_normalization_failure(
     failed: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(main, "openai_agent_nodes", lambda settings: {})
-    monkeypatch.setattr(main, "parse_node", lambda root: lambda state: {})
+    monkeypatch.setattr(main, "parse_node", lambda root, **kwargs: lambda state: {})
     monkeypatch.setattr(main, "ddl_node", lambda settings: lambda state: {})
     monkeypatch.setattr(main, "document_node", lambda root: lambda state: {})
     monkeypatch.setattr(main, "manifest_node", lambda root: lambda state: {})

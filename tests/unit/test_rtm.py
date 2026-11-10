@@ -149,6 +149,18 @@ def test_excluded_and_no_text_rows_are_not_counted_as_unlinked() -> None:
     assert counts(build_rtm(_design())) == {LINKED: 3, UNLINKED: 0, EXCLUDED: 1, NO_TEXT: 1}
 
 
+def test_nfr_and_final_review_wait_do_not_create_a_deferred_rtm_row() -> None:
+    design = _design()
+    function = design.functions[1].evolve(req_ids=("REQ-02",))  # 비기능 요구와 기능 연결을 제거
+    design = design.evolve(functions=(design.functions[0], function))
+    waiting = design.evolve(status="awaiting_review")
+    rows = build_rtm(waiting)
+    assert next(row for row in rows if row.req_id == "REQ-03").status == UNLINKED
+    assert {row.status for row in rows} <= {LINKED, UNLINKED, EXCLUDED, NO_TEXT}
+    assert render_rtm_csv(waiting) == render_rtm_csv(design)
+    assert render_rtm_xlsx(waiting) == render_rtm_xlsx(design)
+
+
 def test_undecided_fail_block_is_rejected() -> None:
     design = _design()
     failed = _source(6, "SFR-009", "깨진 표", extraction_status="fail", notice="표를 읽지 못함")

@@ -14,6 +14,54 @@ from specton.parse_node import parse_node
 HEADER = "요구사항 ID,요구사항명,상세 내용"
 
 
+@pytest.mark.parametrize("count", [2, 3])
+def test_source_block_limit_accepts_boundary_and_never_truncates(
+    tmp_path: Path, count: int
+) -> None:
+    doc = _write(
+        tmp_path,
+        "limit.csv",
+        HEADER + "\n" + "\n".join(f"SFR-{n},등록{n},등록한다" for n in range(count)),
+    )
+    state = initial_state(DesignState(run_id="run-1"), (doc,))
+    node = parse_node(tmp_path, max_source_blocks=2)
+    if count == 2:
+        assert len(node(state)["design"].source_requirements) == 2
+    else:
+        with pytest.raises(ExtractionFailedError, match="2") as caught:
+            node(state)
+        assert "3" in caught.value.detail and "2" in caught.value.detail
+        assert state["design"].source_requirements == ()
+
+
+def test_source_block_limit_counts_review_blocks_and_all_documents(tmp_path: Path) -> None:
+    first = _write(tmp_path, "first.csv", f"{HEADER}\nSFR-001,등록,등록한다\n")
+    second = _write(tmp_path, "second.csv", f"{HEADER}\nMETA-001,,\n")
+    second["document_id"] = "doc-2"
+    state = initial_state(DesignState(run_id="run-1"), (first, second))
+    with pytest.raises(ExtractionFailedError):
+        parse_node(tmp_path, max_source_blocks=1)(state)
+
+
+@pytest.mark.parametrize("fmt", ["xlsx", "csv", "hwp", "hwpx"])
+def test_every_reader_uses_the_same_post_parse_block_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fmt: str
+) -> None:
+    doc = _write(tmp_path, "a.csv", f"{HEADER}\nSFR-001,등록,등록한다\nSFR-002,조회,조회한다\n")
+    result = parse_module.read_csv(tmp_path / "a.csv", "doc-1")
+    monkeypatch.setitem(parse_module._READERS, fmt, lambda path, document_id: result)
+    doc["file_format"] = fmt
+    state = initial_state(DesignState(run_id="run-1"), (doc,))
+    with pytest.raises(ExtractionFailedError):
+        parse_node(tmp_path, max_source_blocks=1)(state)
+
+
+@pytest.mark.parametrize("limit", [0, -1])
+def test_parse_rejects_non_positive_block_limit(tmp_path: Path, limit: int) -> None:
+    with pytest.raises(ValueError):
+        parse_node(tmp_path, max_source_blocks=limit)
+
+
 def _write(storage: Path, name: str, text: str) -> DocumentRef:
     (storage / name).write_text(text, encoding="utf-8")
     return DocumentRef(document_id="doc-1", file_format=name.rsplit(".", 1)[1], storage_ref=name)

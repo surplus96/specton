@@ -178,7 +178,7 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 | `LLM_OUTPUT_INVALID` | 실행 실패: 재요청 후에도 출력 형식 위반 (`LLMContractError`) | 실행 상태 | 예 |
 | `LLM_UNAVAILABLE` | 실행 실패: LLM 타임아웃·API 오류 (`LLMTimeoutError`, `LLMAPIError`) | 실행 상태 | 예, 잠시 후 |
 | `BUDGET_EXCEEDED` | 실행 실패: 토큰·시간 예산 초과 (`LLMBudgetExceededError`) | 실행 상태 | 아니오, 입력 축소 |
-| `EXTRACTION_FAILED` | 실행 실패: 파일 단위로 읽지 못함(손상, 시트를 읽지 못함, 요구사항 표를 찾지 못함, 파일 전체가 빈 양식 등) 또는 추출 확인에서 제외한 뒤 남은 원문이 0건 | 실행 상태 | 아니오, 다른 파일 |
+| `EXTRACTION_FAILED` | 실행 실패: 파일 단위로 읽지 못함(손상, 시트를 읽지 못함, 요구사항 표를 찾지 못함, 파일 전체가 빈 양식 등) 또는 추출 확인에서 제외한 뒤 남은 원문이 0건, 파싱 후 원문 블록 수가 설정 상한을 초과함 | 실행 상태 | 아니오, 다른 파일 |
 | `INTERNAL` | 그 밖의 서버 오류 | 500 / 실행 상태 | 경우에 따라 |
 
 - "실행 상태"는 HTTP 오류가 아니라 실패한 실행의 `GET /runs/{id}` 응답 `error` 필드와 SSE `error` 이벤트로 전달된다는 뜻이다.

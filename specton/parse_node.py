@@ -15,6 +15,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from specton.config import DEFAULT_MAX_SOURCE_BLOCKS
 from specton.graph import DocumentRef, ExtractionFailedError, GraphState, Node, RunNote
 from specton.ingest.hangul import read_hangul
 from specton.ingest.tabular import TabularResult, UnsupportedInput, read_csv, read_excel
@@ -29,8 +30,11 @@ _READERS: Mapping[str, Callable[[Path, str], TabularResult]] = {
 }
 
 
-def parse_node(storage_dir: Path) -> Node:
+def parse_node(storage_dir: Path, *, max_source_blocks: int = DEFAULT_MAX_SOURCE_BLOCKS) -> Node:
     """parse 노드. 문서 위치는 `storage_dir` 기준 상대 경로(`storage_ref`)로 받는다."""
+
+    if max_source_blocks <= 0:
+        raise ValueError("max_source_blocks는 양수여야 합니다")
 
     def parse(state: GraphState) -> Mapping[str, Any]:
         documents = state.get("documents", ())
@@ -42,6 +46,13 @@ def parse_node(storage_dir: Path) -> Node:
             raise ExtractionFailedError(
                 "읽은 요구사항이 없어요. 요구사항명이나 상세 내용을 적은 뒤 다시 올려 주세요.",
                 "원문 블록이 0건입니다 (원문을 만들지 못한 행만 있음)",
+            )
+        if len(blocks) > max_source_blocks:
+            raise ExtractionFailedError(
+                f"한 번에 분석할 수 있는 원문 수({max_source_blocks:,}건)를 넘었어요. "
+                "문서를 나눠 다시 올려 주세요.",
+                f"추출 원문 블록 {len(blocks)}건이 설정 한도 {max_source_blocks}건을 초과했습니다. "
+                "일부만 분석하지 않고 A01 호출 전에 중단했습니다.",
             )
         notes = tuple(
             _skipped_sheets(doc, result.skipped_sheets)

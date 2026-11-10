@@ -14,6 +14,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 ReasoningEffort = Literal["low", "medium", "high"]
 # 리뷰어 실행 방식 (ADR-0008). parallel은 관점마다 1회, combined는 전체 1회 호출한다.
 ReviewMode = Literal["parallel", "combined"]
+DEFAULT_MAX_SOURCE_BLOCKS = 1_000  # 초기 운영 상한. LLM 처리량·문장 길이를 보장하는 값은 아니다.
 
 
 class Settings(BaseSettings):
@@ -68,6 +69,8 @@ class Settings(BaseSettings):
     max_upload_mb: int = Field(default=20, gt=0)
     # xlsx·hwpx 압축을 푼 크기 합의 한도. 압축 폭탄을 파서 전에 막는다 (#21)
     max_unzipped_mb: int = Field(default=200, gt=0)
+    # 파싱 후·A01 전 제한. 원문 블록을 잘라 진행하지 않고 전체 실행을 멈춘다 (#17·#216).
+    max_source_blocks: int = Field(default=DEFAULT_MAX_SOURCE_BLOCKS, gt=0)
     # HTTPS로 배포하면 켠다. 세션 쿠키에 Secure를 붙여 HTTP로 보내지 않는다 (#21, PR #108 리뷰)
     session_cookie_secure: bool = False
     max_structured_retries: int = Field(default=2, ge=0)
