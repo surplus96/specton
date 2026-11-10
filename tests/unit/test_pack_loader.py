@@ -1,9 +1,13 @@
+import re
+import shutil
 import time
 from pathlib import Path
+from unicodedata import normalize
 
 import pytest
 import yaml
 
+from specton.packs.build import BuildError, build
 from specton.packs.loader import (
     Domain,
     PackError,
@@ -507,3 +511,128 @@ def test_load_inventory_pack_timing() -> None:
 
     print(f"load_pack('inventory') 적재 시간: {elapsed:.4f}초")
     assert elapsed < 5.0
+
+
+# --- NFC·공백으로 같아지는 용어 이름 (#264) ---
+
+
+def nfd(text: str) -> str:
+    converted = normalize("NFD", text)
+    assert converted != text  # 시험 입력이 정말 NFD인지 먼저 확인
+    return converted
+
+
+def write_terms(root: Path, pack: str, terms: list[dict[str, object]]) -> None:
+    """빌드를 거치지 않은 사용자 지정 팩처럼 terms.yaml을 직접 쓴다."""
+    (root / pack / "terms.yaml").write_text(
+        yaml.safe_dump({"terms": terms}, allow_unicode=True), "utf-8"
+    )
+
+
+def term(name: str, physical: str, synonyms: list[str] | None = None) -> dict[str, object]:
+    return {
+        "term": name,
+        "composition": ["설비", "명"],
+        "domain": "명V200",
+        "physical_name": physical,
+        "source": "project",
+        "synonyms": synonyms or [],
+    }
+
+
+@pytest.mark.parametrize(
+    ("terms", "message"),
+    [
+        ([term("설비명", "EQPM_NM"), term(nfd("설비명"), "EQPM_NM")], "NFC·NFD\\)만 다른"),
+        ([term("설비명", "EQPM_NM"), term(nfd("설비명"), "EQPM_OTHER_NM")], "NFC·NFD\\)만 다른"),
+        ([term("설비명", "EQPM_NM"), term("설비명", "EQPM_NM")], "완전히 같은 문자열"),
+        # 모델은 둘 다 '설비명'으로 읽지만 원본으로 검사해 공백 원인을 알린다
+        ([term("설비명", "EQPM_NM"), term(" 설비명", "EQPM_OTHER_NM")], "앞뒤 공백만 다른"),
+        (
+            [term("설비명", "EQPM_NM"), term("장비명", "EQUIP_NM", [nfd("설비명")])],
+            "동의어 .*다른 정식 용어 '설비명'",
+        ),
+    ],
+)
+def test_load_pack_rejects_term_name_conflicts_from_custom_root(
+    tmp_path: Path, terms: list[dict[str, object]], message: str
+) -> None:
+    make_common(tmp_path)
+    make_full_pack(tmp_path, "inventory")
+    write_terms(tmp_path, "inventory", terms)
+
+    with pytest.raises(PackError, match=message):
+        load_pack("inventory", root=tmp_path)
+
+
+def test_load_pack_allows_synonym_equal_to_own_name(tmp_path: Path) -> None:
+    make_common(tmp_path)
+    make_full_pack(tmp_path, "inventory")
+    write_terms(tmp_path, "inventory", [term("설비명", "EQPM_NM", [nfd("설비명"), " 설비명"])])
+
+    pack = load_pack("inventory", root=tmp_path)
+
+    assert pack.terms[0].synonyms == (
+        nfd("설비명"),
+        "설비명",
+    )  # NFC는 바꾸지 않는다 (공백은 모델이 원래 뺌)
+
+
+def copy_real_packs(tmp_path: Path) -> Path:
+    root = tmp_path / "domain_packs"
+    shutil.copytree(REPO_ROOT / "domain_packs", root)
+    return root
+
+
+def conflict_variants(first: str, second: str) -> list[tuple[str, str, str | None]]:
+    """(설명, 둘째 용어에 덮어쓸 이름, 둘째 용어에 더할 동의어). 이름이 None이면 이름은 그대로."""
+    return [
+        ("exact", first, None),
+        ("nfd", nfd(first), None),
+        ("space", f" {first}", None),
+        ("space_nfd", f" {nfd(first)}", None),
+        ("synonym", second, nfd(first)),
+        ("own_synonym", second, nfd(second)),  # 충돌 아님
+        ("shared_synonym", second, "__shared__"),  # 충돌 아님
+    ]
+
+
+@pytest.mark.parametrize("variant", range(7))
+def test_build_and_loader_agree_on_real_pack_copy(tmp_path: Path, variant: int) -> None:
+    """같은 용어 목록을 빌드 입력·로더 입력 양쪽에 넣으면 같은 판정을 낸다 (사용자 지정 경로)."""
+    root = copy_real_packs(tmp_path)
+    folder = root / "inventory"
+    specs_doc = yaml.safe_load((folder / "term_specs.yaml").read_text("utf-8"))
+    terms_doc = yaml.safe_load((folder / "terms.yaml").read_text("utf-8"))
+    first, second = (t["term"] for t in specs_doc["terms"][:2])
+    _, name, synonym = conflict_variants(first, second)[variant]
+    for doc in (specs_doc, terms_doc):
+        target = doc["terms"][1]
+        target["term"] = name
+        if synonym == "__shared__":
+            shared = doc["terms"][0]["synonyms"][0]
+            target["synonyms"] = [*target["synonyms"], shared]
+        elif synonym is not None:
+            target["synonyms"] = [*target["synonyms"], synonym]
+    (folder / "term_specs.yaml").write_text(yaml.safe_dump(specs_doc, allow_unicode=True), "utf-8")
+    (folder / "terms.yaml").write_text(yaml.safe_dump(terms_doc, allow_unicode=True), "utf-8")
+    manifest = folder / "manifest.yaml"
+    # 내용이 바뀐 사본이라 version을 올려 lock 거절을 피한다. 현재 버전 값에 묶이지 않게 한다.
+    text, count = re.subn(r"(?m)^version: .+$", "version: 9.9.9", manifest.read_text("utf-8"))
+    assert count == 1
+    manifest.write_text(text, "utf-8")
+
+    build_problem = load_problem = None
+    try:
+        build(root)
+    except BuildError as exc:
+        build_problem = str(exc).split("\n", 1)[1]
+    try:
+        load_pack("inventory", root=root)
+    except PackError as exc:
+        load_problem = str(exc).split("\n", 1)[1]
+
+    # 경로 줄을 뺀 문제 메시지가 원인 안내까지 완전히 같다. 로더 모델은 앞뒤 공백을 지우지만
+    # 로더는 원본 값으로 검사하므로 공백 차이도 빌드와 같은 원인으로 알린다.
+    assert build_problem == load_problem
+    assert (build_problem is None) == (variant >= 5)

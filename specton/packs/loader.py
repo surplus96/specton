@@ -28,6 +28,7 @@ from pydantic import (
 from specton.contracts.base import SqlType, TargetStage
 from specton.contracts.findings import Severity
 from specton.packs.build import DEFAULT_ROOT
+from specton.packs.term_names import term_name_conflicts
 
 COMMON = "common"
 PACK_NAME = r"^[a-z][a-z0-9_]*$"
@@ -327,7 +328,15 @@ def load_pack(pack: str, *, root: Path = DEFAULT_ROOT) -> Pack:
     common = load_common(root=root)
     folder = root / pack
     words = _validate(_PackWordsFile, folder / "words.yaml").words
-    terms = _validate(_TermsFile, folder / "terms.yaml").terms
+    terms_path = folder / "terms.yaml"
+    raw_terms = _read_data(terms_path)
+    terms = _parse(_TermsFile, raw_terms, terms_path).terms
+    # 사용자 지정 팩은 빌드를 거치지 않을 수 있어 로더도 빌드와 같은 이름 검사를 한다 (#264).
+    # 모델(_Strict)은 앞뒤 공백을 지우므로, 원인을 빌드와 같게 안내하려고 원본 값을 넘긴다.
+    # 모델 검증을 통과한 뒤라 원본도 term·synonyms가 문자열인 모양이다.
+    raw_names = ((t["term"], t.get("synonyms") or ()) for t in raw_terms["terms"])
+    if problems := term_name_conflicts(raw_names):
+        raise PackError(f"{terms_path}:\n" + "\n".join(problems))
     patterns = _validate(_PatternsFile, folder / "patterns.yaml").patterns
     domain_names = {d.name for d in common.domains}
     unknown = sorted({t.domain for t in terms if t.domain not in domain_names})
@@ -418,12 +427,22 @@ def _pack_dir(pack: str, root: Path) -> Path:
 
 
 def _validate[ModelT: BaseModel](model: type[ModelT], path: Path) -> ModelT:
+    return _parse(model, _read_data(path), path)
+
+
+def _read_data(path: Path) -> Any:
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:  # 파일 없음·폴더·권한·인코딩도 PackError 하나로
         raise PackError(f"{path}: 팩 파일을 읽지 못했습니다 ({type(exc).__name__})") from exc
     try:
-        data = yaml.safe_load(text)
+        return yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise PackError(f"{path}: 형식이 틀렸습니다\n{exc}") from exc
+
+
+def _parse[ModelT: BaseModel](model: type[ModelT], data: Any, path: Path) -> ModelT:
+    try:
         return model.model_validate(data)
-    except (yaml.YAMLError, ValidationError) as exc:
+    except ValidationError as exc:
         raise PackError(f"{path}: 형식이 틀렸습니다\n{exc}") from exc
