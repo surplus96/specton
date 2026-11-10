@@ -17,6 +17,7 @@
 //   critical     최종 검토에 차단 오류(critical)가 있어 승인 불가. 수정 요청 한 번 뒤에 사라진다
 //   partial-review 최종 검토에서 일부 검토 관점이 빠짐(failed_branches)·자동 재작업을 멈춘 이유(hitl_reason)
 //   erd-attack   (다른 낱말과 함께) ERD 원문에 지시문을 넣어 돌려줌. 웹이 그리지 않는지 보는 보안 시험 (#190)
+//   large        (다른 낱말과 함께) 설계를 엔티티 50개·관계 60개로 돌려줌. AI Workspace 성능 확인 (#281)
 import { delay, http, HttpResponse } from 'msw'
 import type {
   ApiErrorBody,
@@ -37,6 +38,7 @@ import type {
 import {
   ARTIFACT_FORMATS,
   designItems,
+  LARGE_DESIGN_ITEMS,
   DDL_SAMPLE,
   ERD_ATTACK_SAMPLE,
   ERD_SAMPLE,
@@ -78,6 +80,7 @@ type MockRun = {
   scenario: 'normal' | 'quick' | 'slow-queue' | 'fail' | 'unreadable' | 'conflict' | 'no-questions' | 'critical' | 'partial-review'
   conflictPending: boolean // conflict: 다음 답을 409로 돌려준다
   erdAttack: boolean // erd-attack: ERD 원문에 지시문을 넣어 돌려준다 (웹 보안 시험, #190)
+  large: boolean // large: 엔티티 50개 설계를 돌려준다 (AI Workspace 성능 확인, #281)
   status: RunState
   revision: number
   stage: string | null
@@ -332,6 +335,7 @@ export function createMockBackend(options: MockOptions = {}) {
       scenario,
       conflictPending: scenario === 'conflict',
       erdAttack: name.includes('erd-attack'),
+      large: name.includes('large'),
       status: 'queued',
       revision: 0,
       stage: null,
@@ -379,7 +383,7 @@ export function createMockBackend(options: MockOptions = {}) {
     const source: Record<ViewSection, Item[]> = {
       extraction: run.extraction,
       requirements: run.requirements,
-      design: designItems,
+      design: run.large ? LARGE_DESIGN_ITEMS : designItems,
       review: run.findings,
     }
     const items = run.sections.has(section) ? source[section] : []

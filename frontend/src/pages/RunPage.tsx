@@ -1,5 +1,5 @@
 import { Alert, Button, Flex, Segmented, Spin, Typography } from 'antd'
-import { useNavigate, useSearchParams } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { ApiError, errorMessage } from '../api/errors.ts'
 import StageSteps, { type ScreenId } from '../layout/StageSteps.tsx'
 import PageCard from '../layout/PageCard.tsx'
@@ -25,6 +25,8 @@ const SCREEN_OF_VIEW: Record<ResultView, ScreenId> = {
   workspace: 'UI-05',
   downloads: 'UI-07',
 }
+
+const WORKSPACE_NEW_TAB = import.meta.env.MODE !== 'mock'
 
 function RunPage({ runId }: { runId: string }) {
   const navigate = useNavigate()
@@ -69,6 +71,16 @@ function RunPage({ runId }: { runId: string }) {
   return (
     <Flex vertical gap={24}>
       <StageSteps current={screen} unreached={unreached} />
+      {/* 개발용 AI Workspace (#281). 기존 흐름은 그대로 두고 새 탭으로 연다.
+          mock은 실행을 탭 메모리에만 두므로 같은 탭에서 연다 (새 탭에서는 실행을 찾지 못함) */}
+      <Flex justify="flex-end" style={{ marginTop: -12 }}>
+        <Link
+          to={`/workspace?run=${encodeURIComponent(run.run_id)}`}
+          {...(WORKSPACE_NEW_TAB ? { target: '_blank', rel: 'noopener' } : {})}
+        >
+          작업공간 열기 (개발용){WORKSPACE_NEW_TAB ? ' ↗' : ''}
+        </Link>
+      </Flex>
       <WithActivity side={<ActivityPanel events={events} receivedAt={receivedAt} connection={connection} status={run.status} />}>
         <Flex vertical gap={24}>
           {view && (
