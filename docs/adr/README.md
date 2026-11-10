@@ -7,7 +7,7 @@
 | [0001](0001-role-assignment.md) | 역할 배정 | 승인 | 2026-10-25 |
 | [0002](0002-mvp-scope.md) | MVP 범위 | 제안 | 2026-10-23 |
 | [0003](0003-input-format.md) | 입력 양식 | 제안 | 2026-10-23 |
-| [0004](0004-document-engines.md) | 문서 엔진 | PDF 출력 승인, HWP·HWPX 채택, PDF 추출·OCR 제안 | 2026-10-23 |
+| [0004](0004-document-engines.md) | 문서 엔진 | PDF 출력 승인, HWP·HWPX 채택, PDF 추출·OCR 제안(PDF 입력은 이번 범위 밖) | 2026-10-23 |
 | [0005](0005-ui-library.md) | 화면 라이브러리 | 제안 | 2026-10-23 |
 | [0006](0006-priority-unspecified.md) | 우선순위 미정값 | 제안 | 2026-10-23 |
 | [0007](0007-llm-usage.md) | LLM 사용 조건 | 승인 | 2026-10-26 |
