@@ -72,7 +72,7 @@ def test_real_inventory_selection_and_versions_are_frozen():
     loaded = load_pack("inventory")
     assert loaded.manifest.status == loaded.common.manifest.status == "approved"
     assert loaded.common.manifest.version == "0.1.7"
-    assert loaded.manifest.version == "0.1.21"
+    assert loaded.manifest.version == "0.1.22"
     assert (
         read_yaml(DEFAULT_ROOT / "inventory/standard_selection.yaml")["exceptions"][0][
             "standard_word"

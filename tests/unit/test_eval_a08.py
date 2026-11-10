@@ -88,7 +88,7 @@ def test_a08_receives_real_normalized_columns_and_preserves_original_targets() -
     assert data["normalized"]["tables"][0]["columns"][1]["attribute_id"] in {"ATTR-01", "ATTR-02"}
     assert result.ok and result.found == ("ATTR-02",)
     assert result.provenance["common_version"] == "0.1.7"
-    assert result.provenance["pack_version"] == "0.1.21"
+    assert result.provenance["pack_version"] == "0.1.22"
     assert len(result.provenance["policy_digest"]) == 64
     report = build_report(fixtures, A08, [result])
     assert report["cases"][0]["provenance"] == result.provenance
