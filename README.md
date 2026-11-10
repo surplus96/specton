@@ -19,7 +19,7 @@
 | 웹 | React (`frontend/`) |
 | 품질 | ruff, mypy, pytest |
 
-미정: PDF 추출(ADR-0004, PDF 출력은 승인, HWP·HWPX 엔진은 2026-11-08 채택), 화면 라이브러리(ADR-0005). AWS 구성은 EC2 1대 + Docker Compose로 승인(ADR-0013, 2026-11-09).
+입력은 Excel·CSV·HWP·HWPX를 지원합니다. PDF 입력·추출은 이번 인수 범위 밖(후속, #10)이며 PDF 출력은 지원합니다. HWP·HWPX 엔진은 2026-11-08 채택(ADR-0004), 화면 라이브러리는 미정(ADR-0005)입니다. AWS 구성은 EC2 1대 + Docker Compose로 승인(ADR-0013, 2026-11-09).
 
 ## 시작하기
 
@@ -61,7 +61,7 @@ uv run python -m specton.packs.build --check  # 생성 파일 최신 여부 (CI)
 ```text
 specton/
   contracts/    단계 간 데이터 계약 (상태·LLM 입출력·Finding)
-  ingest/       Excel·CSV·PDF·HWPX 추출, 원문 위치 보존
+  ingest/       Excel·CSV·HWPX·HWP 추출, 원문 위치 보존
   packs/        도메인 팩 로더
   llm/          공통 LLM client·재요청·프롬프트 버전
   nodes/        에이전트 노드 A01~A09
