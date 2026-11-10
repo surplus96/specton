@@ -132,7 +132,7 @@ export interface paths {
         };
         /**
          * 같은 revision의 문서 다운로드
-         * @description kind-file_format 허용 조합은 docs/06-api.md를 따른다. 미허용 조합 422, 미생성 409(PDF는 승인한 revision만). 초안은 파일명에 -draft.
+         * @description kind-file_format 허용 조합은 docs/06-api.md를 따른다. 미허용 조합 422, 미생성 409(PDF는 승인한 revision만). 초안은 파일명에 -draft. manifest JSON의 generator_versions.common_version·policy_digest는 정리 때 기록한 공통 팩 버전·정책 해시이며 기존 실행에는 null일 수 있다. 다운로드 때 현재 값으로 소급하지 않는다.
          */
         get: operations["downloadArtifact"];
         put?: never;

@@ -19,7 +19,7 @@ The design reference documents (Korean) live in [docs/](docs/README.md), and dec
 | Web | React (`frontend/`) |
 | Quality | ruff, mypy, pytest |
 
-Undecided: PDF extraction (ADR-0004; PDF output is approved and the HWP/HWPX engine was adopted on 2026-11-08), UI library (ADR-0005). The AWS setup was approved on 2026-11-09 as one EC2 instance with Docker Compose (ADR-0013).
+Supported inputs: Excel, CSV, HWP and HWPX. PDF input/extraction is outside the current acceptance scope (follow-up, #10); PDF output is supported. The HWP/HWPX engine was adopted on 2026-11-08 (ADR-0004). The UI library remains undecided (ADR-0005). The AWS setup was approved on 2026-11-09 as one EC2 instance with Docker Compose (ADR-0013).
 
 ## Getting started
 
@@ -61,7 +61,7 @@ uv run python -m specton.packs.build --check  # check generated files are up to 
 ```text
 specton/
   contracts/    data contracts between stages (state, LLM I/O, Finding)
-  ingest/       Excel·CSV·PDF·HWPX extraction, keeps source locations
+  ingest/       Excel·CSV·HWPX·HWP extraction, keeps source locations
   packs/        domain pack loader
   llm/          shared LLM client, retries, prompt versions
   nodes/        agent nodes A01–A09

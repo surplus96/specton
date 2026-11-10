@@ -194,7 +194,7 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 | `erd` | mmd, pdf | PDF는 승인된 revision에서만 |
 | `ddl` | sql | |
 | `rtm` | xlsx, csv | |
-| `review` | md | |
+| `review` | md | 기존 API·저장 호환 목록. 현재 생성하지 않으며 파일이 없으면 409. 검토는 최종 HITL 및 `view?section=review`로 조회 |
 | `manifest` | json | 승인 후에만 다운로드 |
 
 - 다른 조합은 422.

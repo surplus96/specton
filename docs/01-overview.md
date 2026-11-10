@@ -22,11 +22,13 @@
 
 | 영역 | 범위 | 비고 |
 |---|---|---|
-| 입력 | Excel·CSV(정형) → PDF(비정형) 순서로 구현 | HWPX·HWP는 요구사항 상세표 읽기로 정식 범위 (ADR-0002·ADR-0004, #24) |
+| 입력 | Excel·CSV·HWPX·HWP | HWPX·HWP는 요구사항 상세표 읽기(#24). PDF 입력은 이번 인수 범위 밖(10/29 결정 2, #10); PDF 출력은 포함 |
 | 입력 양식 | 기준 5열 + 선택 "관련 요구사항" 열 제안 | 미정 (ADR-0003) |
-| 산출물 | 중간: Markdown. 최종: 기능 명세서(Markdown·PDF), ERD(Mermaid·PDF), DDL(SQL), RTM(Excel·CSV), 검토 보고서(Markdown) | PDF는 승인 시점에 1회 생성 (확정) |
+| 산출물·검토 | 기능 명세서(Markdown·PDF), ERD(Mermaid·PDF), DDL(SQL), RTM(Excel·CSV). 검토 결과는 최종 HITL에서 확인·승인하고 revision별 기록 조회 | 별도 검토 보고서 Markdown은 생성하지 않는다(2026-11-10 R1 확정). PDF는 승인한 동일 바이트를 공개 |
 | 웹 | React. 업로드 → 확인·승인 → 결과 보기 화면 3개 제안 | 화면 라이브러리 미정 (ADR-0005) |
 | 배포 | 로컬 Docker PostgreSQL 개발, AWS Docker 컨테이너 배포 | EC2 1대 + Docker Compose, 443번 IP 제한·HTTPS (ADR-0013 승인) |
+
+REQ-02 PDF 입력·추출과 TC-F02는 이번 인수 범위에서 제외한다(10/29 결정 2·11/2 공지, [#10](https://github.com/surplus96/specton/issues/10), 2026-11-10 R1 재확인). Excel·CSV·HWPX·HWP 입력 및 PDF 출력은 유지한다.
 
 축소 후보: REQ-19 웹(화면 3개), REQ-25 한도(타임아웃만). REQ-27 HWPX·HWP는 2026-11-09 정식 범위로 바꿨다(ADR-0002). 범위를 줄이면 [02 요구사항](02-requirements.md)과 RTM에 바로 반영한다.
 
@@ -44,7 +46,7 @@
 
 ## 완료 기준
 
-- 두 도메인의 승인된 대표 입력으로 네 산출물과 검토 보고서가 생성된다.
+- 현재 필수 범위인 재고·공통 팩의 승인된 대표 입력으로 네 산출물이 생성되고, 최종 HITL에서 검토 지적·근거·SQL 검증 상태를 확인해 승인하며 같은 revision의 기록을 다시 조회할 수 있다. 검토 보고서 Markdown은 별도 산출물로 만들지 않는다(2026-11-10 R1 확정).
 - 원문 연결·수정/재개·다운로드를 시연한다.
 - DDL 실행 성공은 승인 평가 집합에서 확인한다. 샘플 하나의 성공을 일반 성능으로 표현하지 않는다.
 - 측정 지표: 분류·설계 정확도, 결함 탐지율, DDL 실행 성공률, 처리 시간. 목표값은 첫 기준 실행 후 결정 (미정, ADR-0014).
@@ -56,7 +58,7 @@
 |---|---|---|
 | M1 계약·환경 | 데이터 계약·대표 입력·개발 환경, 전원 첫 에이전트 구현 | [#3](https://github.com/surplus96/specton/issues/3), [#4](https://github.com/surplus96/specton/issues/4), [#5](https://github.com/surplus96/specton/issues/5), [#6](https://github.com/surplus96/specton/issues/6), [#7](https://github.com/surplus96/specton/issues/7), [#8](https://github.com/surplus96/specton/issues/8), [#9](https://github.com/surplus96/specton/issues/9), [#42](https://github.com/surplus96/specton/issues/42) |
 | M2 설계 파이프라인 | 분석→설계→생성 연결, 코드 생성·DB 검증 | [#11](https://github.com/surplus96/specton/issues/11), [#12](https://github.com/surplus96/specton/issues/12), [#14](https://github.com/surplus96/specton/issues/14), [#15](https://github.com/surplus96/specton/issues/15) |
-| M3 문서 입출력·웹 | PDF 입출력, HWPX/HWP 연결, React 웹 뼈대 | [#10](https://github.com/surplus96/specton/issues/10), [#13](https://github.com/surplus96/specton/issues/13), [#19](https://github.com/surplus96/specton/issues/19), [#24](https://github.com/surplus96/specton/issues/24) |
+| M3 문서 입출력·웹 | Excel·CSV·HWPX/HWP 입력, PDF 출력, React 웹 뼈대 | [#10](https://github.com/surplus96/specton/issues/10), [#13](https://github.com/surplus96/specton/issues/13), [#19](https://github.com/surplus96/specton/issues/19), [#24](https://github.com/surplus96/specton/issues/24) |
 | M4 검토·재작업 통합 | 4관점 검토·재작업·HITL·지속성, 1차 E2E | [#16](https://github.com/surplus96/specton/issues/16), [#17](https://github.com/surplus96/specton/issues/17), [#18](https://github.com/surplus96/specton/issues/18), [#21](https://github.com/surplus96/specton/issues/21) |
 | M5 평가·배포·인수 | 품질 평가·결함 수정·문서 동결·AWS 배포·릴리스 | [#20](https://github.com/surplus96/specton/issues/20), [#22](https://github.com/surplus96/specton/issues/22), [#23](https://github.com/surplus96/specton/issues/23), [#25](https://github.com/surplus96/specton/issues/25) |
 
