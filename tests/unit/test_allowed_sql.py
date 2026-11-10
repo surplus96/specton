@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parents[2]
 # DDL 생성기(#165) 출력과 같은 모양: 머리말 주석, 큰따옴표 이름, 표 제약, 복합·자기참조 FK
 HEADER = (
     "-- postgresql 18 / pack inventory 0.1.8 / rules normalize-v0 / lexicon abc"
-    " / generator ddl-v0 / validation unverified\n"
+    " / generator ddl-v1\n"
 )
 GENERATED = (
     HEADER

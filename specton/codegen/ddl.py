@@ -7,7 +7,8 @@
 
 규칙 상태:
 - 확정 (문서): 허용 타입 11개(docs/05), 물리명은 소문자·`max_bytes` 이하(naming.yaml,
-  RATIONALE.md), DDL에 대상·모델 버전·검증 상태를 남김(docs/10)
+  RATIONALE.md), DDL에 대상·모델 버전을 남김(docs/10). 검증 상태는 파일이 아니라
+  검증 기록(API `validation`·승인 검사)에 둔다 (#22)
 - R4 제안 (#15 확인 전): 제약 이름을 짓지 않고 PostgreSQL 자동 이름을 씀, `COMMENT ON` 없음,
   식별자는 항상 큰따옴표, 생성 직후 검증 상태는 `unverified`, 반환형 `DdlResult`는 공용 계약
   밖의 임시 모양
@@ -30,7 +31,7 @@ from specton.contracts.base import SqlType
 from specton.type_limits import MAX_CHAR_LENGTH, MAX_NUMERIC_PRECISION
 
 # 생성기 버전. 출력 모양(문장 종류·순서·타입 표기)이 바뀌면 올린다. 임시 값이다.
-DDL_GENERATOR_VERSION = "ddl-v0"
+DDL_GENERATOR_VERSION = "ddl-v1"
 # 대상 DB. 프로젝트 대상 버전(docs/10, naming.yaml 예약어 목록 postgresql_18)과 같다.
 DDL_TARGET = "postgresql-18"
 # PostgreSQL 18 식별자 한도(NAMEDATALEN - 1). 팩의 max_bytes는 이 값을 넘을 수 없다.
@@ -65,7 +66,7 @@ class DdlResult(BaseModel):
     pack_version: str
     rules_version: str
     lexicon_digest: str
-    validation_state: Literal["unverified"]  # 생성 직후 값. 검증 뒤 갱신 방식은 R1과 정한다
+    validation_state: Literal["unverified"]  # 생성 직후 값. 검증 결과는 검증 기록에 따로 남는다
 
 
 def generate_ddl(model: NormalizedModel, *, max_bytes: int) -> DdlResult:
@@ -117,8 +118,7 @@ def _header(model: NormalizedModel) -> str:
     return (
         f"-- {target} / pack {model.pack} {model.pack_version} / rules {model.rules_version}"
         f" / lexicon {model.lexicon_digest} / generator {DDL_GENERATOR_VERSION}"
-        " / validation unverified"
-    )
+    )  # 검증 상태는 적지 않는다: 파일 해시가 검증 전에 정해져 검증 뒤에 고칠 수 없다 (#22)
 
 
 # ── 문장 ─────────────────────────────────────────────────────────────
