@@ -41,6 +41,7 @@ from specton.contracts import (
 )
 from specton.contracts.base import EntityId, NonEmptyText, ObjectId, ReqId
 from specton.contracts.state import VersionInfo
+from specton.evaluation.lexicon_overlay import LexiconOverlay, load_overlay
 from specton.llm.client import LLMClient
 from specton.llm.errors import LLMError
 from specton.llm.openai_transport import openai_client
@@ -320,10 +321,51 @@ def _target_kinds(case: FixtureCase) -> dict[str, str]:
 
 
 def run_cases(
-    client: LLMClient, perspective: Perspective, fixtures: FixtureSet, settings: Settings
+    client: LLMClient,
+    perspective: Perspective,
+    fixtures: FixtureSet,
+    settings: Settings,
+    *,
+    overlay: LexiconOverlay | None = None,
 ) -> tuple[CaseResult, ...]:
     """사례마다 관점 하나만 검토한다. 관점이 평가에 맞지 않으면 호출 전에 멈춘다."""
     _check_perspective(perspective, fixtures)
+    if overlay is not None:
+        if perspective.reviewer_id != "A08" or "normalized" not in perspective.inputs:
+            raise FixtureError("탐색 사전은 정리 결과를 쓰는 A08 별도 조건에서만 지원합니다")
+        settings = Settings(
+            _env_file=None, **(settings.model_dump() | {"pack_root": overlay.base_root})
+        )
+    states = _prepare_states(perspective, fixtures, settings, overlay)
+    results = []
+    remaining = settings.max_tokens_per_run
+    for case, state in zip(fixtures.cases, states, strict=True):
+        if overlay is not None:
+            try:
+                overlay.assert_current()
+            except ValueError as exc:
+                raise FixtureError("호출 전 탐색 사전의 무결성 확인에 실패했습니다") from exc
+        result = _run_case(
+            client,
+            perspective,
+            fixtures,
+            case,
+            settings,
+            state,
+            remaining,
+            extra_provenance=overlay.provenance() if overlay is not None else None,
+        )
+        remaining -= sum(c.input_tokens + c.output_tokens for c in result.calls)
+        results.append(result)
+    return tuple(results)
+
+
+def _prepare_states(
+    perspective: Perspective,
+    fixtures: FixtureSet,
+    settings: Settings,
+    overlay: LexiconOverlay | None,
+) -> tuple[DesignState, ...]:
     states = []
     for case in fixtures.cases:
         state = case_state(fixtures, case)
@@ -333,17 +375,15 @@ def run_cases(
                     f"{case.case_id}: normalized 평가에는 명시적 attributes가 필요합니다"
                 )
             try:
-                state = prepare_normalized(state, root=settings.pack_root)
+                state = (
+                    overlay.normalize(state)
+                    if overlay is not None
+                    else prepare_normalized(state, root=settings.pack_root)
+                )
             except ValueError as exc:
                 raise FixtureError(f"{case.case_id}: 평가 자료 정리 오류: {exc}") from exc
         states.append(state)
-    results = []
-    remaining = settings.max_tokens_per_run
-    for case, state in zip(fixtures.cases, states, strict=True):
-        result = _run_case(client, perspective, fixtures, case, settings, state, remaining)
-        remaining -= sum(c.input_tokens + c.output_tokens for c in result.calls)
-        results.append(result)
-    return tuple(results)
+    return tuple(states)
 
 
 def _check_perspective(perspective: Perspective, fixtures: FixtureSet) -> None:
@@ -367,9 +407,12 @@ def _run_case(
     settings: Settings,
     state: DesignState,
     token_budget: int,
+    *,
+    extra_provenance: dict[str, str] | None = None,
 ) -> CaseResult:
+    provenance = {**state_provenance(state), **(extra_provenance or {})}
     if token_budget <= 0:
-        return CaseResult(case, False, "BUDGET_EXCEEDED", (), (), state_provenance(state))
+        return CaseResult(case, False, "BUDGET_EXCEEDED", (), (), provenance)
     run = review_perspective(
         client, perspective, state, settings, pack=fixtures.pack, token_budget=token_budget
     )
@@ -380,7 +423,7 @@ def _run_case(
         error_code=branch.error_code,
         findings=branch.findings,
         calls=run.calls,
-        provenance=state_provenance(state),
+        provenance=provenance,
     )
 
 
@@ -434,7 +477,16 @@ def build_report(
 ) -> dict[str, Any]:
     """사례별 결과와 지표. 평가 자료가 담기므로 결과 파일도 비공개 위치에 둔다."""
     summary = summarize(results)
+    conditions = {
+        tuple(sorted((k, v) for k, v in r.provenance.items() if k not in {"model_hash"}))
+        for r in results
+    }
+    if len(conditions) > 1:
+        raise FixtureError("서로 다른 고정·탐색 사전 조건을 한 보고서에 합산할 수 없습니다")
     return {
+        "evaluation_scope": results[0].provenance.get("evaluation_scope", "fixed")
+        if results
+        else "fixed",
         "reviewer_id": fixtures.reviewer_id,
         "set": fixtures.set_name,
         "fixture_content_hash": hashlib.sha256(
@@ -489,18 +541,27 @@ def main(argv: Sequence[str] | None = None, *, settings: Settings | None = None)
     )
     parser.add_argument("fixtures", type=Path, help="고정 설계 YAML (비공개 평가 자료)")
     parser.add_argument("--out", type=Path, help="사례별 결과 JSON을 쓸 경로")
+    parser.add_argument("--lexicon-overlay", type=Path, help="승인된 A08 별도 탐색 사본")
     args = parser.parse_args(argv)
     settings = settings or Settings()
     try:
+        if args.out and (
+            args.out.exists() or args.out.is_symlink() or not args.out.parent.is_dir()
+        ):
+            raise FixtureError("결과 출력은 기존 폴더 안의 존재하지 않는 새 파일이어야 합니다")
         fixtures = load_fixture_set(args.fixtures)
         perspective = load_perspective(PERSPECTIVES_DIR / f"{fixtures.reviewer_id}.yaml")
-        results = run_cases(openai_client(settings), perspective, fixtures, settings)
-    except (FixtureError, PerspectiveError, OSError, LLMError) as exc:
+        overlay = load_overlay(args.lexicon_overlay) if args.lexicon_overlay else None
+        results = run_cases(
+            openai_client(settings), perspective, fixtures, settings, overlay=overlay
+        )
+        report = build_report(fixtures, perspective, results)
+        if args.out:
+            with args.out.open("x", encoding="utf-8") as target:
+                target.write(json.dumps(report, ensure_ascii=False, indent=2))
+    except (ValueError, PerspectiveError, OSError, LLMError) as exc:
         print(f"평가를 실행하지 못했습니다: {exc}", file=sys.stderr)
         return 2
-    report = build_report(fixtures, perspective, results)
-    if args.out:
-        args.out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(summary_line(fixtures, summarize(results)))
     return 0
 
