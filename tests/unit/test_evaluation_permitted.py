@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from specton.evaluation.metrics import matching_counts, splits, warning_counts, warnings
-from specton.evaluation.models import Classification, Detection, WarningPolicy
+from specton.evaluation.models import Classification, Detection, Matching, WarningPolicy
 from specton.evaluation.report import build_report, combined_classification
 from tests.unit.test_evaluation_scoring import example
 
@@ -92,6 +92,30 @@ def permitted_detection() -> dict[str, Any]:
 def test_permitted_defects_are_neither_tp_fn_nor_fp() -> None:
     counts = matching_counts(Detection.model_validate(permitted_detection()))
     assert (counts.tp, counts.fp, counts.fn) == (1, 1, 1)
+
+
+def test_optional_object_is_not_false_positive_or_required_recall() -> None:
+    counts = matching_counts(Matching.model_validate(permitted_detection()))
+    assert (counts.tp, counts.fp, counts.fn) == (1, 1, 1)
+    counts = matching_counts(
+        Matching.model_validate(
+            {
+                "permitted": {"gold": ["optional-entity"]},
+            }
+        )
+    )
+    assert (counts.tp, counts.fp, counts.fn) == (0, 0, 0)
+
+
+def test_report_keeps_optional_objects_separate() -> None:
+    from specton.evaluation.models import Evaluation
+
+    payload = example()
+    payload["documents"][0]["objects"]["entities"] = permitted_detection()
+    report = build_report(Evaluation.model_validate(payload))["conditions"]["with_pack"]
+    entities = report["objects"]["entities"]
+    assert entities["permitted_predictions"] == 1
+    assert entities["micro"]["tp"] == entities["micro"]["fp"] == entities["micro"]["fn"] == 1
 
 
 @pytest.mark.parametrize("problem", ["not_output", "overlap", "no_match", "same_gold"])

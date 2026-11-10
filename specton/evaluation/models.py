@@ -105,7 +105,7 @@ class MatchGroup(Record):
     predicted: frozenset[Text] = Field(min_length=1)
 
 
-class Matching(Record):
+class MatchSet(Record):
     """승인된 동등 그룹 하나를 TP 하나로 센다. 분할·병합의 경계를 추측하지 않는다."""
 
     gold: frozenset[Text] = frozenset()
@@ -133,24 +133,33 @@ class Matching(Record):
         return self
 
 
+class Matching(MatchSet):
+    """필수 대응과 허용 대응을 분리한다. 선택 객체도 분모·오탐에서 제외한다."""
+
+    permitted: MatchSet = Field(default_factory=MatchSet)
+
+    @model_validator(mode="after")
+    def separate_permitted(self) -> Self:
+        if self.gold & self.permitted.gold:
+            raise ValueError("필수·허용 대상은 겹치지 않아야 합니다")
+        required_hits = {p for match in self.matches for p in match.predicted}
+        permitted_hits = {p for match in self.permitted.matches for p in match.predicted}
+        if self.permitted.predicted != permitted_hits:
+            raise ValueError("허용 대상 제외에는 승인된 대응이 필요합니다")
+        if not permitted_hits <= self.predicted or permitted_hits & required_hits:
+            raise ValueError("허용 대상은 실제 출력이며 필수 대응과 겹치지 않아야 합니다")
+        return self
+
+
 class Detection(Matching):
     """결함 ID와 지적 ID의 승인 매칭. rule/llm/filtered를 각각 입력한다."""
 
     normal: bool = False
-    permitted: Matching = Field(default_factory=Matching)
 
     @model_validator(mode="after")
     def normal_has_no_defects(self) -> Self:
         if self.normal and self.gold:
             raise ValueError("정상 사례에는 기대 결함이 없어야 합니다")
-        if self.gold & self.permitted.gold:
-            raise ValueError("필수·허용 결함은 겹치지 않아야 합니다")
-        required_hits = {p for match in self.matches for p in match.predicted}
-        permitted_hits = {p for match in self.permitted.matches for p in match.predicted}
-        if self.permitted.predicted != permitted_hits:
-            raise ValueError("허용 지적 제외에는 승인된 대응이 필요합니다")
-        if not permitted_hits <= self.predicted or permitted_hits & required_hits:
-            raise ValueError("허용 지적은 실제 출력이며 필수 대응과 겹치지 않아야 합니다")
         return self
 
 

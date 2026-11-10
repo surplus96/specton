@@ -81,11 +81,9 @@ def object_scores(documents: list[Document], *, detection: bool = False) -> dict
             "reported_documents": len(measured),
             "micro": total.report(),
             "macro_f1": sum(f1s) / len(f1s) if f1s else None,
+            "permitted_predictions": sum(len(i.permitted.predicted) for i in measured),
         }
         if detection:
-            report[key]["permitted_predictions"] = sum(
-                len(d.detections[key].permitted.predicted) for d in documents if key in d.detections
-            )
             report[key]["normal_false_positives"] = sum(
                 metrics.matching_counts(d.detections[key]).fp
                 for d in documents
@@ -157,6 +155,7 @@ def build_report(batch: Evaluation) -> dict[str, Any]:
             "source_warnings": "union of child warnings per original source; no duplicate counts",
             "warning_alternatives": "one required OR group is one TP or one FN",
             "permitted_defects": "approved permitted matches are neither TP, FP nor FN",
+            "optional_objects": "approved optional object matches are neither TP, FP nor FN",
             "splits": "approved count alternatives; semantic equivalence needs separate approval",
         },
         "conditions": {

@@ -4,7 +4,7 @@ from collections import Counter
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from specton.evaluation.models import Classification, Detection, Matching, WarningPolicy
+from specton.evaluation.models import Classification, Matching, WarningPolicy
 
 
 @dataclass
@@ -28,7 +28,7 @@ class Counts:
 def matching_counts(items: Matching) -> Counts:
     gold = {i for m in items.matches for i in m.gold}
     predicted = {i for m in items.matches for i in m.predicted}
-    permitted = items.permitted.predicted if isinstance(items, Detection) else frozenset()
+    permitted = items.permitted.predicted
     return Counts(
         len(items.matches), len(items.predicted - predicted - permitted), len(items.gold - gold)
     )
