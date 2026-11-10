@@ -33,6 +33,7 @@ from specton.export.pdf import (
     MERMAID_CONFIG,
     CoverInfo,
     MermaidCli,
+    MermaidLayout,
     PdfError,
     build_erd_document,
     erd_sources,
@@ -63,10 +64,12 @@ class FakeMermaid:
 
     def __init__(self, scale: float = 40.0) -> None:
         self.sources: list[str] = []
+        self.layouts: list[str] = []
         self.scale = scale
 
-    def __call__(self, source: str) -> str:
+    def __call__(self, source: str, *, layout: MermaidLayout = "dagre") -> str:
         self.sources.append(source)
+        self.layouts.append(layout)
         lines = source.count("\n")
         w, h = 200 + lines * self.scale, 100 + lines * self.scale / 2
         return (
@@ -94,12 +97,14 @@ def test_sources_are_overview_then_areas_in_pack_order_then_other() -> None:
     ]
 
 
-def test_overview_draws_lines_without_relationship_names_and_details_keep_them() -> None:
-    """개요는 이름이 겹치지 않게 관계 ID를 빼고, 영역 상세도에는 남긴다 (#261)."""
+def test_overview_names_every_relationship_and_is_laid_out_with_elk() -> None:
+    """개요도 관계 ID를 쓰고 ELK로 그려 이름이 겹치지 않게 한다. 상세도는 dagre 그대로다 (#261)."""
     sources = erd_sources(MODEL, RELATIONSHIPS, AREAS)
     overview = sources[0][2]
-    assert "REL-" not in overview and overview.count(' : ""') == len(MODEL.foreign_keys)
-    assert all("REL-" in source for kind, _, source in sources[1:] if " : " in source)
+    assert overview.count(' : "REL-') == len(MODEL.foreign_keys)
+    mermaid = FakeMermaid()
+    _doc(mermaid=mermaid)
+    assert mermaid.layouts == ["elk", "dagre", "dagre", "dagre"]
 
 
 def test_overview_has_no_attributes_and_details_are_key_only_left_to_right() -> None:
@@ -278,6 +283,8 @@ def test_mermaid_gets_only_the_fixed_config_with_secure_keys() -> None:
     assert MERMAID_CONFIG["securityLevel"] == "strict"
     # HTML 조각(foreignObject)은 PDF에서 그려지지 않아 상자 글자가 사라진다 → SVG 글자로
     assert MERMAID_CONFIG["htmlLabels"] is False and "htmlLabels" in secure
+    # 기본 배치는 dagre. 그림별 배치는 MermaidCli가 정하고 원문 지시문으로는 바꿀 수 없다 (#261)
+    assert MERMAID_CONFIG["layout"] == "dagre" and "layout" in secure
     assert {"themeCSS", "themeVariables", "fontFamily", "altFontFamily", "securityLevel"} <= secure
 
 
@@ -299,6 +306,9 @@ def test_mermaid_cli_passes_the_config_file_and_reads_the_svg(
     assert seen["args"][0] == "mmdc" and "-p" in seen["args"]
     assert seen["config"] == MERMAID_CONFIG
     assert seen["source"] == "erDiagram\n"
+
+    MermaidCli()("erDiagram\n", layout="elk")
+    assert seen["config"] == {**MERMAID_CONFIG, "layout": "elk"}  # 배치만 바뀌고 보안 설정은 그대로
 
 
 def test_mermaid_cli_failure_is_a_pdf_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -444,6 +454,62 @@ def test_real_mermaid_cli_draws_every_section() -> None:
         # 상자 글자가 PDF에 남도록 HTML 조각 없이 SVG 글자로 그려진다
         assert "<foreignObject" not in svg and "<text" in svg
         assert "창고" in svg or "입고" in svg or "거래처" in svg
+
+
+# Mermaid SVG의 관계 이름 상자: edgeLabel 위치 + label 위치 + 배경 rect (mermaid 11.17.2 출력 모양)
+_EDGE_LABEL = re.compile(
+    r'<g class="edgeLabel" transform="translate\(([-\d.]+), ([-\d.]+)\)">'
+    r'<g class="label"[^>]*transform="translate\(([-\d.]+), ([-\d.]+)\)"><g>'
+    r'<rect class="background"[^>]*x="([-\d.]+)" y="([-\d.]+)" width="([\d.]+)" height="([\d.]+)"/>'
+    r".*?<tspan[^>]*class=\"text-inner-tspan\"[^>]*>([^<]*)</tspan>"
+)
+
+
+def _label_boxes(svg: str) -> list[tuple[str, float, float, float, float]]:
+    """그려진 관계 이름마다 (글자, 왼쪽, 위, 오른쪽, 아래). 빈 이름은 뺀다."""
+    boxes = []
+    for m in _EDGE_LABEL.finditer(svg):
+        ox, oy, ix, iy, rx, ry, w, h = map(float, m.groups()[:8])
+        if m.group(9).strip():
+            x, y = ox + ix + rx, oy + iy + ry
+            boxes.append((m.group(9), x, y, x + w, y + h))
+    return boxes
+
+
+def _overlapping_labels(svg: str) -> list[tuple[str, str]]:
+    b = _label_boxes(svg)
+    return [
+        (p[0], q[0])
+        for i, p in enumerate(b)
+        for q in b[i + 1 :]
+        if p[1] < q[3] and q[1] < p[3] and p[2] < q[4] and q[2] < p[4]
+    ]
+
+
+# 긴 관계선 두 개가 가운데에서 교차하는 개요.
+# #261 재현: dagre는 REL-01·REL-04 이름을 같은 자리에 둬 REL-01이 가려진다.
+_CROSSING_OVERVIEW = """erDiagram
+    wrhus["창고"]
+    item["품목"]
+    invt_dlng["재고거래내역"]
+    invt["재고"]
+    bcnc["거래처"]
+    wrhus ||..o{ invt_dlng : "REL-01"
+    item ||..o{ invt_dlng : "REL-02"
+    wrhus ||--o{ invt : "REL-03"
+    item ||--o{ invt : "REL-04"
+    bcnc ||..o{ invt_dlng : "REL-05"
+    bcnc ||..o{ wrhus : "REL-06"
+"""
+
+
+@pytest.mark.skipif(shutil.which("mmdc") is None, reason="mermaid-cli(mmdc)가 없는 환경")
+def test_real_mermaid_cli_keeps_crossing_relationship_names_apart_with_elk() -> None:
+    config = os.environ.get("SPECTON_MMDC_PUPPETEER")
+    cli = MermaidCli(puppeteer_config=Path(config) if config else None)
+    svg = cli(_CROSSING_OVERVIEW, layout="elk")
+    assert sorted(b[0] for b in _label_boxes(svg)) == [f"REL-{i:02d}" for i in range(1, 7)]
+    assert _overlapping_labels(svg) == []
 
 
 # ── 동시 렌더링 (#209 R1 리뷰: 다른 렌더링의 글자 깨짐 경고가 섞이지 않음) ─────

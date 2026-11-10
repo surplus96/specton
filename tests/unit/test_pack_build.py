@@ -1,4 +1,5 @@
 from pathlib import Path
+from unicodedata import normalize
 
 import pytest
 import yaml
@@ -335,3 +336,89 @@ def test_pack_content_hash_ignores_lock_and_md_files(tmp_path: Path) -> None:
 
 def test_real_packs_pass_check_after_build() -> None:
     assert check(REPO_ROOT / "domain_packs") == []
+
+
+# --- NFC·공백으로 같아지는 용어 이름 (#264) ---
+
+
+def nfd(text: str) -> str:
+    converted = normalize("NFD", text)
+    assert converted != text  # 시험 입력이 정말 NFD인지 먼저 확인
+    return converted
+
+
+def test_nfd_duplicate_with_different_content_is_rejected(tmp_path: Path) -> None:
+    """지금까지 통과하던 재현 경우: 구성이 달라 물리명이 다르면 물리명 검사에 걸리지 않았다."""
+    root = make_root(
+        tmp_path,
+        [
+            spec("설비명", ["설비", "명"], "명V200"),
+            spec(nfd("설비명"), ["설비", "코드"], "코드C10"),
+        ],
+    )
+
+    with pytest.raises(BuildError, match=r"용어 이름 중복 '설비명'.*NFC·NFD\)만 다른"):
+        build(root)
+
+
+def test_nfd_duplicate_with_same_content_is_rejected_before_physical_name(tmp_path: Path) -> None:
+    root = make_root(
+        tmp_path,
+        [
+            spec("설비상태코드", ["설비", "상태", "코드"], "코드C10"),
+            spec(nfd("설비상태코드"), ["설비", "상태", "코드"], "코드C10"),
+        ],
+    )
+
+    with pytest.raises(BuildError, match="용어 이름 중복") as caught:
+        build(root)
+    assert "물리명 중복" not in str(caught.value)  # 원인이 더 분명한 이름 충돌을 먼저 알린다
+
+
+def test_exact_duplicate_name_is_rejected_as_exact(tmp_path: Path) -> None:
+    root = make_root(
+        tmp_path,
+        [
+            spec("설비상태코드", ["설비", "상태", "코드"], "코드C10"),
+            spec("설비상태코드", ["설비", "코드"], "코드C10"),
+        ],
+    )
+
+    with pytest.raises(BuildError, match="완전히 같은 문자열"):
+        build(root)
+
+
+def test_name_differing_only_by_surrounding_space_is_rejected(tmp_path: Path) -> None:
+    root = make_root(
+        tmp_path,
+        [
+            spec("설비상태코드", ["설비", "상태", "코드"], "코드C10"),
+            spec(" 설비상태코드", ["설비", "코드"], "코드C10"),
+        ],
+    )
+
+    with pytest.raises(BuildError, match="앞뒤 공백만 다른"):
+        build(root)
+
+
+def test_synonym_equal_to_another_term_is_rejected(tmp_path: Path) -> None:
+    other = spec("설비상태코드", ["설비", "상태", "코드"], "코드C10")
+    other["synonyms"] = [nfd("설비명")]
+    root = make_root(tmp_path, [spec("설비명", ["설비", "명"], "명V200"), other])
+
+    with pytest.raises(BuildError, match=r"동의어 .*다른 정식 용어 '설비명'"):
+        build(root)
+
+
+def test_synonym_equal_to_own_name_builds_and_keeps_original_strings(tmp_path: Path) -> None:
+    own = spec("설비상태코드", ["설비", "상태", "코드"], "코드C10")
+    own["synonyms"] = [nfd("설비상태코드"), " 설비상태코드"]
+    root = make_root(tmp_path, [own])
+
+    terms = load(build(root), root, "maintenance/terms.yaml")["terms"]
+
+    assert isinstance(terms, list)
+    assert terms[0]["synonyms"] == [
+        nfd("설비상태코드"),
+        " 설비상태코드",
+    ]  # 비교만 하고 바꾸지 않는다

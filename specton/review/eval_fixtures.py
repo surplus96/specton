@@ -14,10 +14,11 @@
 """
 
 import argparse
+import hashlib
 import json
 import sys
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Self
 
@@ -26,6 +27,7 @@ from pydantic import ConfigDict, Field, ValidationError, model_validator
 
 from specton.config import Settings
 from specton.contracts import (
+    Attribute,
     Cardinality,
     Contract,
     DesignState,
@@ -43,6 +45,7 @@ from specton.llm.client import LLMClient
 from specton.llm.errors import LLMError
 from specton.llm.openai_transport import openai_client
 from specton.llm.types import CallRecord
+from specton.review.eval_normalization import prepare_normalized, state_provenance
 from specton.review.perspective import (
     PERSPECTIVES_DIR,
     Perspective,
@@ -52,11 +55,22 @@ from specton.review.perspective import (
 from specton.review.reviewer import review_perspective
 
 CaseKind = Literal["normal", "alt_normal", "defect"]
-DefectKind = Literal["cardinality", "direction", "optional", "identifying"]
+DefectKind = Literal[
+    "cardinality",
+    "direction",
+    "optional",
+    "identifying",
+    "multi_value",
+    "repeating_group",
+    "duplicate_fact",
+    "transitive_dependency",
+    "partial_dependency",
+    "derived_value",
+]
 NORMAL_KINDS: frozenset[str] = frozenset({"normal", "alt_normal"})
-# 고정 설계로 만들 수 있는 입력. 정리 결과(normalized)는 정리 코드를 거쳐야 해서 아직 받지 않는다.
+# normalized는 파일에서 받지 않고 승인된 팩의 실제 정리 코드로 만든다.
 SUPPORTED_INPUTS: frozenset[str] = frozenset(
-    {"requirements", "functions", "entities", "relationships"}
+    {"requirements", "functions", "entities", "relationships", "normalized"}
 )
 # 파일에 rationale이 없을 때 넣는 관계 근거. 판단을 흐리지 않게 근거 요구사항 ID만 적는다.
 DEFAULT_RATIONALE = "요구사항 {}에 따른 관계"
@@ -72,6 +86,12 @@ class FixtureRequirement(Contract):
     type: RequirementType
     nfr_category: NfrCategory | None = None
 
+    @model_validator(mode="after")
+    def _check_category(self) -> Self:
+        if (self.type is RequirementType.NFR) != (self.nfr_category is not None):
+            raise ValueError("NFR에는 nfr_category가 필요하고 FR에는 두지 않습니다")
+        return self
+
 
 class FixtureFunction(Contract):
     id: ObjectId
@@ -84,6 +104,8 @@ class FixtureEntity(Contract):
     id: EntityId
     name: NonEmptyText
     description: NonEmptyText | None = None
+    attributes: tuple[Attribute, ...] | None = Field(default=None, min_length=1)
+    req_ids: tuple[ReqId, ...] = ()
 
 
 class FixtureRelationship(Contract):
@@ -120,6 +142,14 @@ class FixtureCase(Contract):
             raise ValueError(f"{self.case_id}: defect 사례에는 expected가 하나 이상 필요합니다")
         if self.case != "defect" and self.expected:
             raise ValueError(f"{self.case_id}: {self.case} 사례에는 expected를 두지 않습니다")
+        ids = [e.id for e in self.entities] + [r.id for r in self.relationships]
+        ids += [f.id for f in self.functions]
+        ids += [a.id for e in self.entities for a in e.attributes or ()]
+        if len(ids) != len(set(ids)):
+            raise ValueError(f"{self.case_id}: 설계 대상 ID가 중복됩니다")
+        expected = [e.target for e in self.expected]
+        if len(expected) != len(set(expected)):
+            raise ValueError(f"{self.case_id}: 기대 대상 ID가 중복됩니다")
         unknown = _unknown_refs(self)
         if unknown:
             raise ValueError(
@@ -152,11 +182,14 @@ def _unknown_refs(case: FixtureCase) -> list[str]:
     reqs = {r.id for r in case.requirements}
     entities = {e.id for e in case.entities}
     relationships = {r.id for r in case.relationships}
+    targets = entities | relationships | {a.id for e in case.entities for a in e.attributes or ()}
     referenced = [
+        *(i for e in case.entities for i in e.req_ids if i not in reqs),
+        *(i for e in case.entities for a in e.attributes or () for i in a.req_ids if i not in reqs),
         *(i for f in case.functions for i in f.req_ids if i not in reqs),
         *(i for r in case.relationships for i in (r.parent, r.child) if i not in entities),
         *(i for r in case.relationships for i in r.req_ids if i not in reqs),
-        *(e.target for e in case.expected if e.target not in relationships),
+        *(e.target for e in case.expected if e.target not in targets),
     ]
     return sorted(set(referenced))
 
@@ -208,12 +241,12 @@ def _function(function: FixtureFunction) -> Function:
 def _entity(entity: FixtureEntity, pack: str, case: FixtureCase) -> Entity:
     """엔티티는 이름만 받으므로 키 속성 하나(`<이름>번호`)를 채운다.
 
-    관계 관점(A05)은 속성을 보지 않는다. 속성을 보는 관점을 평가하려면 형식에 속성 칸을 더한다.
+    A05는 속성을 보지 않아 생략 시에만 보충한다. A08은 명시된 속성을 그대로 사용한다.
     """
     related = sorted(
         {i for r in case.relationships if entity.id in (r.parent, r.child) for i in r.req_ids}
     )
-    req_ids = tuple(related) or (case.requirements[0].id,)
+    req_ids = entity.req_ids or tuple(related) or (case.requirements[0].id,)
     key = {
         "id": f"{entity.id}-KEY",
         "name": f"{entity.name}번호",
@@ -228,7 +261,7 @@ def _entity(entity: FixtureEntity, pack: str, case: FixtureCase) -> Entity:
         pack=pack,
         name=entity.name,
         description=entity.description or entity.name,
-        attributes=(key,),
+        attributes=entity.attributes if entity.attributes is not None else (key,),
         req_ids=req_ids,
     )
 
@@ -255,6 +288,7 @@ class CaseResult:
     error_code: str | None
     findings: tuple[Finding, ...]
     calls: tuple[CallRecord, ...]
+    provenance: dict[str, str] = field(default_factory=dict)
 
     @property
     def expected_targets(self) -> tuple[str, ...]:
@@ -262,8 +296,9 @@ class CaseResult:
 
     @property
     def found(self) -> tuple[str, ...]:
-        hit = {t.id for f in self.findings for t in f.targets}
-        return tuple(t for t in self.expected_targets if t in hit)
+        hit = {(t.kind, t.id) for f in self.findings for t in f.targets}
+        kinds = _target_kinds(self.case)
+        return tuple(t for t in self.expected_targets if (kinds[t], t) in hit)
 
     @property
     def missed(self) -> tuple[str, ...]:
@@ -271,7 +306,17 @@ class CaseResult:
 
     def matches(self, finding: Finding) -> bool:
         """기대 결함 대상을 가리킨 지적인지."""
-        return any(t.id in self.expected_targets for t in finding.targets)
+        kinds = _target_kinds(self.case)
+        expected = {(kinds[t], t) for t in self.expected_targets}
+        return any((t.kind, t.id) in expected for t in finding.targets)
+
+
+def _target_kinds(case: FixtureCase) -> dict[str, str]:
+    return {
+        **{e.id: "entity" for e in case.entities},
+        **{a.id: "attribute" for e in case.entities for a in e.attributes or ()},
+        **{r.id: "relationship" for r in case.relationships},
+    }
 
 
 def run_cases(
@@ -279,7 +324,26 @@ def run_cases(
 ) -> tuple[CaseResult, ...]:
     """사례마다 관점 하나만 검토한다. 관점이 평가에 맞지 않으면 호출 전에 멈춘다."""
     _check_perspective(perspective, fixtures)
-    return tuple(_run_case(client, perspective, fixtures, c, settings) for c in fixtures.cases)
+    states = []
+    for case in fixtures.cases:
+        state = case_state(fixtures, case)
+        if "normalized" in perspective.inputs:
+            if not case.entities or any(e.attributes is None for e in case.entities):
+                raise FixtureError(
+                    f"{case.case_id}: normalized 평가에는 명시적 attributes가 필요합니다"
+                )
+            try:
+                state = prepare_normalized(state, root=settings.pack_root)
+            except ValueError as exc:
+                raise FixtureError(f"{case.case_id}: 평가 자료 정리 오류: {exc}") from exc
+        states.append(state)
+    results = []
+    remaining = settings.max_tokens_per_run
+    for case, state in zip(fixtures.cases, states, strict=True):
+        result = _run_case(client, perspective, fixtures, case, settings, state, remaining)
+        remaining -= sum(c.input_tokens + c.output_tokens for c in result.calls)
+        results.append(result)
+    return tuple(results)
 
 
 def _check_perspective(perspective: Perspective, fixtures: FixtureSet) -> None:
@@ -301,9 +365,14 @@ def _run_case(
     fixtures: FixtureSet,
     case: FixtureCase,
     settings: Settings,
+    state: DesignState,
+    token_budget: int,
 ) -> CaseResult:
-    state = case_state(fixtures, case)
-    run = review_perspective(client, perspective, state, settings, pack=fixtures.pack)
+    if token_budget <= 0:
+        return CaseResult(case, False, "BUDGET_EXCEEDED", (), (), state_provenance(state))
+    run = review_perspective(
+        client, perspective, state, settings, pack=fixtures.pack, token_budget=token_budget
+    )
     [branch] = run.results
     return CaseResult(
         case=case,
@@ -311,6 +380,7 @@ def _run_case(
         error_code=branch.error_code,
         findings=branch.findings,
         calls=run.calls,
+        provenance=state_provenance(state),
     )
 
 
@@ -327,6 +397,8 @@ class Summary:
     normal_false_positives: int
     input_tokens: int
     output_tokens: int
+    call_duration_ms: int
+    retries: int
 
     @property
     def recall(self) -> float | None:
@@ -352,6 +424,8 @@ def summarize(results: Sequence[CaseResult]) -> Summary:
         normal_false_positives=sum(len(r.findings) for r in done if r.case.case in NORMAL_KINDS),
         input_tokens=sum(c.input_tokens for c in calls),
         output_tokens=sum(c.output_tokens for c in calls),
+        call_duration_ms=sum(c.duration_ms for c in calls),
+        retries=sum(c.attempt > 1 for c in calls),
     )
 
 
@@ -363,6 +437,9 @@ def build_report(
     return {
         "reviewer_id": fixtures.reviewer_id,
         "set": fixtures.set_name,
+        "fixture_content_hash": hashlib.sha256(
+            json.dumps(fixtures.model_dump(mode="json"), sort_keys=True).encode()
+        ).hexdigest(),
         "pack": fixtures.pack,
         "prompt_version": perspective.prompt_version,
         "models": sorted({c.model for r in results for c in r.calls}),
@@ -378,6 +455,8 @@ def _case_report(result: CaseResult) -> dict[str, Any]:
         "case": result.case.case,
         "ok": result.ok,
         "error_code": result.error_code,
+        "provenance": result.provenance,
+        "calls": [call.model_dump(mode="json") for call in result.calls],
         "expected": [e.model_dump(mode="json") for e in result.case.expected],
         "found": list(result.found),
         "missed": list(result.missed),
