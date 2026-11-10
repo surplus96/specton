@@ -118,6 +118,7 @@ class _AbbreviationRule(_Strict):
 
 
 class _TermRule(_Strict):
+    word_aliases: Literal["disabled", "official_unambiguous"] = "disabled"
     classifier_last: bool
     # 기본값을 두지 않는다: 미정값은 키를 생략하지 못하고 null을 적어야 한다
     max_words: Literal["unlimited"] | None
@@ -131,6 +132,7 @@ class _TableRule(_Strict):
 
 
 class _ColumnRule(_Strict):
+    repeated_foreign_key: Literal["manual", "relationship_id"] = "manual"
     primary_key: Literal["term_physical_name"] | None  # 기본값 없음(위와 같은 이유)
     foreign_key: Literal["parent_key_physical_name"] | None
     # 기본값 없음(위와 같은 이유). 값은 words.yaml의 표준단어(예: 상위)
@@ -436,7 +438,7 @@ def _read_data(path: Path) -> Any:
     except (OSError, UnicodeDecodeError) as exc:  # 파일 없음·폴더·권한·인코딩도 PackError 하나로
         raise PackError(f"{path}: 팩 파일을 읽지 못했습니다 ({type(exc).__name__})") from exc
     try:
-        return yaml.safe_load(text)
+        return yaml.load(text, Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader))
     except yaml.YAMLError as exc:
         raise PackError(f"{path}: 형식이 틀렸습니다\n{exc}") from exc
 

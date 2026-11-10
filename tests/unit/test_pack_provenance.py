@@ -46,7 +46,7 @@ def test_new_normalization_preserves_common_version_and_policy_digest():
     graph = state(used=True)
     result = normalize_from_state(graph)
     assert isinstance(result, Normalized)
-    assert result.model.common_version == "0.1.5"
+    assert result.model.common_version == "0.1.7"
     assert result.model.policy_digest == policy_digest(DEFAULT_ROOT, "inventory")
 
 

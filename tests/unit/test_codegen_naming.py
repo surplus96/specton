@@ -266,6 +266,50 @@ def test_compose_uses_standard_words_and_pack_terms() -> None:
     assert physical_name("상위 설비코드", lexicon) == "up_eqpm_cd"  # 공백은 단어 경계
 
 
+def test_official_aliases_keep_canonical_names_and_reject_ambiguous_or_forbidden_words() -> None:
+    words = [
+        {"word": "표준가", "abbreviation": "A", "synonyms": ["동의가", "공유", "금지"]},
+        {
+            "word": "표준나",
+            "abbreviation": "B",
+            "synonyms": ["공유", "공식"],
+            "forbidden_synonyms": ["금지"],
+        },
+    ]
+    aliases = naming._official_aliases(words, {"공식": "OFFICIAL"})
+    assert aliases == {"동의가": "A"}
+    assert naming._official_aliases(words, {"공식": "OFFICIAL", "표준가": "CUSTOM"}) == {}
+
+
+def test_official_alias_policy_is_opt_in_and_does_not_rewrite_logical_names(tmp_path: Path) -> None:
+    for folder in ("common", "inventory"):
+        shutil.copytree(DEFAULT_PACK_ROOT / folder, tmp_path / folder)
+    policy = read_yaml(tmp_path / "common/naming.yaml")
+    words = read_yaml(tmp_path / "common/words.yaml")["words"]
+    # Use the source row itself, rather than an evaluation-derived word or expected abbreviation.
+    direct = {w["word"] for w in words}
+    row = next(
+        w
+        for w in words
+        if w.get("synonyms")
+        and any(
+            alias not in direct and alias not in w.get("forbidden_synonyms", [])
+            for alias in w["synonyms"]
+        )
+    )
+    alias = next(a for a in row["synonyms"] if a not in direct)
+    # The isolated source below makes the accepted alias and its precedence unambiguous.
+    (tmp_path / "common/words.yaml").write_text(
+        yaml.safe_dump({"words": [row]}, allow_unicode=True)
+    )
+    enabled = load_pack_lexicon("inventory", tmp_path)
+    assert enabled.compose(alias) == row["abbreviation"]
+    policy["term"].pop("word_aliases")
+    (tmp_path / "common/naming.yaml").write_text(yaml.safe_dump(policy, allow_unicode=True))
+    disabled = load_pack_lexicon("inventory", tmp_path)
+    assert alias not in disabled.tokens
+
+
 def test_decomposed_hangul_name_finds_the_same_term_and_name() -> None:
     """한글을 자모로 나눠 저장한 이름(NFD)도 같은 용어·물리명을 찾는다 (A03 ID와 같은 NFC 기준)."""
     lexicon = load_pack_lexicon("inventory")
@@ -583,7 +627,7 @@ def test_very_long_name_with_unregistered_letter_is_unresolved(name: str) -> Non
 def test_inventory_inv005_reports_unregistered_words_as_pending_only() -> None:
     """inventory A04 INV-005: 수불문서 → 수불내역(식별), 품목 → 수불내역.
 
-    `수불`·`순번`이 공통표준 단어에 없어 이름을 못 만든다. 이름 문제만 D5 대기로 남고, 빈 이름
+    `수불`은 공통표준 단어·이음동의어에 없어 이름을 못 만든다. 이름 문제만 D5 대기로 남고, 빈 이름
     때문에 엉뚱한 FK 충돌이 생기지 않아야 한다.
     """
     varchar = {"data_type": "varchar", "length": 10, "is_key": True, "nullable": False}
@@ -640,7 +684,6 @@ def test_inventory_inv005_reports_unregistered_words_as_pending_only() -> None:
         (ProblemCode.UNRESOLVED_NAME, "D5", True)
     }
     assert sorted(p.detail.split(":")[0] for p in result.problems) == [
-        "내역순번",
         "수불내역",
         "수불문서",
         "수불문서번호",

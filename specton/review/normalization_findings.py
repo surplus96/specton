@@ -46,6 +46,7 @@ type FailureMapper = Callable[[DesignState, tuple[Problem, ...]], NormalizationF
 
 # 문제 코드 → (규칙 코드, 사람 확인 여부). #15 댓글 처리안. FK 충돌·입력 추적은 따로 정한다.
 _RULES: dict[ProblemCode, tuple[str, bool]] = {
+    ProblemCode.INVALID_FK_BINDING: ("RULE-04", False),
     ProblemCode.NO_PRIMARY_KEY: ("RULE-03", False),
     ProblemCode.DOMAIN_TYPE_MISMATCH: ("RULE-03", False),
     ProblemCode.PARENT_WITHOUT_KEY: ("RULE-04", False),
@@ -84,6 +85,7 @@ _STAGE_BY_KIND: dict[str, TargetStage] = {
     "relationship": TargetStage.DATA_MODEL,
 }
 _SUGGESTIONS: dict[str, str] = {
+    "invalid_fk_binding": "FK 재사용의 부모 키·자식 속성·타입·NULL 조건을 확인해 선언을 고친다.",
     "no_primary_key": "행을 구분하는 키 속성을 두거나, 부모 키를 물려받는 식별 관계로 바꾼다.",
     "domain_type_mismatch": "속성 타입·길이를 같은 이름 팩 용어의 도메인에 맞추거나 이름을 바꾼다.",
     "parent_without_key": "부모 엔티티에 키 속성을 먼저 둔다.",
@@ -95,9 +97,20 @@ _SUGGESTIONS: dict[str, str] = {
         "자기참조 N:M은 아직 지원하지 않는다. 관계의 업무 의미는 바꾸지 말고, "
         "연결 테이블 칸 이름 규칙 등 지원 방안을 정한다."
     ),
-    "fk_column_conflict:D13": "자식의 부모 키 속성을 지우고 FK는 관계에서 파생되게 한다.",
-    "fk_column_conflict:D4": "같은 부모를 여러 번 참조하는 FK의 이름 규칙을 정하거나 관계를 본다.",
-    "unresolved_name": "팩 용어·사전에 없는 낱말을 팩에 등록하거나 사전 낱말로 된 이름을 쓴다.",
+    "fk_column_conflict:D13": (
+        "기존 속성이 관계에서 파생할 부모 키와 같은 사실을 뜻하는지 확인한다. "
+        "중복 FK 속성이면 설계에서 제거하고 관계에서 파생한다. 독립 업무 속성이나 자식의 키이면 "
+        "삭제하지 말고 키·관계·명명 설계를 함께 고친다. 이름·타입만으로 재사용하지 않는다."
+    ),
+    "fk_column_conflict:D4": (
+        "충돌한 관계들의 부모·참조 키·업무 역할을 확인하고 FK 명명 지원을 정한다. "
+        "서로 다른 부모의 키일 수도 있으므로 같은 참조로 합치거나 관계를 삭제하지 않는다."
+    ),
+    "unresolved_name": (
+        "업무 의미가 같은 등록 용어·단어로 표현할 수 있는지 확인한다. 불가능하면 출처와 약어를 "
+        "검토해 새 팩 버전으로 등록한다. 임의 약어·번역으로 우회하지 않는다. 평가에서 발견한 "
+        "이름을 등록했다면 기존 고정 평가와 구분해 기록하고 새 실행으로 검증한다."
+    ),
     "naming_rule_missing": "필요한 명명 규칙을 naming.yaml에 정한다.",
     "name_too_long": "더 짧은 이름을 쓰거나 명명 규칙을 다시 본다.",
     "reserved_word": "예약어와 겹치지 않는 이름을 쓴다.",
@@ -222,6 +235,7 @@ def _stage(objects: tuple[FindingTarget, ...]) -> TargetStage:
 # 문제 코드가 가리키는 대상의 종류. 정리 코드(`codegen/normalize.py`, `naming.py`)가 문제를 만들 때
 # 넣는 ID와 맞춘다. "table"·"column"은 테이블·컬럼 ID를 원래 대상으로 되짚는다.
 _TARGET_SPACES: dict[ProblemCode, tuple[str, ...]] = {
+    ProblemCode.INVALID_FK_BINDING: ("relationship",),
     ProblemCode.NO_PRIMARY_KEY: ("entity",),
     ProblemCode.IDENTIFYING_CYCLE: ("entity",),
     ProblemCode.DOMAIN_TYPE_MISMATCH: ("column",),

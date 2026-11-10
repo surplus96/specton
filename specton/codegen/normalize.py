@@ -14,7 +14,8 @@
   FK 칸 이름 = 부모 키 이름(D4), 자기참조는 사전 단어 접두어(D4, naming.yaml
   `column.self_reference_prefix`), 연결 테이블 이름 = 부모 + 자식 테이블 이름(D4, naming.yaml
   `table.junction_name`), A04 인계 FK 규칙(D8), 선택+식별 충돌(D11),
-  복합 키는 부모 PK 순서대로 짝(D12), 기존 속성 재사용 안 함(D13), 식별 관계 순서(D14)
+  복합 키는 부모 PK 순서대로 짝(D12), 명시적 선언 없이 기존 속성 재사용 안 함(D13, #290),
+  식별 관계 순서(D14)
 - 한계: 관계 ID가 A04 순번(`REL-01`)이라, A04가 순번을 다시 매기면 파생 ID가 바뀐다 (D2)
 
 문제는 끝까지 모두 모으고, 하나라도 있으면 `NormalizeFailed`만 돌려준다. 한 원인에서 이어지는
@@ -26,6 +27,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 
+from specton.codegen.key_constraints import binding_columns, declared_reuse
 from specton.codegen.model import (
     RULES_VERSION,
     Column,
@@ -68,6 +70,7 @@ class _Run:
     problems: list[Problem] = field(default_factory=list)
     foreign_keys: list[ForeignKey] = field(default_factory=list)
     blocked: set[str] = field(default_factory=set)  # 앞선 원인으로 PK를 정할 수 없는 엔티티
+    qualified_relationships: set[str] = field(default_factory=set)
 
 
 def normalize(
@@ -88,6 +91,7 @@ def normalize(
 
     relationships = sorted(design.relationships, key=lambda r: _id_order(r.id))
     supported = [r for r in relationships if _accept(r, run)]
+    run.qualified_relationships = _qualified_references(supported, rules)
     identifying = [r for r in supported if r.identifying]
     _resolve_primary_keys([e.id for e in entities], identifying, own_keys, run)
     for rel in supported:
@@ -246,7 +250,15 @@ def _entity_table(entity: Entity, run: _Run) -> Table:
         primary_key=tuple(stable_id("COL", pack, a.id) for a in entity.attributes if a.is_key),
         # 최종 PK와 같은 UNIQUE는 PK가 정해진 뒤 뺀다 (_resolve_primary_keys)
         unique_keys=tuple(
-            (stable_id("COL", pack, a.id),) for a in entity.attributes if a.is_unique
+            dict.fromkeys(
+                [
+                    *((stable_id("COL", pack, a.id),) for a in entity.attributes if a.is_unique),
+                    *(
+                        tuple(stable_id("COL", pack, attr) for attr in group)
+                        for group in entity.unique_keys or ()
+                    ),
+                ]
+            )
         ),
         req_ids=entity.req_ids,
         entity_id=entity.id,
@@ -317,7 +329,7 @@ def _resolve_primary_keys(
                 one_to_one.append(fk.columns)
         if entity_id in run.blocked:
             continue
-        primary_key = (*fk_columns, *own_keys[entity_id])
+        primary_key = tuple(dict.fromkeys((*fk_columns, *own_keys[entity_id])))
         table = run.tables[entity_id]
         if not primary_key:
             run.problems.append(
@@ -459,6 +471,11 @@ def _derive_fk(
             problem(ProblemCode.PARENT_WITHOUT_KEY, rel.id, f"부모 {parent.name}에 PK가 없음")
         )
         return None
+    try:
+        bindings = binding_columns(rel, parent, table)
+    except ValueError as exc:
+        run.problems.append(problem(ProblemCode.INVALID_FK_BINDING, rel.id, str(exc)))
+        return None
     prefix: tuple[str, str] | None = None
     if rel.parent == rel.child:
         prefix = _self_reference_prefix(rel, run)
@@ -468,9 +485,13 @@ def _derive_fk(
     taken = {c.physical_name: c for c in table.columns}
     taken_logical = {c.name: c for c in table.columns}
     new_columns: list[Column] = []
+    fk_columns: list[str] = []
     conflict = False
     for parent_col_id in parent.primary_key:  # 부모 PK 순서대로 (D12)
         key = parent_cols[parent_col_id]
+        if reused := bindings.get(key.id):
+            fk_columns.append(reused.id)
+            continue
         col_id = stable_id("COL", run.pack.name, rel.id, key.id)
         name, physical = key.name, key.physical_name
         if prefix is not None:
@@ -480,6 +501,7 @@ def _derive_fk(
                 # 대상은 이 FK 칸을 만든 관계다. 정리에 실패하면 칸이 만들어지지 않으므로,
                 # 실패 변환기(#15)가 칸 ID를 되짚지 않고 원래 관계로 바로 잇게 한다.
                 run.problems.extend(check_name(physical, rel.id, run.rules))
+        name, physical = _qualified_key_name(rel, name, physical, run)
         # 빈 물리명은 이미 D5 문제로 보고된 자리표시라 서로 겹친다고 보지 않는다
         clash = (taken.get(physical) if physical else None) or taken_logical.get(name)
         if clash is not None:
@@ -503,6 +525,7 @@ def _derive_fk(
             references=key.id,
         )
         new_columns.append(column)
+        fk_columns.append(column.id)
         taken_logical[name] = column
         if physical:
             taken[physical] = column
@@ -513,13 +536,34 @@ def _derive_fk(
         id=fk_id,
         relationship_id=rel.id,
         table_id=table.id,
-        columns=tuple(c.id for c in new_columns),
+        columns=tuple(fk_columns),
         parent_table_id=parent.id,
         parent_columns=parent.primary_key,
         req_ids=rel.req_ids,
     )
     run.foreign_keys.append(fk)
     return fk
+
+
+def _qualified_references(relationships: Sequence[Relationship], rules: NamingRules) -> set[str]:
+    if rules.repeated_foreign_key not in (None, "manual", "relationship_id"):
+        raise ValueError("지원하지 않는 repeated_foreign_key 정책")
+    if rules.repeated_foreign_key != "relationship_id":
+        return set()
+    references = [r for r in relationships if r.cardinality != "N:M"]
+    pairs = Counter((r.parent, r.child) for r in references)
+    return {r.id for r in references if pairs[r.parent, r.child] > 1}
+
+
+def _qualified_key_name(rel: Relationship, name: str, physical: str, run: _Run) -> tuple[str, str]:
+    """관계 의미는 그대로 두고 같은 부모 참조의 모든 FK를 안정적인 ID로 구분한다."""
+    if rel.id not in run.qualified_relationships:
+        return name, physical
+    if physical:
+        suffix = "r" + stable_id("REF", rel.id).split("-", 1)[1]
+        physical = run.rules.separator.join((physical, suffix))
+        run.problems.extend(check_name(physical, rel.id, run.rules))
+    return f"{name}({rel.id})", physical
 
 
 def _self_reference_prefix(rel: Relationship, run: _Run) -> tuple[str, str] | None:
@@ -537,21 +581,21 @@ def _self_reference_prefix(rel: Relationship, run: _Run) -> tuple[str, str] | No
 def _fk_conflict(rel: Relationship, table: Table, physical: str, clash: Column) -> Problem:
     if clash.relationship_id is not None:
         # 같은 테이블에 같은 이름의 FK 칸을 만드는 관계가 또 있음 → 이름 구분 규칙이 필요 (D4, D2)
-        # 임시(#11): 역할 단어(출발·도착)로 구분하려면 A04 관계 출력에 칸을 더하는 계약 변경이
-        #   필요해 후속으로 둔다 (#11 질문 3). 그때까지는 겹친 이름으로 모델을 만들지 않고 멈춘다.
         return problem(
             ProblemCode.FK_COLUMN_CONFLICT,
             rel.id,
             f"{table.name}.{physical}: 관계 {clash.relationship_id}의 FK 칸과 이름이 같음. "
-            "같은 이름의 부모 키를 두 번 가리키는 관계라(예: 출발 창고·도착 창고) "
-            "역할 구분이 필요합니다",
+            f"현재 관계 {rel.id}의 부모 {rel.parent} 키와 관계 {clash.relationship_id}가 "
+            f"참조하는 키 {clash.references}가 겹칩니다. "
+            "부모·참조 키를 확인하고 역할 구분이 필요합니다",
             decision="D4",
         )
     # 기존 속성과 이름이 같음. 같은 대상을 가리킨다는 근거가 없어 재사용하지 않는다 (D13)
     return problem(
         ProblemCode.FK_COLUMN_CONFLICT,
         rel.id,
-        f"{table.name}.{physical}: 기존 속성 {clash.name}과 이름이 같음 (재사용 근거 없음)",
+        f"{table.name}.{physical}: 기존 속성 {clash.name}({clash.attribute_id})과 "
+        f"관계 {rel.id}의 부모 {rel.parent} 키 이름이 같음 (재사용 근거 없음)",
         decision="D13",
     )
 
@@ -599,7 +643,7 @@ def check_output(model: NormalizedModel, design: DesignState) -> list[Problem]:
             bad(fk.id, "부모 칸이 부모 PK 묶음과 다름")
         if child is not None:
             parent_cols = {c.id: c for c in parent.columns} if parent else {}
-            _check_fk_columns(fk, child, parent_cols, bad)
+            _check_fk_columns(fk, child, parent_cols, relationships.get(fk.relationship_id), bad)
         found.extend(_req_problems(fk.id, fk.req_ids, req_ids))
 
     _check_coverage(model, design, bad)
@@ -650,19 +694,30 @@ def _check_table(
 
 
 def _check_fk_columns(
-    fk: ForeignKey, child: Table, parent_cols: dict[str, Column], bad: _Bad
+    fk: ForeignKey,
+    child: Table,
+    parent_cols: dict[str, Column],
+    relation: Relationship | None,
+    bad: _Bad,
 ) -> None:
     child_cols = {c.id: c for c in child.columns}
+    declared = {b.child_attribute_id for b in relation.fk_bindings or ()} if relation else set()
+    actual = {child_cols[c].attribute_id for c in fk.columns if c in child_cols}
+    if not declared <= actual:
+        bad(fk.id, "명시적 FK 재사용 선언이 결과에서 누락됨")
     for i, col_id in enumerate(fk.columns):
         col = child_cols.get(col_id)
         if col is None:
             bad(fk.id, f"자식 테이블에 없는 컬럼 {col_id}")
             continue
+        expected = fk.parent_columns[i] if i < len(fk.parent_columns) else None
+        parent = parent_cols.get(expected or "")
+        if relation is not None and parent is not None and declared_reuse(relation, parent, col):
+            continue
         if col.relationship_id != fk.relationship_id:
             # 자식에 있는 칸이어도 이 관계에서 만든 칸이 아니면 FK 칸이 아니다
             bad(fk.id, f"FK 칸 {col_id}이 관계 {fk.relationship_id}에서 만든 칸이 아님")
             continue
-        expected = fk.parent_columns[i] if i < len(fk.parent_columns) else None
         if col.references != expected:
             bad(fk.id, f"FK 칸 {col_id}의 짝이 부모 칸 {expected}이 아님")
             continue
@@ -679,6 +734,13 @@ def _check_coverage(model: NormalizedModel, design: DesignState, bad: _Bad) -> N
     for entity in design.entities:
         if by_entity[entity.id] != 1:
             bad(entity.id, f"엔티티 테이블이 {by_entity[entity.id]}개")
+        table = next((t for t in model.tables if t.entity_id == entity.id), None)
+        for group in entity.unique_keys or ():
+            expected = {stable_id("COL", model.pack, attr) for attr in group}
+            if table is not None and not any(
+                set(key) == expected for key in (table.primary_key, *table.unique_keys)
+            ):
+                bad(entity.id, "선언한 복합 업무 UNIQUE가 결과에서 누락됨")
     for rel in design.relationships:
         many = rel.cardinality is Cardinality.MANY_TO_MANY
         if by_junction[rel.id] != (1 if many else 0):

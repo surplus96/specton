@@ -75,6 +75,11 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 
 `GET /runs/{id}/view`는 실행기(#17)가 노드 뒤 저장한 DB 표만 읽는다. 체크포인트는 읽지 않는다 (ADR-0012).
 
+설계 항목에서 Entity의 선택적 `unique_keys`는 속성 ID 묶음이고 Relationship의 `fk_bindings`는
+`parent_attribute_id`·`child_attribute_id` 쌍이다(#290). 없는 옛 항목은 기존 의미를 유지한다.
+LLM 초안의 이름은 저장 전에 코드가 ID로 바꾸며, API의 설계 항목은 이름 기반 선언이 아니다.
+누락된 업무 제약의 의미는 검토·HITL에서 확인한다. 이 계약 검증이 업무 요구의 완전성을 증명하지는 않는다.
+
 | section | `items` 한 건 | 읽는 곳 |
 |---|---|---|
 | `extraction` | `SourceRequirement` | `source_block` (run의 문서 전체, revision 무관) |

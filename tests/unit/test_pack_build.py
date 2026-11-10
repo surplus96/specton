@@ -141,13 +141,13 @@ def test_project_term_joins_word_abbreviations(tmp_path: Path) -> None:
     assert terms[0]["source"] == "project"
 
 
-def test_common_words_include_used_words_and_all_classifiers(tmp_path: Path) -> None:
+def test_common_words_include_unused_official_words_but_not_retired_words(tmp_path: Path) -> None:
     root = make_root(tmp_path, [spec("설비명", ["설비", "명"], "명V200")])
 
     words = load(build(root), root, "common/words.yaml")["words"]
 
     assert isinstance(words, list)
-    assert [w["word"] for w in words] == ["설비", "코드", "명"]
+    assert [w["word"] for w in words] == ["설비", "코드", "명", "상태"]
     assert words[0]["definition"] == "필요한 시설"  # 한자 접두어 제거
     assert words[1]["definition"] == "Code. 기호 체계"  # 영문 접두어 유지
     assert words[2]["synonyms"] == ["이름", "명칭"]
