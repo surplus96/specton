@@ -10,5 +10,6 @@ export function nodeState(event: SseEvent): NodeState {
   const p = event.data.payload
   if (p?.outcome === 'cancelled') return 'cancelled'
   if (p?.outcome === 'error') return 'failed'
+  if (p?.normalization_failed || p?.validation_status === 'failed' || p?.validation_status === 'error') return 'failed'
   return p?.phase === 'finished' ? 'done' : 'running'
 }

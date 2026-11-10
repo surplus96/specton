@@ -33,6 +33,7 @@ describe('실행 단계 그래프: 모양', () => {
   it('정리 실패로 실행하지 않은 생성·검토를 완료로 표시하지 않는다', () => {
     const failed = event('status', 'designing', '정리 종료', { node: 'normalize', phase: 'finished', normalization_failed: true })
     const shown = states({ run: run('awaiting_review'), events: [failed] })
+    expect(shown.normalize).toBe('failed')
     for (const id of ['ddl', 'erd', 'rtm', 'rules', 'A05', 'A06', 'A07', 'A08']) expect(shown[id]).toBe('skipped')
   })
   it('문서 읽기부터 내보내기까지, 생성 3갈래·검토 4갈래가 갈라졌다 모인다', () => {
