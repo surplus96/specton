@@ -50,7 +50,7 @@ uv run python -m specton.packs.build --check  # ⚙ 파일이 최신인지 검�
 
 ## 재고·공통 팩 고정 (#11, 2026-11-09)
 
-현재 범위는 common 0.1.4·inventory 0.1.21(approved)이다. 설비 팩은 후속으로 유지한다.
+현재 범위는 common 0.1.5·inventory 0.1.21(approved)이다. 설비 팩은 후속으로 유지한다.
 처리 방식은 `common/rules.yaml`의 `handling`으로 명시한다. fixed만 target_stage가 있으며,
 dynamic·manual·informational의 null은 미정값이 아니다. SC critical과 major 참고 의견은 거절한다.
 선별 적용에는 낱말·표준어·사유를 모두 적고, 목록에 없는 공식 이음동의어·금칙어 등록은 금지한다.

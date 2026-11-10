@@ -249,6 +249,10 @@ def test_prompt_version_is_fixed() -> None:
         {"data_type": "integer", "length": 4},
         {"data_type": "numeric", "precision": 3, "scale": 4},
         {"data_type": "varchar", "length": 10, "precision": 5},
+        # PostgreSQL 상한 초과 (#255): 계약은 받지만 DDL 실행에서 거절되는 값
+        {"data_type": "varchar", "length": 10485761},
+        {"data_type": "char", "length": 10485761},
+        {"data_type": "numeric", "precision": 1001},
     ],
 )
 def test_pack_term_rejects_combinations_the_contract_rejects(fields: dict[str, Any]) -> None:
@@ -871,3 +875,140 @@ def test_run_requests_again_when_an_nfd_synonym_is_used() -> None:
     names = [a.name for e in result.output.entities for a in e.attributes]
     assert "창고코드" in names
     assert nfd not in names
+
+
+# NFC·NFD 이름 비교와 타입 크기 상한 (#255)
+
+
+def _nfd(name: str) -> str:
+    nfd = unicodedata.normalize("NFD", name)
+    assert nfd != name
+    return nfd
+
+
+_SAME_LETTERS = " (같은 글자를 다른 한글 조합 방식으로 씀)"
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (
+            lambda d: d["entities"][1].update(name=_nfd("창고")),
+            "엔티티 이름이 중복됩니다: 창고" + _SAME_LETTERS,
+        ),
+        (
+            lambda d: d["entities"][0]["attributes"].append(
+                {**d["entities"][0]["attributes"][0], "name": _nfd("창고코드")}
+            ),
+            "창고의 속성 이름이 중복됩니다: 창고코드" + _SAME_LETTERS,
+        ),
+        (
+            lambda d: d["entity_ops"].append(
+                {**d["entity_ops"][0], "entity_name": _nfd(d["entity_ops"][0]["entity_name"])}
+            ),
+            "같은 기능·엔티티 쌍이 중복됩니다",
+        ),
+        (
+            lambda d: _entity_op(d, entity_name=_nfd("창고"), operations=["C", "R", "U", "D"]),
+            "면제한 조작이 entity_ops에 있습니다: 창고.D",
+        ),
+    ],
+)
+def test_names_differing_only_in_nfc_nfd_are_the_same_name(mutate: Any, message: str) -> None:
+    data = _output()
+    mutate(data)
+
+    with pytest.raises(ValidationError, match=re.escape(message)):
+        A03Output.model_validate(data)
+
+
+def test_nfd_entity_name_in_entity_ops_links_to_the_nfc_entity() -> None:
+    data = _output()
+    assert data["entity_ops"][0]["entity_name"] == "창고"
+    data["entity_ops"][0]["entity_name"] = _nfd("창고")
+    _checked().model_validate(data)
+    client, transport = stub_client(reply(_raw(data)))
+
+    result = run(client, _a02_state(), _settings(), pack="inventory")
+
+    assert len(transport.sent) == 1
+    [function] = result.output.functions
+    assert [op.entity_id for op in function.entity_ops] == [_entity_id("창고"), _entity_id("품목")]
+    # 저장하는 이름은 바꾸지 않는다
+    assert [e.name for e in result.output.entities] == ["창고", "품목"]
+
+
+def test_nfd_duplicate_entity_is_requested_again_instead_of_stopping_on_id_collision() -> None:
+    data = _output()
+    data["entities"][1]["name"] = _nfd("창고")
+    client, transport = stub_client(reply(_raw(data)), reply(_example_output()))
+
+    result = run(client, _a02_state(), _settings(), pack="inventory")
+
+    assert len(transport.sent) == 2
+    assert (
+        "엔티티 이름이 중복됩니다: 창고" + _SAME_LETTERS in transport.sent[1].messages[-1].content
+    )
+    assert [e.name for e in result.output.entities] == ["창고", "품목"]
+
+
+def _with_attribute(data: dict[str, Any], **fields: Any) -> dict[str, Any]:
+    """팩 용어가 아닌 속성을 창고에 더한다 (팩 타입 대조와 섞이지 않게)."""
+    data["entities"][0]["attributes"].append({"name": "비고수치", "req_ids": ["REQ-01"], **fields})
+    return data
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"data_type": "numeric", "precision": 1000},
+        {"data_type": "numeric", "precision": 1000, "scale": 1000},
+        {"data_type": "varchar", "length": 10485760},
+        {"data_type": "char", "length": 10485760},
+    ],
+)
+def test_type_parameters_at_the_postgresql_limit_pass(fields: dict[str, Any]) -> None:
+    _checked().model_validate(_with_attribute(_output(), **fields))
+
+
+@pytest.mark.parametrize(
+    ("fields", "message"),
+    [
+        (
+            {"data_type": "numeric", "precision": 1001},
+            "창고.비고수치: precision은 1000 이하여야 합니다 (1001)",
+        ),
+        (
+            {"data_type": "varchar", "length": 10485761},
+            "창고.비고수치: length는 10485760 이하여야 합니다 (10485761)",
+        ),
+        (
+            {"data_type": "char", "length": 10485761},
+            "창고.비고수치: length는 10485760 이하여야 합니다 (10485761)",
+        ),
+    ],
+)
+def test_type_parameters_over_the_postgresql_limit_are_rejected(
+    fields: dict[str, Any], message: str
+) -> None:
+    with pytest.raises(ValidationError, match=re.escape(message)):
+        A03Output.model_validate(_with_attribute(_output(), **fields))
+
+
+def test_over_limit_type_is_requested_again_before_reaching_ddl() -> None:
+    data = _with_attribute(_output(), data_type="numeric", precision=1001)
+    client, transport = stub_client(reply(_raw(data)), reply(_example_output()))
+
+    result = run(client, _a02_state(), _settings(), pack="inventory")
+
+    assert len(transport.sent) == 2
+    # LLM이 고칠 곳을 알 수 있게 엔티티·속성 이름이 재요청 메시지에 들어간다
+    assert "창고.비고수치: precision은 1000 이하여야 합니다 (1001)" in (
+        transport.sent[1].messages[-1].content
+    )
+    assert "비고수치" not in [a.name for e in result.output.entities for a in e.attributes]
+
+
+def test_pack_term_over_the_limit_names_the_term() -> None:
+    with pytest.raises(ValidationError, match=re.escape("팩 용어 메모: length는 10485760 이하")):
+        PackTerm.model_validate({"term": "메모", "data_type": "varchar", "length": 10485761})
