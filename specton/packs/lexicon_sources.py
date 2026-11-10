@@ -137,6 +137,11 @@ def _rows(folder: Path, source: Source) -> list[dict[str, str]]:
     return rows
 
 
+def verified_source_rows(folder: Path, source: Source) -> list[dict[str, str]]:
+    """평가용 별도 사본에서도 같은 경로·원본 해시·CSV 열 검사를 재사용한다."""
+    return _rows(folder, source)
+
+
 def validate_lexicon_sources(folder: Path) -> tuple[Path, ...]:
     """manifest가 선언한 출처를 검증하고 해시에 포함할 원본 경로를 반환한다.
 
