@@ -68,7 +68,7 @@ export const PIPELINE: readonly Def[] = [
   { id: 'A05', title: 'A05 관계 모순', kind: 'ai', step: 10, lane: 0 },
   { id: 'A06', title: 'A06 데이터 누락', kind: 'ai', step: 10, lane: 1 },
   { id: 'A07', title: 'A07 비기능', kind: 'ai', step: 10, lane: 2 },
-  { id: 'A08', title: 'A08 업무 흐름', kind: 'ai', step: 10, lane: 3 },
+  { id: 'A08', title: 'A08 정규화', kind: 'ai', step: 10, lane: 3 },
   { id: 'a09', title: 'A09 재작업 판단', kind: 'ai', step: 11 },
   { id: 'final_review', title: '최종 검토', kind: 'human', step: 12 },
   { id: 'export', title: '내보내기', kind: 'code', step: 13 },

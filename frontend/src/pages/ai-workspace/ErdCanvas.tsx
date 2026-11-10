@@ -15,6 +15,7 @@ import {
   type NodeProps,
 } from '@xyflow/react'
 import { dark } from '../../theme.ts'
+import { MINIMAP_STYLE, ariaLabels } from './flowText.ts'
 import { pickedNode } from './select.ts'
 import { positionsFrom, toElk, type EntityCard, type RelationshipLine } from './erd.ts'
 
@@ -209,13 +210,16 @@ function Canvas({ cards, lines, selected, focus, onSelect }: Props) {
         onNodeClick={(_, n) => onSelect(n.id)}
         onPaneClick={() => onSelect(null)}
         nodesConnectable={false}
+        deleteKeyCode={null}
+        edgesFocusable={false}
+        ariaLabelConfig={ariaLabels(true)}
         minZoom={0.1}
         maxZoom={2}
         colorMode="dark"
       >
         <Background color={dark.border} gap={24} />
         <Controls showInteractive={false} />
-        <MiniMap pannable zoomable nodeColor={dark.card} nodeStrokeColor={dark.line} maskColor="rgba(2,6,23,0.6)" />
+        <MiniMap pannable zoomable nodeColor={dark.card} nodeStrokeColor={dark.line} maskColor="rgba(2,6,23,0.35)" style={MINIMAP_STYLE} />
       </ReactFlow>
     </div>
   )
