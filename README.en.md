@@ -37,6 +37,23 @@ Web (`frontend/`):
 cd frontend && npm install && npm run dev
 ```
 
+### First run
+
+- **API key:** set `SPECTON_OPENAI_API_KEY` in `.env` before running a document. Without a key the API still starts and `/health` answers, but a run fails at the requirements analysis step. Runs call the real API and cost money (a few cents for the sample below).
+- **Ports:** the DB uses 5432, the API 8000 and the web app 5173. `docker compose up -d db` fails if another PostgreSQL already uses 5432.
+- **Input document:** the repository ships no sample input (development and evaluation data are kept private). Create a small synthetic CSV as below. The first line is the header.
+
+```bash
+cat > sample_inventory.csv <<'CSV'
+요구사항 ID,요구사항명,상세 내용
+SFR-001,창고 관리,사용자는 창고의 코드와 이름을 등록하고 조회할 수 있다.
+SFR-002,품목 관리,사용자는 품목의 코드와 이름을 등록하고 조회할 수 있다.
+SFR-003,입고 등록,사용자는 창고별로 품목의 입고 수량과 입고 일자를 등록하고 조회할 수 있다.
+CSV
+```
+
+Open `http://localhost:5173`, upload the file and choose the `inventory` pack. Answer any confirmation questions, then approve at the final review to download the DDL, ERD, function specification and RTM. The screen flow is in [docs/09](docs/09-ui-flow.md).
+
 ## Quality checks
 
 ```bash
