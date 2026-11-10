@@ -39,10 +39,17 @@ _KNOWN_NAMING_VALUES: dict[tuple[str, str], frozenset[str]] = {
     ("table", "junction_name"): frozenset({"parent_child"}),  # 부모 물리명 + 자식 물리명
     ("column", "primary_key"): frozenset({"term_physical_name"}),  # 용어 물리명 그대로
     ("column", "foreign_key"): frozenset({"parent_key_physical_name"}),  # 부모 키 물리명 그대로
+    ("column", "repeated_foreign_key"): frozenset({"manual", "relationship_id"}),
     ("term", "max_words"): frozenset({"unlimited"}),  # 용어당 단어 수 제한 없음
 }
 # #11에서 새로 더한 키. 팩 파일에 아직 없을 수 있어 키가 없어도 미정으로 본다 (_naming_value).
-_NEW_NAMING_KEYS = frozenset({("table", "junction_name"), ("column", "self_reference_prefix")})
+_NEW_NAMING_KEYS = frozenset(
+    {
+        ("table", "junction_name"),
+        ("column", "self_reference_prefix"),
+        ("column", "repeated_foreign_key"),
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -88,6 +95,7 @@ class NamingRules:
     separator: str = "_"
     self_reference_prefix: str | None = None
     junction_name: str | None = None
+    repeated_foreign_key: str | None = None  # 누락/None/manual은 기존 D4 사람 조치
 
 
 def physical_name(logical_name: str, lexicon: Lexicon) -> str | None:
@@ -237,6 +245,7 @@ def load_naming_rules(root: Path = DEFAULT_PACK_ROOT) -> NamingRules:
         separator=physical["word_separator"],
         self_reference_prefix=prefix,
         junction_name=_naming_value(naming, "table", "junction_name"),  # 위에서 값 이름 확인됨
+        repeated_foreign_key=_naming_value(naming, "column", "repeated_foreign_key"),
     )
 
 

@@ -31,7 +31,7 @@ __all__ = [
 ]
 
 # 정리 규칙 버전. 규칙(FK 이름·ID 계산 등)이 바뀌면 올린다. 임시 값이다.
-RULES_VERSION = "normalize-v0"
+RULES_VERSION = "normalize-v1"
 
 
 def problem(

@@ -20,6 +20,7 @@ table:
   junction_name: parent_child    # project (R1 확정 #11): 부모 테이블 물리명 + 자식 테이블 물리명 (예: wrhus_bcnc)
 column:
   primary_key: term_physical_name       # project (R1 확정 #11): 용어의 물리명 그대로 (예: wrhus_cd)
+  repeated_foreign_key: relationship_id # project: 같은 부모의 중복 참조는 관계 ID 해시 접미어로 전부 구분
   foreign_key: parent_key_physical_name # project (R1 확정 #11): 부모 키 물리명 그대로
   self_reference_prefix: 상위           # project (R1 확정 #11): 자기참조 FK 앞 공통 단어 (common/words.yaml 상위, 약어 UP)
 type_profile: strict             # project 확정: strict(표준 저장 형식) | pg_native. ADR-0009 결정

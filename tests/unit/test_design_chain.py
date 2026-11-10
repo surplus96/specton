@@ -354,17 +354,7 @@ def test_review_does_not_change_the_design_state() -> None:
 
 PACK_VERSION = str(read_yaml(DEFAULT_PACK_ROOT / PACK / "manifest.yaml")["version"])
 # 실제 maintenance 팩 사전으로 영어 이름을 만들지 못하는 이름 (아래 첫 테스트가 고정한다)
-UNREGISTERED_NAMES = [
-    "기술자",
-    "기술자코드",
-    "변경이력",
-    "변경이력번호",
-    "변경자식별값",
-    "변경전값",
-    "변경후값",
-    "보전작업",
-    "신고자식별값",
-]
+UNREGISTERED_NAMES = ["변경전값", "변경후값"]
 
 
 def _with_pack(state: DesignState) -> DesignState:
@@ -372,17 +362,7 @@ def _with_pack(state: DesignState) -> DesignState:
 
 
 # 실제 팩에 없는 단어의 테스트용 약어. 실제 사전 단어를 덮어쓰지 않는다.
-_TEST_WORDS = {
-    "기술자": "ENGNR",
-    "보전": "MNTN",
-    "이력": "HSTRY",
-    "신고자": "DCLR",
-    "식별값": "IDNTF_VL",
-    "변경자": "CHGR",
-    "전": "BFR",
-    "후": "AFT",
-    "값": "VL",
-}
+_TEST_WORDS = {"전": "BFR", "후": "AFT"}
 
 
 def _test_lexicon() -> PackLexicon:

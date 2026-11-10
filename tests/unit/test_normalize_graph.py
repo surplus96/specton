@@ -248,17 +248,7 @@ def test_graph_input_normalizes_when_only_test_words_are_added() -> None:
     보탠 약어는 실제 팩에 없는 값이다. 실제 팩으로 연결이 성공했다는 뜻이 아니다.
     """
     real = load_pack_lexicon(PACK)
-    test_only = {
-        "기술자": "ENGNR",
-        "보전": "MNTN",
-        "이력": "HSTRY",
-        "신고자": "DCLR",
-        "식별값": "IDNTF_VL",
-        "변경자": "CHGR",
-        "전": "BFR",
-        "후": "AFT",
-        "값": "VL",
-    }
+    test_only = {"전": "BFR", "후": "AFT"}
     assert not set(test_only) & set(real.tokens)
     lexicon = PackLexicon(
         terms=real.terms,

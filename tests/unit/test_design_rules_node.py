@@ -121,6 +121,16 @@ def test_real_sc_policy_is_connected_to_final_rules(name, type_, length, code, m
     design = design.evolve(entities=(entity.evolve(attributes=(*entity.attributes, attr)),))
     normalized = normalize_from_state({"design": design})
     assert isinstance(normalized, Normalized)
+    if code == "SC-05":
+        # 전체 공식 사전이면 이 이름도 올바르게 정리된다. 실제 표준명 충돌을 따로 만든다.
+        table = normalized.model.tables[0]
+        columns = tuple(
+            c.evolve(physical_name="non_standard_name") if c.attribute_id == attr.id else c
+            for c in table.columns
+        )
+        normalized = normalized.evolve(
+            model=normalized.model.evolve(tables=(table.evolve(columns=columns),))
+        )
     graph["design"] = design.evolve(normalized=normalized.model)
     result = design_rules_node(root=DEFAULT_ROOT)(graph)
     assert [(f.rule_code, f.target_stage) for f in result["rule_findings"]] == [(code, stage)]
