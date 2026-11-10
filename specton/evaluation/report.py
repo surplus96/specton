@@ -12,6 +12,7 @@ from specton.evaluation.models import (
     Matching,
     Prediction,
     Truth,
+    WarningPolicy,
 )
 
 
@@ -20,6 +21,8 @@ def combined_classification(documents: list[Document]) -> Classification:
     gold: list[Truth] = []
     predicted: list[Prediction] = []
     alignments: list[Alignment] = []
+    source_warnings: dict[str, WarningPolicy] = {}
+    allowed_split_counts: dict[str, frozenset[int]] = {}
     for index, doc in enumerate(documents):
         prefix = f"{index}:"
         gold.extend(
@@ -34,8 +37,24 @@ def combined_classification(documents: list[Document]) -> Classification:
             i.model_copy(update={"gold": prefix + i.gold, "predicted": prefix + i.predicted})
             for i in doc.classification.alignments
         )
+        source_warnings.update(
+            {
+                prefix + source: policy
+                for source, policy in doc.classification.source_warnings.items()
+            }
+        )
+        allowed_split_counts.update(
+            {
+                prefix + source: counts
+                for source, counts in doc.classification.allowed_split_counts.items()
+            }
+        )
     return Classification(
-        gold=tuple(gold), predicted=tuple(predicted), alignments=tuple(alignments)
+        gold=tuple(gold),
+        predicted=tuple(predicted),
+        alignments=tuple(alignments),
+        source_warnings=source_warnings,
+        allowed_split_counts=allowed_split_counts,
     )
 
 
@@ -62,10 +81,11 @@ def object_scores(documents: list[Document], *, detection: bool = False) -> dict
             "reported_documents": len(measured),
             "micro": total.report(),
             "macro_f1": sum(f1s) / len(f1s) if f1s else None,
+            "permitted_predictions": sum(len(i.permitted.predicted) for i in measured),
         }
         if detection:
             report[key]["normal_false_positives"] = sum(
-                len(d.detections[key].predicted)
+                metrics.matching_counts(d.detections[key]).fp
                 for d in documents
                 if key in d.detections and d.detections[key].normal
             )
@@ -119,7 +139,7 @@ def condition_report(documents: list[Document]) -> dict[str, Any]:
 def build_report(batch: Evaluation) -> dict[str, Any]:
     conditions = sorted({d.condition for d in batch.documents})
     return {
-        "scoring_policy": "offline-v1",
+        "scoring_policy": "offline-v2",
         "dataset": batch.dataset,
         "gold_version": batch.gold_version,
         "gold_variant": batch.gold_variant,
@@ -132,6 +152,11 @@ def build_report(batch: Evaluation) -> dict[str, Any]:
             "zero": "undefined precision/recall/F1 are null; macro averages defined scores",
             "matching": "one approved equivalence group is one TP; unmatched items are FP/FN",
             "permitted_warnings": "reported separately, neither TP nor FP",
+            "source_warnings": "union of child warnings per original source; no duplicate counts",
+            "warning_alternatives": "one required OR group is one TP or one FN",
+            "permitted_defects": "approved permitted matches are neither TP, FP nor FN",
+            "optional_objects": "approved optional object matches are neither TP, FP nor FN",
+            "splits": "approved count alternatives; semantic equivalence needs separate approval",
         },
         "conditions": {
             c: condition_report([d for d in batch.documents if d.condition == c])

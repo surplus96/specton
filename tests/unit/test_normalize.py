@@ -474,6 +474,85 @@ def test_d4_two_relationships_to_same_parent_key_conflict() -> None:
     assert "역할 구분이 필요합니다" in result.problems[0].detail
 
 
+def test_repeated_reference_policy_preserves_two_roles_and_is_order_independent() -> None:
+    rels = [_rel("REL-01", "ENT-wh", "ENT-rc"), _rel("REL-02", "ENT-wh", "ENT-rc", optional=True)]
+    policy = replace(RULES, repeated_foreign_key="relationship_id")
+    design = _design([WAREHOUSE, RECEIPT], rels)
+    result = normalize(design, pack=PACK, lexicon=LEXICON, rules=policy)
+    assert isinstance(result, Normalized)
+    assert not check_output(result.model, design)
+    assert len(result.model.foreign_keys) == 2
+    table = next(t for t in result.model.tables if t.name == RECEIPT.name)
+    columns = [c for c in table.columns if c.relationship_id]
+    assert len({c.physical_name for c in columns}) == 2
+    assert all(c.physical_name.startswith("wrhus_cd_r") for c in columns)
+    assert {c.relationship_id: c.nullable for c in columns} == {"REL-01": False, "REL-02": True}
+    reversed_result = normalize(
+        _design([RECEIPT, WAREHOUSE], list(reversed(rels))),
+        pack=PACK,
+        lexicon=LEXICON,
+        rules=policy,
+    )
+    assert reversed_result == result
+
+
+def test_repeated_reference_composite_keys_keep_pairs_and_length_checks() -> None:
+    rels = [_rel("REL-01", "ENT-sp", "ENT-rc"), _rel("REL-02", "ENT-sp", "ENT-rc")]
+    policy = replace(RULES, repeated_foreign_key="relationship_id")
+    result = normalize(_design([SUPPLIER, RECEIPT], rels), pack=PACK, lexicon=LEXICON, rules=policy)
+    assert isinstance(result, Normalized)
+    assert all(len(fk.columns) == len(fk.parent_columns) == 2 for fk in result.model.foreign_keys)
+    limited = normalize(
+        _design(
+            [WAREHOUSE, RECEIPT],
+            [_rel("REL-01", "ENT-wh", "ENT-rc"), _rel("REL-02", "ENT-wh", "ENT-rc")],
+        ),
+        pack=PACK,
+        lexicon=LEXICON,
+        rules=replace(policy, max_bytes=15),
+    )
+    assert isinstance(limited, NormalizeFailed)
+    assert {p.target for p in limited.problems if p.code == ProblemCode.NAME_TOO_LONG} == {
+        "REL-01",
+        "REL-02",
+    }
+
+
+def test_repeated_reference_policy_does_not_merge_keys_from_different_parents() -> None:
+    other = _entity("ENT-other", "출고", _attr("ATTR-other", "창고코드", is_key=True))
+    design = _design(
+        [WAREHOUSE, other, RECEIPT],
+        [_rel("REL-01", "ENT-wh", "ENT-rc"), _rel("REL-02", "ENT-other", "ENT-rc")],
+    )
+    before = design.model_dump()
+    result = normalize(
+        design,
+        pack=PACK,
+        lexicon=LEXICON,
+        rules=replace(RULES, repeated_foreign_key="relationship_id"),
+    )
+    assert isinstance(result, NormalizeFailed)
+    assert _codes(result) == {(ProblemCode.FK_COLUMN_CONFLICT, "D4")}
+    detail = result.problems[0].detail
+    assert "REL-01" in detail and "REL-02" in detail and "ENT-other" in detail
+    assert design.model_dump() == before
+
+
+def test_repeated_reference_policy_keeps_existing_child_key_collision_blocked() -> None:
+    child = _entity("ENT-rc", "입고", _attr("ATTR-child-key", "창고코드", is_key=True))
+    design = _design([WAREHOUSE, child], [_rel("REL-01", "ENT-wh", "ENT-rc")])
+    result = normalize(
+        design,
+        pack=PACK,
+        lexicon=LEXICON,
+        rules=replace(RULES, repeated_foreign_key="relationship_id"),
+    )
+    assert isinstance(result, NormalizeFailed)
+    assert _codes(result) == {(ProblemCode.FK_COLUMN_CONFLICT, "D13")}
+    assert "ATTR-child-key" in result.problems[0].detail
+    assert child.attributes[0].is_key
+
+
 def test_d5_unregistered_word_is_reported_as_pending() -> None:
     lexicon = FixtureLexicon()
     del lexicon.words["입고수량"]

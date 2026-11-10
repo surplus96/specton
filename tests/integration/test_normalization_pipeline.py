@@ -278,6 +278,80 @@ def test_actual_missing_key_is_reworked_and_both_revisions_survive_restart(
     assert approved == [{"revision": 1, "model_hash": repaired["model_hash"]}]
 
 
+def test_d13_rework_preserves_business_key_and_stores_both_revisions(
+    pipeline: Callable[..., _Pipeline],
+) -> None:
+    def design(state: GraphState) -> Mapping[str, Any]:
+        current = state["design"]
+        attributes = [
+            {
+                "id": "ATTR-ticket",
+                "name": "고장접수번호",
+                "data_type": "varchar",
+                "length": 10,
+                "is_key": True,
+                "nullable": False,
+                "req_ids": ["REQ-01"],
+            }
+        ]
+        if current.revision == 0:
+            attributes.append(
+                {
+                    "id": "ATTR-duplicate",
+                    "name": "설비코드",
+                    "data_type": "varchar",
+                    "length": 20,
+                    "is_key": False,
+                    "nullable": False,
+                    "req_ids": ["REQ-01"],
+                }
+            )
+        else:
+            assert [f.kind for f in current.findings] == ["fk_column_conflict:D13"]
+        child = Entity.model_validate(
+            {
+                "id": "ENT-ticket",
+                "pack": "maintenance",
+                "name": "고장접수",
+                "description": "설비의 고장접수",
+                "req_ids": ["REQ-01"],
+                "attributes": attributes,
+            }
+        )
+        relationship = Relationship.model_validate(
+            {
+                "id": "REL-01",
+                "parent": "ENT-eq",
+                "child": "ENT-ticket",
+                "cardinality": "1:N",
+                "optional": False,
+                "identifying": False,
+                "rationale": "접수 대상 설비",
+                "req_ids": ["REQ-01"],
+            }
+        )
+        return {
+            "design": current.evolve(entities=(_entity(), child), relationships=(relationship,))
+        }
+
+    world = pipeline(design)
+    run_id = world.create()
+    world.runner.run_pending()
+    assert (world.status(run_id).status, world.status(run_id).revision) == ("awaiting_review", 1)
+    failed, repaired = world.models(run_id)
+    assert [failed["revision"], repaired["revision"]] == [0, 1]
+    model = repaired["normalized_model"]["normalized"]
+    child = next(t for t in model["tables"] if t["entity_id"] == "ENT-ticket")
+    key = next(c for c in child["columns"] if c["attribute_id"] == "ATTR-ticket")
+    assert child["primary_key"] == [key["id"]]
+    assert len(model["foreign_keys"]) == 1
+    assert all(c["attribute_id"] != "ATTR-duplicate" for c in child["columns"])
+    assert not any(revision == 0 for _, revision in world.visited)
+    assert world.answer(run_id, "approve").status_code == 202
+    world.runner.run_pending()
+    assert world.status(run_id).status == "completed"
+
+
 def test_actual_unknown_name_blocks_approval_after_restart(
     pipeline: Callable[..., _Pipeline],
 ) -> None:

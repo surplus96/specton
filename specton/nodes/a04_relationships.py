@@ -18,10 +18,10 @@ from specton.config import Settings
 from specton.contracts import Cardinality, DesignState, Relationship, RelationshipDraft
 from specton.contracts.base import Contract
 from specton.llm.client import LLMClient
-from specton.nodes.common import NodeRun, assign_ids, build_request
+from specton.nodes.common import NodeRun, assign_ids, build_request, with_design_rework
 from specton.packs.examples import load_examples
 
-PROMPT_VERSION = "a04-v2"
+PROMPT_VERSION = "a04-v3"
 SYSTEM_PROMPT = """\
 너는 데이터 모델 관계 설계자다. 주어진 엔티티 사이의 관계를 요구사항에 근거해 판단한다.
 - parent_name·child_name에는 입력 엔티티의 name을 그대로 쓴다.
@@ -36,7 +36,11 @@ SYSTEM_PROMPT = """\
   판단 설명을 한 문장 덧붙인다.
   예: "하나의 재고거래 문서에는 하나 이상의 품목 내역을 등록한다." 내역은 문서에 속한다.
 - 같은 두 엔티티 사이에도 의미가 다르면 관계를 따로 적는다.
-- 요구사항에 근거가 없는 관계는 만들지 않는다."""
+- 요구사항에 근거가 없는 관계는 만들지 않는다.
+- rework_context가 있으면 직전 관계·지적을 현재 엔티티·요구사항과 대조해 수정한다.
+  A03이 엔티티·키를 바꿨을 수 있으므로 옛 ID·관계를 그대로 복사하지 않는다.
+  충돌을 숨기려고 업무상 필요한 관계를 삭제하거나 의미·방향을 임의로 바꾸지 않는다.
+  사전·명명 지원 부족은 관계 의미를 바꿔 해결하지 않는다. 출력 형식은 최초 설계와 같다."""
 
 _QUOTE = re.compile(r'"([^"]+)"')
 
@@ -78,7 +82,7 @@ def run(
         stage="A04",
         prompt_version=PROMPT_VERSION,
         system=SYSTEM_PROMPT,
-        data=input_data(state),
+        data=with_design_rework(input_data(state), state),
         examples=load_examples(pack, "A04", A04Output, root=settings.pack_root),
     )
     entity_ids = {e.name: e.id for e in state.entities}

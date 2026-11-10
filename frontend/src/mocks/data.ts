@@ -403,3 +403,56 @@ export const ERD_ATTACK_SAMPLE = `erDiagram
         varchar(10) 창고코드 PK "wrhus_cd"
     }
 `
+
+/**
+ * 큰 설계 (AI Workspace 성능 확인, #281): 파일 이름에 `large`가 들어 있으면 쓴다.
+ * 엔티티 50개(속성 2~7개) · 관계 60개 · 기능 8개. 요구사항은 기본 mock의 REQ-01~04를 가리킨다.
+ */
+export const LARGE_DESIGN_ITEMS = (() => {
+  const entities = Array.from({ length: 50 }, (_, i) => ({
+    type: 'entity',
+    id: `ENT-${String(i + 1).padStart(3, '0')}`,
+    pack: 'inventory',
+    name: `시험엔티티${i + 1}`,
+    description: `성능 확인용 엔티티 ${i + 1}`,
+    attributes: Array.from({ length: 2 + (i % 6) }, (__, j) => ({
+      id: `ATTR-${i + 1}-${j + 1}`,
+      name: j === 0 ? `엔티티${i + 1}코드` : `속성${j}`,
+      description: null,
+      data_type: j === 0 ? 'varchar' : j % 2 ? 'integer' : 'date',
+      length: j === 0 ? 20 : null,
+      precision: null,
+      scale: null,
+      is_key: j === 0,
+      is_unique: j === 1 && i % 4 === 0,
+      nullable: j > 1,
+      req_ids: [`REQ-0${(i % 4) + 1}`],
+    })),
+    req_ids: [`REQ-0${(i % 4) + 1}`],
+    crud_exemptions: [],
+  }))
+  const relationships = Array.from({ length: 60 }, (_, i) => ({
+    type: 'relationship',
+    id: `REL-${String(i + 1).padStart(3, '0')}`,
+    // 부모 25개 × 한 부모당 자식 2~3개. i와 i+25는 자식을 7칸 밀어 60개가 모두 다른 부모·자식 쌍이 된다
+    parent: entities[i % 25].id,
+    child: entities[25 + (((i % 25) + 7 * Math.floor(i / 25) + 3) % 25)].id,
+    cardinality: i % 10 === 0 ? 'N:M' : '1:N',
+    optional: i % 3 === 0,
+    identifying: i % 5 === 0,
+    rationale: '"재고를 관리한다." 성능 확인용 관계',
+    req_ids: ['REQ-01'],
+  }))
+  const functions = Array.from({ length: 8 }, (_, i) => ({
+    type: 'function',
+    id: `FUNC-${String(i + 1).padStart(2, '0')}`,
+    name: `시험 기능 ${i + 1}`,
+    description: '성능 확인용 기능',
+    priority: null,
+    priority_source: 'unspecified',
+    priority_rationale: null,
+    req_ids: [`REQ-0${(i % 4) + 1}`],
+    entity_ops: entities.slice(i * 6, i * 6 + 6).map((e) => ({ entity_id: e.id, operations: ['C', 'R', 'U'] })),
+  }))
+  return [...functions, ...entities, ...relationships]
+})()

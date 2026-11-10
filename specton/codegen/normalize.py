@@ -68,6 +68,7 @@ class _Run:
     problems: list[Problem] = field(default_factory=list)
     foreign_keys: list[ForeignKey] = field(default_factory=list)
     blocked: set[str] = field(default_factory=set)  # 앞선 원인으로 PK를 정할 수 없는 엔티티
+    qualified_relationships: set[str] = field(default_factory=set)
 
 
 def normalize(
@@ -88,6 +89,7 @@ def normalize(
 
     relationships = sorted(design.relationships, key=lambda r: _id_order(r.id))
     supported = [r for r in relationships if _accept(r, run)]
+    run.qualified_relationships = _qualified_references(supported, rules)
     identifying = [r for r in supported if r.identifying]
     _resolve_primary_keys([e.id for e in entities], identifying, own_keys, run)
     for rel in supported:
@@ -480,6 +482,7 @@ def _derive_fk(
                 # 대상은 이 FK 칸을 만든 관계다. 정리에 실패하면 칸이 만들어지지 않으므로,
                 # 실패 변환기(#15)가 칸 ID를 되짚지 않고 원래 관계로 바로 잇게 한다.
                 run.problems.extend(check_name(physical, rel.id, run.rules))
+        name, physical = _qualified_key_name(rel, name, physical, run)
         # 빈 물리명은 이미 D5 문제로 보고된 자리표시라 서로 겹친다고 보지 않는다
         clash = (taken.get(physical) if physical else None) or taken_logical.get(name)
         if clash is not None:
@@ -522,6 +525,27 @@ def _derive_fk(
     return fk
 
 
+def _qualified_references(relationships: Sequence[Relationship], rules: NamingRules) -> set[str]:
+    if rules.repeated_foreign_key not in (None, "manual", "relationship_id"):
+        raise ValueError("지원하지 않는 repeated_foreign_key 정책")
+    if rules.repeated_foreign_key != "relationship_id":
+        return set()
+    references = [r for r in relationships if r.cardinality != "N:M"]
+    pairs = Counter((r.parent, r.child) for r in references)
+    return {r.id for r in references if pairs[r.parent, r.child] > 1}
+
+
+def _qualified_key_name(rel: Relationship, name: str, physical: str, run: _Run) -> tuple[str, str]:
+    """관계 의미는 그대로 두고 같은 부모 참조의 모든 FK를 안정적인 ID로 구분한다."""
+    if rel.id not in run.qualified_relationships:
+        return name, physical
+    if physical:
+        suffix = "r" + stable_id("REF", rel.id).split("-", 1)[1]
+        physical = run.rules.separator.join((physical, suffix))
+        run.problems.extend(check_name(physical, rel.id, run.rules))
+    return f"{name}({rel.id})", physical
+
+
 def _self_reference_prefix(rel: Relationship, run: _Run) -> tuple[str, str] | None:
     """자기참조 FK 칸의 (논리 접두어, 물리 접두어). 만들 수 없으면 문제를 남기고 None."""
     word = run.rules.self_reference_prefix
@@ -537,21 +561,21 @@ def _self_reference_prefix(rel: Relationship, run: _Run) -> tuple[str, str] | No
 def _fk_conflict(rel: Relationship, table: Table, physical: str, clash: Column) -> Problem:
     if clash.relationship_id is not None:
         # 같은 테이블에 같은 이름의 FK 칸을 만드는 관계가 또 있음 → 이름 구분 규칙이 필요 (D4, D2)
-        # 임시(#11): 역할 단어(출발·도착)로 구분하려면 A04 관계 출력에 칸을 더하는 계약 변경이
-        #   필요해 후속으로 둔다 (#11 질문 3). 그때까지는 겹친 이름으로 모델을 만들지 않고 멈춘다.
         return problem(
             ProblemCode.FK_COLUMN_CONFLICT,
             rel.id,
             f"{table.name}.{physical}: 관계 {clash.relationship_id}의 FK 칸과 이름이 같음. "
-            "같은 이름의 부모 키를 두 번 가리키는 관계라(예: 출발 창고·도착 창고) "
-            "역할 구분이 필요합니다",
+            f"현재 관계 {rel.id}의 부모 {rel.parent} 키와 관계 {clash.relationship_id}가 "
+            f"참조하는 키 {clash.references}가 겹칩니다. "
+            "부모·참조 키를 확인하고 역할 구분이 필요합니다",
             decision="D4",
         )
     # 기존 속성과 이름이 같음. 같은 대상을 가리킨다는 근거가 없어 재사용하지 않는다 (D13)
     return problem(
         ProblemCode.FK_COLUMN_CONFLICT,
         rel.id,
-        f"{table.name}.{physical}: 기존 속성 {clash.name}과 이름이 같음 (재사용 근거 없음)",
+        f"{table.name}.{physical}: 기존 속성 {clash.name}({clash.attribute_id})과 "
+        f"관계 {rel.id}의 부모 {rel.parent} 키 이름이 같음 (재사용 근거 없음)",
         decision="D13",
     )
 
