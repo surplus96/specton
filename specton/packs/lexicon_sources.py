@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, StringConstraints, ValidationError
 
 from specton.packs.build import BuildError, read_yaml
 
@@ -45,7 +45,7 @@ class Baseline(Artifact):
 class Source(Artifact):
     edition: Text
     publisher: Text
-    url: Text
+    url: HttpUrl
     license: Literal["이용허락범위 제한 없음"]
     retrieved_on: date
     encoding: Literal["cp949", "utf-8-sig"]
@@ -121,7 +121,7 @@ def _words(data: dict[str, Any], where: str) -> dict[str, dict[str, Any]]:
 
 
 def _rows(folder: Path, source: Source) -> list[dict[str, str]]:
-    if not source.url.startswith("https://"):
+    if source.url.scheme != "https":
         raise LexiconSourceError("출처 URL은 https여야 합니다")
     try:
         text = _verified(folder, source).decode(source.encoding)

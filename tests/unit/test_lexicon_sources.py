@@ -2,6 +2,8 @@
 
 import hashlib
 import shutil
+import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -63,6 +65,8 @@ def test_registered_source_rows_match_the_actual_dictionary() -> None:
         "wrong_excluded_reference",
         "missing_declaration",
         "baseline_hash",
+        "invalid_url",
+        "http_url",
     ],
 )
 def test_broken_evidence_cannot_enter_the_operational_dictionary(
@@ -107,6 +111,14 @@ def test_broken_evidence_cannot_enter_the_operational_dictionary(
     elif damage == "baseline_hash":
         with (folder / "sources/words_0.1.21.yaml").open("ab") as file:
             file.write(b"changed")
+    elif damage in {"invalid_url", "http_url"}:
+        edit(
+            root,
+            "lexicon_sources.yaml",
+            lambda d: d["sources"]["knps"].update(
+                url="https://" if damage == "invalid_url" else "http://example.com"
+            ),
+        )
     else:
         edit(root, "lexicon_sources.yaml", lambda d: d["candidates"][0].update(reason=" "))
     with pytest.raises((BuildError, PackError)):
@@ -158,6 +170,18 @@ def test_source_snapshot_hash_mode_is_raw_bytes(root: Path) -> None:
         lambda d: d["sources"]["hf"].update(sha256=hashlib.sha256(source.read_bytes()).hexdigest()),
     )
     assert len(validate_lexicon_sources(root / "inventory")) == 3
+
+
+def test_build_cli_rejects_tampered_source_without_a_traceback(root: Path) -> None:
+    source = root / "inventory/sources/hf_20260727.csv"
+    source.write_bytes(source.read_bytes() + b"changed")
+    result = subprocess.run(
+        [sys.executable, "-m", "specton.packs.build", "--root", str(root), "--check"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2 and "sha256" in result.stderr
+    assert "Traceback" not in result.stderr
 
 
 def test_legacy_pack_without_source_declaration_keeps_previous_policy_hash(root: Path) -> None:
