@@ -44,7 +44,7 @@ uv run ruff check . && uv run ruff format --check .
 uv run mypy
 uv run pytest                     # 단위 테스트 (db·llm 제외)
 uv run pytest -m db               # 격리 DB 필요
-uv run pytest -m llm              # 실제 LLM 호출, 수동 실행 (금액 상한 없음, 실행 한도는 ADR-0007)
+uv run pytest -m llm              # 실제 LLM 호출, 수동 실행 (이번 시범·평가 총 약 $100, ADR-0007)
 ```
 
 ## 도메인 팩

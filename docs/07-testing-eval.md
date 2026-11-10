@@ -9,7 +9,7 @@
 | 단위 | 파서·ID·규칙·템플릿·노드 계약·병합 | pytest, 고정 LLM 응답, DB/API 호출 없음 | `uv run pytest` |
 | DB 통합 | SQL 문법·허용 문장·FK·트랜잭션 | pglast + PostgreSQL 18 sandbox | `uv run pytest -m db` |
 | API·그래프 통합 | 업로드·상태·SSE·HITL·병렬 합류 | 테스트 client + 영속 상태, LLM stub | `uv run pytest tests/integration` |
-| 실제 LLM 평가 | 분류·기능·모델·검토 | 승인 데이터, 모델·팩·프롬프트 고정 | `uv run pytest -m llm` (수동, 금액 상한 없음·실행 한도 적용, ADR-0007) |
+| 실제 LLM 평가 | 분류·기능·모델·검토 | 승인 데이터, 모델·팩·프롬프트 고정 | `uv run pytest -m llm` (수동, 이번 시범·평가 총 약 $100·실행 한도 적용, ADR-0007) |
 | 사용자 수용 | 입력 → 수정 → 승인 → 출력 | React 웹, 개발/AWS 환경 | `tests/e2e/` (도구 미정) |
 
 - `pyproject.toml`에서 db·llm 마커를 등록했고 기본 실행에서 제외한다.
