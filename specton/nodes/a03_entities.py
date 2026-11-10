@@ -202,6 +202,8 @@ def _checked_against(
     속성 이름이 팩 용어의 동의어이거나 띄어쓰기만 다르면 정식 용어명으로 다시 요청한다.
     면제 사유는 팩이 인정하는 것만, 면제 조작은 그 사유에 나열된 것만 허용한다.
     """
+    # 팩 로더(load_pack)가 NFC·앞뒤 공백 기준으로 같아지는 용어 이름을 거절하므로(#264)
+    # 키가 겹쳐 뒤의 용어가 앞의 용어를 덮어쓰는 일은 없다. 여기서 다시 검사하지 않는다.
     by_term = {_nfc(t.term): t for t in terms}
     official = _official_names(terms)
 
