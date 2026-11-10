@@ -14,7 +14,9 @@
     "check:api": "openapi-typescript ../docs/api/openapi.json -o src/api/schema.d.ts --empty-objects-unknown --check"
   },
   "dependencies": {
+    "@xyflow/react": "^12.12.1",
     "antd": "^6.7.0",
+    "elkjs": "^0.12.1",
     "mermaid": "11.17.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
