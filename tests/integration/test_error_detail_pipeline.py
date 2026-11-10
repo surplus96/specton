@@ -65,7 +65,7 @@ def test_error_detail_survives_reload_and_restart_without_exposing_other_errors(
         main, "openai_agent_nodes", lambda config: {"a01": fail} if failure == "llm_refusal" else {}
     )
     if failure.startswith("detail_") or failure == "internal":
-        monkeypatch.setattr(main, "parse_node", lambda root: fail)
+        monkeypatch.setattr(main, "parse_node", lambda root, **kwargs: fail)
     runner = Runner(pool, main.create_graph(settings, create_checkpointer(pool)), settings)
     try:
         with TestClient(main.create_app(settings, pool)) as client:

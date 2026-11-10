@@ -49,7 +49,7 @@
 | TC-N02 | REQ-22 | 출력 형식·오류 통제 | 고정 응답으로 잘못된 타입·거절·반복 오류를 재현한다. 초기 호출+재요청 최대2회 후 명시 실패한다. | unit/integration | 단위 통과 (2026-11-10, `test_llm_client.py`): 잘못된 출력은 오류를 붙여 재요청하고, 기본 재요청 2회(`max_structured_retries`)를 다 쓰면 호출 3회 기록과 함께 `LLMContractError`, 거절은 재요청하지 않고 `LLMRefusalError`, 시간 초과·API 오류는 종류를 유지, 예산을 넘기면 다음 호출 전에 멈춤, 오류별 API 오류 코드 대응 |
 | TC-N03 | REQ-23 | 문서·비밀 보호 | 다른 실행의 파일 접근·경로 조작·문서 내 지시·비허용 SQL을 입력한다. 접근/실행이 차단되고 비밀이 로그에 나오지 않는다. | unit/integration | 단위·통합 통과 (#21 점검: 다른 세션의 조회·목록·재개·취소·SSE·화면·다운로드 404, 저장 경로 이탈 차단, 확장자만 바꾼 파일 415, 문서는 `<data>` 블록으로만 전달, 비허용 SQL 거절(#169·#171), 로그 점검). 실제 LLM에 문서 내 지시를 넣는 시험은 미실행(`llm`) |
 | TC-N04 | REQ-24 | 재현성·평가 기록 | 승인된 평가 집합으로 지표를 계산한다. 분모·미완료·실패·입력 버전이 보고서에 명시되고 정답이 생성 결과로 덮어써지지 않는다. | integration/eval | 미실행 |
-| TC-N05 | REQ-25 | 자원·취소 | 한도 초과 파일·긴 LLM 호출·취소 요청을 재현한다. 명시 오류/취소 상태가 되고 취소 뒤 산출물이 완료본으로 승격되지 않는다. | unit/integration | 단위·통합 통과 (#21 점검: 크기·압축을 푼 크기 초과 413, LLM 타임아웃·재시도 설정, 노드 경계 취소·취소/lease 상실 뒤 늦은 산출물·검증 결과 미게시(#17)). 2026-11-10 두 PDF 포함 8종 후보를 만든 후 취소해도 초안 유지·PDF와 manifest 비공개 확인 |
+| TC-N05 | REQ-25 | 자원·취소 | 한도 초과 파일·긴 LLM 호출·취소 요청을 재현한다. 명시 오류/취소 상태가 되고 취소 뒤 산출물이 완료본으로 승격되지 않는다. | unit/integration | 단위·통합 통과 (#21 점검: 크기·압축을 푼 크기 초과 413, LLM 타임아웃·재시도 설정, 노드 경계 취소·취소/lease 상실 뒤 늦은 산출물·검증 결과 미게시(#17)). 2026-11-10 두 PDF 포함 8종 후보를 만든 후 취소해도 초안 유지·PDF와 manifest 비공개 확인. 원문 블록 수 제한 단위·API 통과: 한도까지 진행, 초과 시 A01 호출 0회·부분 분석 없음·EXTRACTION_FAILED·상한/실제 건수 안내 (`test_parse_node.py`, `test_input_block_limit.py`) |
 | TC-N06 | REQ-26 | 팩·공통 코드 분리 | 공통 코드를 바꾸지 않고 두 승인 팩을 실행한다. 사용 팩·공유 용어 버전을 기록하고 도메인 상수 하드코딩을 검토한다. | unit/integration | 단위·DB 일부 통과 (#12 모델 정리). 같은 정리 코드로 재고·설비 팩을 실행해 공통 `naming.yaml`의 이름 규칙과 팩별 사전을 읽고, 결과 모델에 팩 버전(`pack_version`)과 사전 내용 해시(`lexicon_digest`)를 기록 (`test_codegen_naming.py`·`test_normalize.py`). 실행에 기록된 팩 버전이 바뀌면 지적이 아닌 실행 오류 (`test_normalization_node.py`, DB `test_normalization_pipeline.py`). 하드코딩 검토: `codegen/normalize.py`·`naming.py`·`normalize_step.py`의 한글 문자열은 오류 문구뿐이고 도메인 용어 상수는 없음. 현재 공통 0.1.5·재고 0.1.21은 approved. 설비는 draft로 유지하며 이번 재고 통합·평가 범위에서는 제외. 두 승인 도메인 팩 실행은 미실행 |
 
 ## 에이전트 (TC-A)
@@ -98,3 +98,10 @@ python -m pytest -q -m 'not llm' tests/integration/test_runner.py tests/integrat
 - 웹 lint·build·check:api, 문서·API 계약 검사 46개 통과. 새 계약 필드나 보고서 파일은 추가하지 않는다.
 
 이 기록은 실제 LLM 품질이나 운영 환경의 브라우저 E2E 완료를 뜻하지 않는다.
+
+## #17 인수 잔여: 원문 수 제한·RTM 보류 (2026-11-10)
+
+- `max_source_blocks` 기본 1,000(환경 변수 `SPECTON_MAX_SOURCE_BLOCKS`). 파싱 후 실행 전체의 원문 블록을 합산하고 한도 초과면 A01 호출 전에 멈춘다. 원문 없는 review 블록도 세며 일부를 잘라 통과시키지 않는다. unit은 네 파서의 공통 후처리와 여러 문서 합산·경계·잘못된 설정을 확인한다. 실제 CSV API는 상한 초과 시 A01 0회·저장된 부분 분석 없음, 경계값이면 추출 확인 후 A01 1회를 확인한다.
+- RTM의 네 행 상태는 유지한다. NFR 미연결과 HITL 대기 때문에 행을 보류로 바꾸지 않으며 CSV·Excel 바이트가 실행 대기 상태만으로 달라지지 않는 것을 `test_nfr_and_final_review_wait_do_not_create_a_deferred_rtm_row`로 확인한다. 행별 보류 계약은 이번 필수 범위에 추가하지 않는다.
+- 전체 기본 회귀: 1,859 passed·6 skipped·DB 330개 별도. 실제 API/실행기·기본 흐름·오류 상세 관련 DB 회귀 39개 통과(스킵 0). 실제 LLM·평가 자료는 사용하지 않았다.
+- 린트·포맷·타입 검사 및 배포 compose의 사용자 지정 상한 전달 확인. compose 검증은 설정 해석만 수행하며 배포·컨테이너 기동은 하지 않았다.

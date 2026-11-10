@@ -60,7 +60,7 @@ def create_graph(
     )
     nodes = {
         **(agent_nodes if agent_nodes is not None else openai_agent_nodes(settings)),
-        "parse": parse_node(settings.storage_dir),
+        "parse": parse_node(settings.storage_dir, max_source_blocks=settings.max_source_blocks),
         "normalize": normalization_node(mapper, root=settings.pack_root),
         "erd": erd,
         "ddl": ddl_node(settings),
