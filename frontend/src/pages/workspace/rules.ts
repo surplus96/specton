@@ -87,6 +87,21 @@ export function isDownloadable(a: Pick<ArtifactRef, 'file_format' | 'approved'>)
   return a.file_format !== 'pdf' || a.approved
 }
 
+/**
+ * 「전체 내려받기」로 받을 파일: 표와 같은 순서(종류 → 형식)로, 지금 받을 수 있는 것만.
+ * 승인 전 PDF·아직 없는 파일은 뺀다. 표의 「받기」 버튼과 같은 기준이다(`downloadRows`).
+ */
+export function downloadAllList(artifacts: readonly ArtifactRef[]): ArtifactRef[] {
+  return downloadRows(artifacts, isApproved(artifacts)).flatMap((row) =>
+    row.files.flatMap(({ file }) => (file.state === 'ready' ? [file.artifact] : [])),
+  )
+}
+
+/** 파일 하나를 사람이 읽는 이름으로 (예: 「ERD Mermaid」) */
+export function artifactLabel(a: Pick<ArtifactRef, 'kind' | 'file_format'>): string {
+  return `${KIND_LABEL[a.kind]} ${FORMAT_LABEL[a.file_format]}`
+}
+
 /** UI-07 표: 종류마다 형식별 상태. 승인 전 PDF는 목록에 있든 없든 「승인 후」로 구분한다. */
 export function downloadRows(artifacts: readonly ArtifactRef[], approved: boolean): DownloadRow[] {
   return KIND_ORDER.map((kind) => ({

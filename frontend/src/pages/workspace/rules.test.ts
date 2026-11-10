@@ -15,6 +15,8 @@ import {
   isAllowedErdSource,
   isApproved,
   isDownloadable,
+  downloadAllList,
+  artifactLabel,
   mermaidConfig,
   missingKinds,
   resultViews,
@@ -54,6 +56,26 @@ describe('산출물 목록 읽기', () => {
 })
 
 describe('UI-07 다운로드 표', () => {
+  it('전체 내려받기: 표 순서대로, 받을 수 있는 파일만 (승인 전 PDF·없는 파일은 뺀다)', () => {
+    const before = [ref('rtm', 'csv'), ref('erd', 'pdf'), ref('erd', 'mmd'), ref('functions', 'md'), ref('ddl', 'sql')]
+    expect(downloadAllList(before).map((a) => `${a.kind}.${a.file_format}`)).toEqual([
+      'functions.md',
+      'erd.mmd',
+      'ddl.sql',
+      'rtm.csv',
+    ])
+    const after = before.map((a) => ({ ...a, approved: true }))
+    expect(downloadAllList(after).map((a) => `${a.kind}.${a.file_format}`)).toEqual([
+      'functions.md',
+      'erd.mmd',
+      'erd.pdf',
+      'ddl.sql',
+      'rtm.csv',
+    ])
+    expect(downloadAllList([])).toEqual([])
+    expect(artifactLabel(ref('erd', 'mmd'))).toBe('ERD Mermaid')
+  })
+
   it('승인 전에는 PDF를 「승인 후」, 없는 파일을 「없음」으로 나눈다', () => {
     const rows = downloadRows([ref('erd', 'mmd'), ref('ddl', 'sql')], false)
     const erd = rows.find((r) => r.kind === 'erd')!.files

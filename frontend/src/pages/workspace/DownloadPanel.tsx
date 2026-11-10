@@ -8,6 +8,7 @@ import { errorMessage } from '../../api/errors.ts'
 import type { RunStatus, RunSummary } from '../../api/types.ts'
 import type { ArtifactRef, DesignItem, Finding } from '../../api/viewItems.ts'
 import PageCard from '../../layout/PageCard.tsx'
+import DownloadAll from './DownloadAll.tsx'
 import Pipeline from './Pipeline.tsx'
 import ResultSummary from './ResultSummary.tsx'
 import type { WorkspaceTab } from './pipeline.ts'
@@ -181,6 +182,7 @@ function DownloadPanel({ run }: Props) {
                   description="파일 이름 끝에 -draft가 붙고, PDF는 승인한 뒤에 만들어집니다."
                 />
               )}
+              <DownloadAll runId={run.run_id} artifacts={artifacts} />
               <Table
                 rowKey="kind"
                 size="small"
