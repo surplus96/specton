@@ -28,7 +28,7 @@ from specton.nodes.common import (
 )
 from specton.packs.examples import load_examples
 
-PROMPT_VERSION = "a04-v5"
+PROMPT_VERSION = "a04-v6"
 SYSTEM_PROMPT = """\
 너는 데이터 모델 관계 설계자다. 주어진 엔티티 사이의 관계를 요구사항에 근거해 판단한다.
 - parent_name·child_name에는 입력 엔티티의 name을 그대로 쓴다.
@@ -42,6 +42,9 @@ SYSTEM_PROMPT = """\
   parent_attribute_name·child_attribute_name에 각각 입력 속성 name을 적는다. 이름·타입이
   같다는 이유만으로 선언하지 않는다. 선언하지 않은 FK 칸은 정리 코드가 새로 만든다.
   상속된 키나 다른 관계에서 만든 칸을 이름으로 추측해 바인딩하지 않는다.
+  재사용할 자식 속성의 nullable은 optional=true이고 identifying=false일 때만 true여야 한다.
+  조건이 맞지 않으면 재사용을 선언하지 않는다. 재사용하려고 요구사항의 선택·식별 의미를 바꾸거나
+  존재하는 업무 속성을 바꾸지 않는다. 타입·NULL·키의 최종 검사는 정리 코드도 수행한다.
 - req_ids에는 근거 요구사항 ID를 적는다.
 - rationale은 req_ids 요구사항 문장에서 근거 부분을 큰따옴표로 그대로 인용하고,
   판단 설명을 한 문장 덧붙인다.
@@ -101,7 +104,10 @@ def run(
     entity_ids = {e.name: e.id for e in state.entities}
     attributes = {e.name: {a.name: a.id for a in e.attributes} for e in state.entities}
     output_model = _checked_against(
-        entity_ids.keys(), {r.id: r.text for r in state.requirements}, attributes=attributes
+        entity_ids.keys(),
+        {r.id: r.text for r in state.requirements},
+        attributes=attributes,
+        nullability={e.name: {a.name: a.nullable for a in e.attributes} for e in state.entities},
     )
     result = client.complete(request, output_model, token_budget=token_budget)
     drafts = result.output.relationships
@@ -169,10 +175,12 @@ def _checked_against(
     texts: Mapping[str, str],
     *,
     attributes: Mapping[str, Mapping[str, str]] | None = None,
+    nullability: Mapping[str, Mapping[str, bool]] | None = None,
 ) -> type[A04Output]:
     """이번 입력으로 검사하는 출력 모델. 어기면 형식 오류처럼 재요청 대상이 된다.
 
     - parent_name·child_name은 입력에 있는 엔티티 이름만 허용한다.
+    - 명시적 FK 재사용은 기존 속성을 참조하며 자식 속성의 NULL 조건이 관계와 맞아야 한다.
     - req_ids는 입력에 있는 요구사항만 허용한다.
     - rationale의 큰따옴표 인용은 그 관계의 req_ids 요구사항 문장(LLM에 보낸 text)에 있어야 한다.
     """
@@ -185,15 +193,7 @@ def _checked_against(
             unknown_names = sorted(names - set(entity_names))
             if unknown_names:
                 raise ValueError(f"입력에 없는 엔티티를 참조했습니다: {', '.join(unknown_names)}")
-            for relation in self.relationships:
-                for binding in relation.fk_bindings or ():
-                    if attributes is None or (
-                        binding.parent_attribute_name not in attributes[relation.parent_name]
-                        or binding.child_attribute_name not in attributes[relation.child_name]
-                    ):
-                        raise ValueError(
-                            f"FK 재사용은 부모·자식의 기존 속성만 참조합니다: {binding}"
-                        )
+            _check_binding_inputs(self.relationships, attributes, nullability)
             referenced = {req_id for r in self.relationships for req_id in r.req_ids}
             unknown_reqs = sorted(referenced - normalized.keys())
             if unknown_reqs:
@@ -211,6 +211,30 @@ def _checked_against(
             return self
 
     return CheckedA04Output
+
+
+def _check_binding_inputs(
+    relationships: tuple[RelationshipDraft, ...],
+    attributes: Mapping[str, Mapping[str, str]] | None,
+    nullability: Mapping[str, Mapping[str, bool]] | None,
+) -> None:
+    """기존 속성 참조와 입력에서 알 수 있는 NULL 호환성을 재요청 전에 검사한다."""
+    for relation in relationships:
+        for binding in relation.fk_bindings or ():
+            if attributes is None or (
+                binding.parent_attribute_name not in attributes[relation.parent_name]
+                or binding.child_attribute_name not in attributes[relation.child_name]
+            ):
+                raise ValueError(f"FK 재사용은 부모·자식의 기존 속성만 참조합니다: {binding}")
+            expected = relation.optional and not relation.identifying
+            if nullability is not None and (
+                nullability[relation.child_name][binding.child_attribute_name] != expected
+            ):
+                raise ValueError(
+                    f"FK 재사용 NULL 조건 불일치: {relation.parent_name}→{relation.child_name}."
+                    f"{binding.child_attribute_name}의 nullable은 {expected}여야 합니다. "
+                    "업무 의미를 유지하고 호환되지 않는 재사용 선언을 고치세요"
+                )
 
 
 def _quotes_requirements(rel: RelationshipDraft, texts: Mapping[str, str]) -> bool:

@@ -426,3 +426,74 @@ def test_pack_examples_quote_their_requirements(pack: str) -> None:
             quotes = re.findall(r'"([^"]+)"', rel.rationale)
             assert quotes, rel.rationale
             assert all(any(q in texts[i] for i in rel.req_ids) for q in quotes), rel.rationale
+
+
+def _binding_input(nullable: bool) -> DesignState:
+    child = STATE.entities[2]
+    attribute = child.attributes[0].evolve(
+        id="ATTR-FK", name="창고코드", is_key=False, nullable=nullable
+    )
+    return STATE.evolve(
+        entities=tuple(
+            e.evolve(attributes=(*e.attributes, attribute)) if e.id == child.id else e
+            for e in STATE.entities
+        )
+    )
+
+
+def _bound_relation(optional: bool, identifying: bool = False) -> RelationshipDraft:
+    return _rel("창고", "입고", "1:N", "REQ-01", optional=optional, identifying=identifying).evolve(
+        fk_bindings=({"parent_attribute_name": "창고코드", "child_attribute_name": "창고코드"},)
+    )
+
+
+@pytest.mark.parametrize(
+    "optional,identifying,nullable",
+    [
+        (False, False, True),
+        (True, False, False),
+        (True, True, True),
+    ],
+)
+def test_invalid_reused_fk_nullability_is_rejected_before_normalization(
+    optional: bool, identifying: bool, nullable: bool
+) -> None:
+    draft = _bound_relation(optional, identifying)
+    client, transport = stub_client(
+        reply(A04Output(relationships=(draft,))), max_structured_retries=0
+    )
+    with pytest.raises(LLMContractError) as error:
+        run(client, _binding_input(nullable), Settings(_env_file=None), pack="inventory")
+    assert len(transport.sent) == 1
+    assert error.value.calls[0].outcome == "invalid_output"
+
+
+@pytest.mark.parametrize(
+    "optional,identifying,nullable",
+    [
+        (False, False, False),
+        (True, False, True),
+        (True, True, False),
+    ],
+)
+def test_compatible_explicit_fk_binding_keeps_the_existing_attribute_ids(
+    optional: bool, identifying: bool, nullable: bool
+) -> None:
+    draft = _bound_relation(optional, identifying)
+    client, _ = stub_client(reply(A04Output(relationships=(draft,))))
+    result = run(client, _binding_input(nullable), Settings(_env_file=None), pack="inventory")
+    assert result.output[0].fk_bindings is not None
+    assert result.output[0].fk_bindings[0].child_attribute_id == "ATTR-FK"
+
+
+def test_invalid_reuse_can_be_retried_without_changing_relationship_semantics() -> None:
+    draft = _bound_relation(False)
+    corrected = draft.evolve(fk_bindings=None)
+    client, transport = stub_client(
+        reply(A04Output(relationships=(draft,))), reply(A04Output(relationships=(corrected,)))
+    )
+    result = run(client, _binding_input(True), Settings(_env_file=None), pack="inventory")
+    assert len(transport.sent) == 2
+    assert [call.outcome for call in result.calls] == ["invalid_output", "ok"]
+    assert result.output[0].optional is False
+    assert result.output[0].fk_bindings is None
