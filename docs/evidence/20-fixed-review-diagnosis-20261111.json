@@ -1,0 +1,150 @@
+{
+  "date_kst": "2026-11-11",
+  "scope": "R1-confirmed newly authored synthetic fixed-design diagnosis; post-observation and not blind; original #40 materials not recovered",
+  "models": {
+    "review": "gpt-6-luna",
+    "reasoning_effort": "low"
+  },
+  "pack_versions": {
+    "common": "0.1.7",
+    "inventory": "0.1.23"
+  },
+  "approval": "R1 confirmed new A05/A08 review workbook and fixed file hashes before execution in this conversation",
+  "raw_inputs_and_gold_public": false,
+  "expected_targets_in_prompts": false,
+  "reused_fixtures_and_gold_unchanged_between_versions": true,
+  "cost_basis": "official Standard usage rates incl reported cached input/cache write; estimates, not invoices",
+  "price_source": "https://developers.openai.com/api/docs/pricing",
+  "sdk_retry_count": null,
+  "runs": [
+    {
+      "code_commit": "5af6610ed55701873b228360bdbe6438e7c7f2a9",
+      "reports": [
+        {
+          "reviewer_id": "A05",
+          "prompt_version": "a05-v1",
+          "fixture_content_hash": "cfd33de4e6ed1c4fa215bae1096925e91345fe7bfb005f5297f0563959294dd1",
+          "summary": {
+            "cases": 14,
+            "failed_cases": 0,
+            "expected_total": 4,
+            "expected_found": 4,
+            "findings_total": 4,
+            "findings_matched": 4,
+            "normal_false_positives": 0,
+            "input_tokens": 40332,
+            "output_tokens": 1451,
+            "call_duration_ms": 33105,
+            "retries": 0,
+            "recall": 1.0,
+            "precision": 1.0
+          }
+        },
+        {
+          "reviewer_id": "A08",
+          "prompt_version": "a08-v2",
+          "fixture_content_hash": "529644f1a1dbb4b81dcac4c53e03328c79cc74df95d1bb382bd8aa83d94eb1d3",
+          "summary": {
+            "cases": 18,
+            "failed_cases": 0,
+            "expected_total": 6,
+            "expected_found": 5,
+            "findings_total": 7,
+            "findings_matched": 5,
+            "normal_false_positives": 1,
+            "input_tokens": 76552,
+            "output_tokens": 2210,
+            "call_duration_ms": 43675,
+            "retries": 0,
+            "recall": 0.8333333333333334,
+            "precision": 0.7142857142857143
+          }
+        }
+      ],
+      "calls": 32,
+      "input_tokens": 116884,
+      "output_tokens": 3661,
+      "structured_retries": 0,
+      "estimated_cost_usd": 0.00967729,
+      "wall_time_ms": 82463
+    },
+    {
+      "code_commit": "054974f92a8e6b6a6c6bb0bdd291acc5bbabf713",
+      "reports": [
+        {
+          "reviewer_id": "A08",
+          "prompt_version": "a08-v3",
+          "fixture_content_hash": "529644f1a1dbb4b81dcac4c53e03328c79cc74df95d1bb382bd8aa83d94eb1d3",
+          "summary": {
+            "cases": 18,
+            "failed_cases": 0,
+            "expected_total": 6,
+            "expected_found": 6,
+            "findings_total": 9,
+            "findings_matched": 6,
+            "normal_false_positives": 3,
+            "input_tokens": 79180,
+            "output_tokens": 2285,
+            "call_duration_ms": 39906,
+            "retries": 0,
+            "recall": 1.0,
+            "precision": 0.6666666666666666
+          }
+        }
+      ],
+      "calls": 18,
+      "input_tokens": 79180,
+      "output_tokens": 2285,
+      "structured_retries": 0,
+      "estimated_cost_usd": 0.006682909999999999,
+      "wall_time_ms": 45732
+    },
+    {
+      "code_commit": "37910d1924cdd9125dde00579f8b483bf7c5607c",
+      "reports": [
+        {
+          "reviewer_id": "A08",
+          "prompt_version": "a08-v4",
+          "fixture_content_hash": "529644f1a1dbb4b81dcac4c53e03328c79cc74df95d1bb382bd8aa83d94eb1d3",
+          "summary": {
+            "cases": 18,
+            "failed_cases": 0,
+            "expected_total": 6,
+            "expected_found": 6,
+            "findings_total": 8,
+            "findings_matched": 6,
+            "normal_false_positives": 2,
+            "input_tokens": 81124,
+            "output_tokens": 2096,
+            "call_duration_ms": 42585,
+            "retries": 0,
+            "recall": 1.0,
+            "precision": 0.75
+          }
+        }
+      ],
+      "calls": 18,
+      "input_tokens": 81124,
+      "output_tokens": 2096,
+      "structured_retries": 0,
+      "estimated_cost_usd": 0.00662027,
+      "wall_time_ms": 48311
+    }
+  ],
+  "total_calls": 68,
+  "total_estimated_cost_usd": 0.02298047,
+  "limits": [
+    "single run per fixture and prompt condition; no claim of statistical significance or independent generalization",
+    "v3 increased normal false positives and was not selected",
+    "v4 improves strict target recall but retains two normal false positives, versus one under v2",
+    "no full five-document regeneration, DDL, artifact generation, or pack-applied/unapplied comparison in this experiment",
+    "the v2 repeated-group finding described the defect but targeted attributes instead of the pre-approved entity; keep strict target miss, do not alter gold after observing it",
+    "historical source-family IDs carried category hints in the model-facing requirement metadata; expected targets themselves were not sent",
+    "10 normal/alternative pairs are structurally identical context variants, not independent structural alternatives",
+    "a correct repeating-group description on member attributes is a strict target miss under the current entity-only expectation; semantic adjudication is required"
+  ],
+  "base_policy_digest": "f2fe73f722263bbc231f59ddd01300684143aa2783c8b156f9164ded2228b37c",
+  "base_lexicon_digest": "50ab1a9fd72271bd79edf0b1b8842298cabff0c1793c5a7813132b4d7a8119d3",
+  "selection_decision": "No A08 prompt candidate selected; retain production a08-v2 pending dataset adjudication",
+  "dataset_audit_ref": "20-diagnostic-dataset-audit-20261111.json"
+}
