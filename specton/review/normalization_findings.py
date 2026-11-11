@@ -18,6 +18,7 @@ RULE-01·02·04·06의 dynamic은 계산한 경로를 보존하고, manual은 �
 이 모듈은 LLM client와 그래프·노드 모듈을 import하지 않는다.
 """
 
+import unicodedata
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import TypedDict, get_args
@@ -367,10 +368,16 @@ def technical_name_findings(design: DesignState) -> tuple[Finding, ...]:
                     FindingTarget(kind="attribute", id=column.attribute_id),
                     column.physical_name,
                 )
-    findings = []
-    for number, (object_id, logical) in enumerate(sorted(model.technical_names.items()), 1):
+    # 같은 논리명·객체 종류의 안내는 한 건으로 모으되 모든 대상과 실제 물리명을 보존한다.
+    groups: dict[tuple[str, str], list[tuple[FindingTarget, str]]] = {}
+    for object_id, logical in sorted(model.technical_names.items()):
         target, physical = objects[object_id]
-        targets = (target,)
+        key = (target.kind, unicodedata.normalize("NFC", logical))
+        groups.setdefault(key, []).append((target, physical))
+    findings = []
+    for number, ((_, logical), entries) in enumerate(sorted(groups.items()), 1):
+        entries.sort(key=lambda entry: entry[0].id)
+        targets = tuple(target for target, _ in entries)
         findings.append(
             Finding(
                 id=f"NAME-{design.iteration}-{number}",
@@ -379,10 +386,23 @@ def technical_name_findings(design: DesignState) -> tuple[Finding, ...]:
                 kind="technical_identifier",
                 severity=Severity.MINOR,
                 targets=targets,
-                evidence=(
-                    {"quote": f"{logical}: 표준 물리명 미확정. 기술 식별자 {physical} 사용."},
+                evidence=tuple(
+                    {
+                        "quote": (
+                            f"{logical} ({target.id}): 표준 물리명 미확정. "
+                            f"기술 식별자 {physical} 사용."
+                        )
+                    }
+                    for target, physical in entries
                 ),
-                suggestion="논리명은 보존했습니다. 표준 물리명이 필요하면 명명 매핑을 검토합니다.",
+                suggestion=(
+                    f"논리명 「{logical}」의 {len(targets)}개 대상에 기술 식별자를 사용했습니다. "
+                    "실행·승인을 차단하지 않습니다. 업무 의미가 같은지 대상별로 확인한 뒤 "
+                    "표준 물리명이 필요하면 출처·약어 근거를 갖춰 팩 명명 매핑을 검토합니다. "
+                    "같은 이름이라는 이유만으로 객체를 합치거나 "
+                    "기술 식별자를 서로 복사하지 않습니다. "
+                    "새 팩 적용은 새 실행에서 검증하며 기존 승인 산출물은 유지합니다."
+                ),
                 target_stage=None,
                 fingerprint=fingerprint("RULE-05", "technical_identifier", targets),
                 iteration=design.iteration,

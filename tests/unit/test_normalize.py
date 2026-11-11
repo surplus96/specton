@@ -1151,3 +1151,34 @@ def test_reserved_dictionary_names_use_technical_ids_only_in_permissive_policy(w
     findings = technical_name_findings(BASE.evolve(normalized=result.model))
     assert all(f.severity.value == "minor" for f in findings)
     assert parse_sql(generate_ddl(result.model, max_bytes=63).sql)
+
+
+def test_repeated_technical_name_notice_preserves_all_targets_and_physical_names():
+    from specton.review.normalization_findings import technical_name_findings
+
+    design = _design(
+        [
+            _entity("ENT-X", "미등록하나", _attr("ATTR-X", "화주코드", is_key=True)),
+            _entity("ENT-Y", "미등록둘", _attr("ATTR-Y", "화주코드", is_key=True)),
+        ],
+        [],
+    )
+    result = normalize(
+        design, pack=PACK, lexicon=FixtureLexicon(), rules=replace(RULES, unresolved="technical_id")
+    )
+    assert isinstance(result, Normalized)
+    state = design.evolve(normalized=result.model)
+    findings = technical_name_findings(state)
+    grouped = [f for f in findings if len(f.targets) == 2]
+    assert len(grouped) == 1
+    f = grouped[0]
+    assert {t.id for t in f.targets} == {"ATTR-X", "ATTR-Y"}
+    assert len(f.evidence) == 2
+    assert f.severity.value == "minor" and f.target_stage is None
+    for table in result.model.tables:
+        assert any(table.columns[0].physical_name in e.quote for e in f.evidence)
+    assert len(findings) == 3  # 테이블 두 개 + 같은 이름의 속성 안내 한 개
+    reversed_model = result.model.evolve(
+        technical_names=dict(reversed(list(result.model.technical_names.items())))
+    )
+    assert technical_name_findings(design.evolve(normalized=reversed_model)) == findings
