@@ -1,8 +1,7 @@
 import { useEffect, useRef } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { ApiError, errorMessage } from '../api/errors.ts'
 import { runFileName } from '../api/runNames.ts'
-import Icon from '../layout/Icon.tsx'
 import StageSteps, { type ScreenId } from '../layout/StageSteps.tsx'
 import Button from '../ui/Button.tsx'
 import Loading from '../ui/Loading.tsx'
@@ -30,7 +29,6 @@ const SCREEN_OF_VIEW: Record<ResultView, ScreenId> = {
   downloads: 'UI-07',
 }
 
-const WORKSPACE_NEW_TAB = import.meta.env.MODE !== 'mock'
 
 function RunPage({ runId }: { runId: string }) {
   const navigate = useNavigate()
@@ -131,16 +129,7 @@ function RunPage({ runId }: { runId: string }) {
         ) : (
           <span />
         )}
-        {/* 개발용 AI Workspace (#281). mock은 실행을 탭 메모리에만 두므로 같은 탭에서 연다 */}
-        <Link
-          className="topbar__link"
-          style={{ fontSize: 14 }}
-          to={`/workspace?run=${encodeURIComponent(run.run_id)}`}
-          {...(WORKSPACE_NEW_TAB ? { target: '_blank', rel: 'noopener' } : {})}
-        >
-          작업공간 열기 (개발용)
-          {WORKSPACE_NEW_TAB && <Icon name="external" size={14} />}
-        </Link>
+
       </div>
       <div className={`run-layout${screen === 'UI-04' ? ' run-layout--side' : ''}`}>
         <div className="screen" key={screen} style={{ minWidth: 0 }}>

@@ -2118,3 +2118,11 @@ dialog.confirm p {
 .check-list__state { font-weight: 600; color: var(--ink); }
 .skip-link { position: fixed; top: -100px; left: 12px; z-index: 1000; padding: 12px 16px; background: var(--page); color: var(--ink); }
 .skip-link:focus { top: 12px; }
+
+/* 개발자 작업공간도 왼쪽 메뉴를 유지하고, 캔버스 스크롤은 본문 안에 한정한다. */
+.shell--workspace .main { height: 100dvh; overflow: hidden; }
+.shell--workspace .content { max-width: none; padding: 0; min-height: 0; display: flex; overflow: auto; }
+.shell--workspace .aiws { width: 100%; min-width: 0; min-height: 0; flex: 1; }
+.shell--workspace .aiws-body { height: auto; min-height: 0; overflow: auto; }
+.workspace-chooser { padding: clamp(16px, 4vw, 48px); width: 100%; max-width: 900px; margin: auto; }
+.nav__text small { display: block; font-size: 12px; opacity: 0.7; }
