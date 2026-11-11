@@ -58,7 +58,7 @@ function FindingsTable({ findings, names }: Props) {
       render: (_, f) => (
         <Flex vertical>
           <span>{sourceText(f)}</span>
-          <Typography.Text type="secondary">{f.target_stage ? STAGE_LABEL[f.target_stage] : '판단 필요'}</Typography.Text>
+          <Typography.Text type="secondary">{f.kind === 'technical_identifier' ? '참고 · 기술 식별자 사용' : f.target_stage ? STAGE_LABEL[f.target_stage] : '판단 필요'}</Typography.Text>
         </Flex>
       ),
     },

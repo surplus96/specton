@@ -10,7 +10,7 @@
 - 다시 실행하면 `entity_ops`는 누적하지 않고 새 결과로 바꾼다.
 - 팩 타입은 `naming.yaml`의 `type_profile`로 고른다 (ADR-0009 재고·공통 결정, #11).
 - 사전으로 물리명을 만들 수 없는 이름은 한 번만 다시 묻는다. 그래도 남으면 그대로 두어
-  정리 단계가 사람 조치로 멈춘다 (ADR-0009, #291).
+  엄격 정책에서만 정리 단계가 사람 조치로 멈춘다. technical_id 정책은 논리명을 보존한다.
 """
 
 import logging
@@ -21,7 +21,7 @@ from typing import Any, Self
 
 from pydantic import Field, model_validator
 
-from specton.codegen.naming import Lexicon, load_pack_lexicon, physical_name
+from specton.codegen.naming import Lexicon, load_naming_rules, load_pack_lexicon, physical_name
 from specton.config import Settings
 from specton.contracts import (
     AttributeDraft,
@@ -52,7 +52,7 @@ from specton.type_limits import type_limit_problems
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "a03-v6"
+PROMPT_VERSION = "a03-v7"
 SYSTEM_PROMPT = """\
 너는 업무 시스템의 데이터 모델 설계자다.
 요구사항과 기능으로 저장할 엔티티·속성과 기능별 CRUD를 정한다.
@@ -456,7 +456,8 @@ def run(
         else load_pack_lexicon(pack, settings.pack_root),
     )
     spent = sum(c.input_tokens + c.output_tokens for c in calls)
-    if unresolved and (token_budget is None or spent < token_budget):
+    strict_names = load_naming_rules(settings.pack_root).unresolved == "error"
+    if unresolved and strict_names and (token_budget is None or spent < token_budget):
         review = ask(
             {
                 **data,

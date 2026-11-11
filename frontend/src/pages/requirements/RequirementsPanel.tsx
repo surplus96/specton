@@ -90,7 +90,7 @@ function RequirementsPanel({ run, onChanged }: Props) {
       width: 220,
       render: (_, r) =>
         r.quality_issues.length === 0 ? (
-          '—'
+          split.has(r.id) ? '경고 없음 · 원문 분할 확인' : '경고 없음'
         ) : (
           <Flex vertical gap={6}>
             {r.quality_issues.map((issue, i) => (

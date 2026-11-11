@@ -238,7 +238,7 @@ def test_example_passes_the_checks_for_its_own_input() -> None:
 
 
 def test_prompt_version_is_fixed() -> None:
-    assert PROMPT_VERSION == "a03-v6"
+    assert PROMPT_VERSION == "a03-v7"
     assert SYSTEM_PROMPT.strip()
 
 
@@ -533,6 +533,7 @@ def _named_attribute(name: str) -> dict[str, Any]:
     return data
 
 
+@pytest.mark.usefixtures("strict_naming")
 def test_names_the_dictionary_cannot_compose_are_asked_about_once() -> None:
     first, second = _named_attribute("가나다라"), _named_attribute("창고위치")
     client, transport = stub_client(reply(_raw(first)), reply(_raw(second)))
@@ -546,6 +547,7 @@ def test_names_the_dictionary_cannot_compose_are_asked_about_once() -> None:
     assert review["previous"]["entities"][0]["attributes"][-1]["name"] == "가나다라"
 
 
+@pytest.mark.usefixtures("strict_naming")
 def test_a_name_still_unresolved_after_the_review_is_kept_for_manual_action() -> None:
     data = _named_attribute("가나다라")
     client, transport = stub_client(reply(_raw(data)), reply(_raw(data)))
@@ -556,6 +558,7 @@ def test_a_name_still_unresolved_after_the_review_is_kept_for_manual_action() ->
     assert len(transport.sent) == 2  # 다시 묻지 않는다. 정리 단계가 사람 조치로 멈춘다
 
 
+@pytest.mark.usefixtures("strict_naming")
 def test_a_name_review_that_changes_the_structure_is_discarded() -> None:
     client, _ = stub_client(
         reply(_raw(_named_attribute("가나다라"))), reply(_example_output())
@@ -579,6 +582,7 @@ def test_name_review_is_skipped_when_the_token_budget_is_spent() -> None:
 @pytest.mark.parametrize(
     "change", ["nullable", "type", "length", "key", "unique", "trace", "description", "crud"]
 )
+@pytest.mark.usefixtures("strict_naming")
 def test_name_review_cannot_change_non_name_design_fields(change: str) -> None:
     first, second = _named_attribute("가나다라"), _named_attribute("창고위치")
     attribute = second["entities"][0]["attributes"][-1]
@@ -606,6 +610,7 @@ def test_name_review_cannot_change_non_name_design_fields(change: str) -> None:
     assert len(result.calls) == 2
 
 
+@pytest.mark.usefixtures("strict_naming")
 def test_name_only_changes_preserve_unique_key_and_crud_references() -> None:
     first, second = _named_attribute("가나다라"), _named_attribute("창고위치")
     first["entities"][0]["unique_keys"] = [["가나다라"]]
@@ -1114,3 +1119,20 @@ def test_over_limit_type_is_requested_again_before_reaching_ddl() -> None:
 def test_pack_term_over_the_limit_names_the_term() -> None:
     with pytest.raises(ValidationError, match=re.escape("팩 용어 메모: length는 10485760 이하")):
         PackTerm.model_validate({"term": "메모", "data_type": "varchar", "length": 10485761})
+
+
+@pytest.fixture
+def strict_naming(monkeypatch):
+    from dataclasses import replace
+
+    original = a03_entities.load_naming_rules
+    monkeypatch.setattr(
+        a03_entities, "load_naming_rules", lambda root: replace(original(root), unresolved="error")
+    )
+
+
+def test_open_vocabulary_preserves_names_without_extra_llm_call():
+    client, transport = stub_client(reply(_raw(_named_attribute("가나다라"))))
+    result = run(client, _a02_state(), _settings(), pack="inventory")
+    assert "가나다라" in [a.name for a in result.output.entities[0].attributes]
+    assert len(transport.sent) == 1

@@ -8,6 +8,7 @@
 import re
 import shutil
 import unicodedata
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -606,7 +607,7 @@ def _long_name_result(entity_name: str, column_name: str = "창고코드") -> An
         design,
         pack=_pack("inventory"),
         lexicon=load_pack_lexicon("inventory"),
-        rules=load_naming_rules(),
+        rules=replace(load_naming_rules(), unresolved="error"),
     )
 
 
@@ -677,7 +678,7 @@ def test_inventory_inv005_reports_unregistered_words_as_pending_only() -> None:
         design,
         pack=_pack("inventory"),
         lexicon=load_pack_lexicon("inventory"),
-        rules=load_naming_rules(),
+        rules=replace(load_naming_rules(), unresolved="error"),
     )
     assert isinstance(result, NormalizeFailed)
     assert {(p.code, p.decision, p.pending) for p in result.problems} == {

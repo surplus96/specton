@@ -7,7 +7,7 @@ rules:
   - { id: RULE-02, name: requirement_traceability,    severity: critical, target_stage: null, handling: dynamic }
   - { id: RULE-03, name: pk_type_constraint,          severity: critical, target_stage: data_model, handling: fixed }
   - { id: RULE-04, name: relationship_fk_consistency, severity: critical, target_stage: null, handling: dynamic }
-  - { id: RULE-05, name: naming_duplication,          severity: critical, target_stage: null, handling: manual }
+  - { id: RULE-05, name: naming_duplication,          severity: critical, target_stage: null, handling: manual, subtypes: { technical_identifier: { severity: minor, target_stage: null, handling: informational } } }
   - { id: RULE-06, name: crud_consistency,            severity: critical, target_stage: null, handling: dynamic }
   - { id: RULE-07, name: ddl_parse_execute,           severity: critical, target_stage: null, handling: manual }
 

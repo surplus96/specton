@@ -245,7 +245,7 @@ function DetailPanel(props: Props) {
                     </div>
                   ))}
                   <div style={{ color: dark.ink }}>제안: {f.suggestion}</div>
-                  <div>돌아갈 단계: {f.target_stage ? STAGE_LABEL[f.target_stage] : '판단 필요'}</div>
+                  <div>돌아갈 단계: {f.kind === 'technical_identifier' ? '참고 · 기술 식별자 사용' : f.target_stage ? STAGE_LABEL[f.target_stage] : '판단 필요'}</div>
                 </div>
               )}
             </button>

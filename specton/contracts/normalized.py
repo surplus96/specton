@@ -115,6 +115,7 @@ class NormalizedModel(Contract):
     pack_version: str
     rules_version: str
     lexicon_digest: str
+    technical_names: dict[str, str] | None = None  # 정리 객체 ID → 논리명. 미등록 기술 식별자 출처
     common_version: str | None = None  # 이전 체크포인트에는 없음. 새 정리 결과부터 보존
     policy_digest: str | None = None  # 공통·도메인 팩 전체와 공식 표준 출처 내용 해시
     tables: tuple[Table, ...]
