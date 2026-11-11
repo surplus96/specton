@@ -46,7 +46,7 @@ describe('실행 단계 그래프: 모양', () => {
     expect(edges.filter((e) => e.rework)).toEqual([{ from: 'a09', to: 'a02', rework: true }])
   })
 
-  it('검토 관점 이름은 서버 관점 정의(specton/review/perspectives/A05~A08.yaml의 name)와 같다', () => {
+  it('검토 관점 ID를 유지하며 화면에는 쉬운 이름을 쓴다', () => {
     const titles = PIPELINE.filter((d) => ['A05', 'A06', 'A07', 'A08'].includes(d.id)).map((d) => d.title)
     expect(titles).toEqual(['연결 모순 검토', '빠진 데이터 검토', '품질 요구 검토', '중복 정리 검토'])
   })

@@ -145,7 +145,7 @@ function ProgressPanel({ run, events, connection, onChanged, label }: Props) {
       {run.status === 'queued' && <Notice title="실행을 기다리고 있어요">다른 실행이 끝나면 시작해요.</Notice>}
       {run.status === 'cancel_requested' && (
         <Notice kind="warning" title="취소를 요청했어요">
-          지금 하던 단계가 끝나면 멈춰요. 길면 5분쯤 걸려요.
+          지금 하던 단계가 끝나면 멈춰요. 처리 중인 작업에 따라 기다리는 시간이 달라요.
         </Notice>
       )}
       {run.status === 'cancelled' && (

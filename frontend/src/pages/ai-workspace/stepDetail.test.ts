@@ -102,6 +102,8 @@ describe('stepResult', () => {
     const rows = stepResult('ddl', data({ artifacts }))
     expect(value(rows, '파일')).toBe('SQL 초안')
     expect(value(rows, 'SQL 테스트')).toBe('통과')
+    const pending = [{ ...artifacts[0], validation: { status: 'unverified' } }] as unknown as ArtifactRef[]
+    expect(value(stepResult('ddl', data({ artifacts: pending })), 'SQL 테스트')).toBe('검증 미완료')
     expect(value(stepResult('erd', data({ artifacts })), '파일')).toBe('아직 없음')
   })
 

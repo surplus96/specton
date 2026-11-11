@@ -139,7 +139,7 @@ export function downloadErrorText(err: unknown): string {
   if (err.body?.message) return err.body.message
   switch (err.code) {
     case 'ARTIFACT_NOT_READY':
-      return '파일이 아직 없어요. PDF는 승인하면 생겨요.'
+      return '파일이 아직 준비되지 않았어요. PDF는 승인 후 내려받을 수 있어요.'
     case 'ARTIFACT_FORMAT_UNSUPPORTED':
       return '이 문서는 그 형식으로 받을 수 없어요.'
     case 'RUN_NOT_FOUND':

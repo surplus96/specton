@@ -63,8 +63,6 @@ function findingsOf(entityId: string, design: DesignItem[], findings: Finding[])
   return findings.filter((f) => of(f).includes(entityId))
 }
 
-// 여러 노드가 한 서버 단계를 같이 쓰는 노드. 상태는 단계 이벤트로 추정한다(노드 단위 이벤트는 #289 2단계)
-
 function StepFiles({ node, step }: { node: PipelineNode; step: StepData }) {
   const [preview, setPreview] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -98,8 +96,12 @@ function StepFiles({ node, step }: { node: PipelineNode; step: StepData }) {
 function StepDetail({ node, events, step }: { node: PipelineNode; events: readonly SseEvent[]; step: StepData | null }) {
   const rows = step ? stepResult(node.id, step) : []
   const log = step ? stepEvents(node.id, events, step.revision) : []
+  const recorded = step ? nodeEvent(node.id, events, step.revision) : undefined
   return (
     <>
+      <Row label="진행 상태 안내">
+        {recorded ? '이 단계의 실제 처리 기록이에요.' : '전체 진행 기록으로 표시했어요. 이 단계의 실제 처리 상태와 다를 수 있어요.'}
+      </Row>
       <Title>중간 결과</Title>
       {node.state === 'skipped' && <p style={{ padding: '0 16px', fontSize: 13 }}>이 단계는 실행하지 않았습니다. 지적 0건은 검토 통과를 뜻하지 않습니다.</p>}
       {rows.length === 0 ? (

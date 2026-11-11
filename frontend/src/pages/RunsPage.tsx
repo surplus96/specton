@@ -123,7 +123,7 @@ function RunsPage() {
                       {file ? titleFromFile(file) : '이름 없는 작업'}
                     </Link>
                     <span className="subtle" style={{ fontSize: 13 }}>
-                      {file ?? '다른 브라우저에서 올린 작업이에요'}
+                      {file ?? '이 브라우저에 파일 이름이 저장되어 있지 않아요'}
                     </span>
                   </div>
                 )
