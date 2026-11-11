@@ -103,7 +103,8 @@ function RunPage({ runId }: { runId: string }) {
 
   const view = chosenView(run.status, params.get('view'))
   const screen = view ? SCREEN_OF_VIEW[view] : screenFor(run.status, run.interrupt?.kind)
-  const steps = screenSteps(run.status, screen, events)
+  // 단계 표시줄은 보고 있는 화면이 아니라 작업 상태를 따른다. 완료 뒤 「결과 보기」를 눌러도 06 내려받기에 머문다
+  const steps = screenSteps(run.status, screenFor(run.status, run.interrupt?.kind), events)
 
   function chooseView(next: ResultView) {
     setParams((p) => {

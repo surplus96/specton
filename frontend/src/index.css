@@ -1512,7 +1512,7 @@ dialog.confirm p {
 
 .stage-strip {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr)); /* 결과 보기·최종 승인을 한 칸으로 묶어 6칸 (layout/stageSteps.ts) */
   gap: 8px;
   margin-bottom: 28px;
 }
