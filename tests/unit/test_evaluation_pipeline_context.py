@@ -2,6 +2,7 @@
 
 import json
 
+import pytest
 from pydantic import BaseModel
 
 from specton.evaluation.pipeline import WithoutDomainContext
@@ -14,7 +15,8 @@ class Answer(BaseModel):
     ok: bool
 
 
-def test_ablation_preserves_requirements_and_never_sends_example_answers() -> None:
+@pytest.mark.parametrize("keep_naming", [False, True])
+def test_ablation_preserves_requirements_and_never_sends_example_answers(keep_naming: bool) -> None:
     inner, transport = stub_client(reply(Answer(ok=True)))
     request = LLMRequest(
         stage="A03",
@@ -37,10 +39,16 @@ def test_ablation_preserves_requirements_and_never_sends_example_answers() -> No
             ),
         ),
     )
-    result = WithoutDomainContext(inner).complete(request, Answer, token_budget=100)
+    result = WithoutDomainContext(inner, keep_naming_guidance=keep_naming).complete(
+        request, Answer, token_budget=100
+    )
     sent = transport.sent[0]
     assert len(sent.messages) == 2 and sent.messages[0] == request.messages[0]
     data = json.loads(unwrap_data(sent.messages[-1].content))
-    assert data == {"requirements": [{"id": "REQ-01", "text": "품목을 등록한다."}]}
+    expected = {"requirements": [{"id": "REQ-01", "text": "품목을 등록한다."}]}
+    if keep_naming:
+        expected["evaluation_naming"] = {"approved_name_forms": {"old": "new"}}
+    assert data == expected
     assert "private-example-answer" not in str(sent)
-    assert result.calls[0].prompt_version.endswith("-without-domain-context-v1")
+    suffix = "-without-pack-context-v1" if keep_naming else "-without-domain-context-v1"
+    assert result.calls[0].prompt_version.endswith(suffix)

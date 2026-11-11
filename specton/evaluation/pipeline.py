@@ -78,7 +78,9 @@ class PipelineSpec(Strict):
     scope: Literal["post_observation_exploration"]
     condition_id: Identifier
     mode: Literal["fresh_generation", "approved_model_replay"]
-    domain_context: Literal["with_pack", "without_domain_prompt_context"] = "with_pack"
+    domain_context: Literal[
+        "with_pack", "without_domain_prompt_context", "without_pack_context"
+    ] = "with_pack"
     overlay: Text
     overlay_subject_sha256: Sha256
     inputs: tuple[PipelineInput, ...] = Field(min_length=1)
@@ -273,19 +275,26 @@ def load_condition(path: Path) -> PipelineCondition:
 class WithoutDomainContext(LLMClient):
     """few-shot·팩 용어·관측 후 명명 힌트만 제거한다. 원문·검증 정책은 동일하다."""
 
-    def __init__(self, inner: LLMClient) -> None:
+    def __init__(self, inner: LLMClient, *, keep_naming_guidance: bool = False) -> None:
         self.inner = inner
+        self.keep_naming_guidance = keep_naming_guidance
 
     def complete[OutputT: BaseModel](
         self, request: LLMRequest, output_model: type[OutputT], *, token_budget: int | None = None
     ) -> LLMResult[OutputT]:
         data = json.loads(unwrap_data(request.messages[-1].content))
         data.pop("pack", None)
-        data.pop("evaluation_naming", None)
+        if not self.keep_naming_guidance:
+            data.pop("evaluation_naming", None)
+        version_suffix = (
+            "-without-pack-context-v1"
+            if self.keep_naming_guidance
+            else "-without-domain-context-v1"
+        )
         clean = request.model_copy(
             update={
                 "messages": (request.messages[0], Message(role="user", content=data_block(data))),
-                "prompt_version": request.prompt_version + "-without-domain-context-v1",
+                "prompt_version": request.prompt_version + version_suffix,
             }
         )
         return self.inner.complete(clean, output_model, token_budget=token_budget)
@@ -308,6 +317,8 @@ def create_evaluation_graph(
         client = openai_client(settings)
     if client is not None and condition.spec.domain_context == "without_domain_prompt_context":
         client = WithoutDomainContext(client)
+    elif client is not None and condition.spec.domain_context == "without_pack_context":
+        client = WithoutDomainContext(client, keep_naming_guidance=True)
     nodes: dict[str, Node]
     if agent_nodes is not None:
         nodes = dict(agent_nodes)

@@ -160,6 +160,8 @@ def execute(
                 "design_reasoning_effort",
                 "review_reasoning_effort",
                 "run_concurrency",
+                "max_rework_iterations",
+                "max_source_blocks",
                 "llm_concurrency",
                 "llm_api_retries",
                 "max_tokens_per_run",
