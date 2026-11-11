@@ -179,9 +179,9 @@ def test_technical_identifier_notices_do_not_block_or_duplicate_sc01():
     graph = state(used=True)
     design = graph["design"]
     entity = design.entities[0]
-    entity = entity.evolve(name="미등록업무", attributes=(
-        entity.attributes[0].evolve(name="미등록업무번호"),
-    ))
+    entity = entity.evolve(
+        name="미등록업무", attributes=(entity.attributes[0].evolve(name="미등록업무번호"),)
+    )
     design = design.evolve(entities=(entity,), normalized=None)
     result = normalize_from_state({"design": design})
     assert isinstance(result, Normalized)

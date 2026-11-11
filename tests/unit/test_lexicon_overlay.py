@@ -42,7 +42,7 @@ def spec_path(tmp_path: Path) -> Path:
         "dictionary_version": "synthetic-v1",
         "pack": "inventory",
         "base_pack_version": "0.1.23",
-        "base_common_version": "0.1.7",
+        "base_common_version": "0.1.8",
         "base_policy_digest": policy_digest(ROOT, "inventory"),
         "sources": {
             "synthetic": {
@@ -139,7 +139,8 @@ def _fixture(*, invalid_second: bool = False) -> FixtureSet:
     if invalid_second:
         other = json.loads(json.dumps(case))
         other["case_id"] = "invalid-2"
-        other["entities"][0]["name"] = "쨔쨔쨔미등록"
+        # 미등록 이름은 이제 유효하다. 실제 구조 오류(PK 누락)로 호출 전 차단을 검증한다.
+        other["entities"][0]["attributes"][0]["is_key"] = False
         cases.append(other)
     return FixtureSet.model_validate(
         {"reviewer_id": "A08", "set": "synthetic", "pack": "inventory", "cases": cases}
@@ -166,8 +167,10 @@ def test_approved_overlay_normalizes_only_the_explicit_condition(spec_path: Path
     overlay = load_overlay(_approved(spec_path))
     fixture = _fixture()
     state = case_state(fixture, fixture.cases[0])
-    with pytest.raises(ValueError, match="unresolved_name"):
-        prepare_normalized(state, root=ROOT)
+    default = prepare_normalized(state, root=ROOT)
+    assert default.normalized is not None
+    assert default.normalized.technical_names
+    assert default.normalized.tables[0].physical_name.startswith("t_")
     result = overlay.normalize(state)
     assert result.normalized is not None
     assert result.normalized.tables[0].physical_name == "zzq"
