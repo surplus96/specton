@@ -288,7 +288,9 @@ def test_relationship_review_receives_actual_derived_fk_pairs(reviewer):
     )
     data = _sent_data(transport)
     assert state.normalized is not None
-    assert data["normalized"] == normalized_view(state.normalized)
+    assert data["normalized"] == normalized_view(
+        state.normalized, include_fk_names=reviewer == "A06"
+    )
     # 모델에서 파생한 FK 컬럼도 빠짐없이 전달한다. A03 속성 목록에 없어도 추적 가능하다.
     for fk in state.normalized.foreign_keys:
         sent = next(f for f in data["normalized"]["foreign_keys"] if f["id"] == fk.id)
@@ -302,3 +304,71 @@ def test_relation_only_review_before_normalization_does_not_claim_normalized_inp
         client, _perspective("requirements", "relationships"), _design(), Settings(_env_file=None)
     )
     assert "normalized" not in _sent_data(transport)
+
+
+def test_named_fk_endpoints_show_two_direct_references_without_inventing_a_join() -> None:
+    view = normalized_view(_model(_design()), include_fk_names=True)
+    edges = {fk["relationship_id"]: fk for fk in view["foreign_keys"]}
+    assert len(edges) == 2
+    assert edges["REL-01"]["child"]["name"] == "수불내역"
+    assert edges["REL-01"]["parent"]["name"] == "수불문서"
+    assert edges["REL-02"]["child"]["entity_id"] == "ENT-line"
+    assert edges["REL-02"]["parent"]["entity_id"] == "ENT-item"
+    # FK 증거는 키뿐이다. 내역에 있는 수량을 부모에서 제공한다고 만들어내지 않는다.
+    assert [c["name"] for c in edges["REL-02"]["child"]["columns"]] == ["품목코드"]
+    assert edges["REL-02"]["child"]["columns"][0]["relationship_id"] == "REL-02"
+    assert edges["REL-02"]["parent"]["columns"][0]["attribute_id"] == "ATTR-item-cd"
+
+
+def test_missing_reference_is_not_inferred_from_entity_names() -> None:
+    state = _design().evolve(relationships=[_design().relationships[0]])
+    view = normalized_view(_model(state), include_fk_names=True)
+    assert any(t.get("entity_id") == "ENT-item" for t in view["tables"])
+    assert not any(f["parent"].get("entity_id") == "ENT-item" for f in view["foreign_keys"])
+
+
+def test_named_composite_fk_preserves_all_column_pairs_in_order() -> None:
+    state = _design()
+    doc = state.entities[0].model_copy(
+        update={
+            "attributes": [
+                *state.entities[0].attributes,
+                _entity(
+                    "unused", "품목", _attr("ATTR-doc-item", "품목코드", is_key=True)
+                ).attributes[0],
+            ],
+        }
+    )
+    state = state.evolve(
+        entities=[doc, *state.entities[1:]], relationships=[state.relationships[0]]
+    )
+    model = _model(state)
+    fk = normalized_view(model, include_fk_names=True)["foreign_keys"][0]
+    assert len(fk["columns"]) == 2
+    assert [c["id"] for c in fk["child"]["columns"]] == fk["columns"]
+    assert [c["id"] for c in fk["parent"]["columns"]] == fk["parent_columns"]
+    assert [c["name"] for c in fk["child"]["columns"]] == [
+        c["name"] for c in fk["parent"]["columns"]
+    ]
+
+
+def test_combined_a06_receives_named_endpoints_without_changing_stored_model() -> None:
+    from specton.review.perspective import PERSPECTIVES_DIR, load_perspective
+
+    state = _normalized_state()
+    before = state.model_dump(mode="json")
+    output = CombinedReviewOutput.model_validate(
+        {"perspectives": [{"reviewer_id": "A06", "findings": []}]}
+    )
+    client, transport = stub_client(reply(output))
+    review_combined(
+        client,
+        [load_perspective(PERSPECTIVES_DIR / "A06.yaml")],
+        state,
+        Settings(_env_file=None),
+    )
+    assert state.normalized is not None
+    assert _sent_data(transport)["normalized"] == normalized_view(
+        state.normalized, include_fk_names=True
+    )
+    assert state.model_dump(mode="json") == before
