@@ -1,7 +1,7 @@
 # A05 관계 모순 검토 (R1, #9). 형식 설명: docs/04-agents.md "관점 설정 형식"
 reviewer_id: A05
 name: 관계 모순 검토
-prompt_version: a05-v2
+prompt_version: a05-v3
 instructions: |
   관계의 방향·개수(카디널리티)·필수 여부·식별 관계가 원문 요구사항과 모순되는지 검토한다.
   relationships의 parent는 참조되는 키의 소유자, child는 FK를 가진 쪽이다.

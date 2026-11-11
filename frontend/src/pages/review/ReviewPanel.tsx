@@ -21,6 +21,7 @@ import {
   nameIndex,
   problems,
   reviewNotices,
+  reviewDiagnostics,
   type Decision,
 } from './rules.ts'
 
@@ -109,6 +110,9 @@ function ReviewPanel({ run, events, onChanged }: Props) {
             />
           )}
           {hitlReason && <Alert type="info" showIcon title={HITL_REASON_TEXT[hitlReason] ?? hitlReason} />}
+          {reviewDiagnostics(events, interruptId).map((message, index) => (
+            <Alert key={index} type="info" showIcon title={message} />
+          ))}
           <SqlValidationPanel result={sql} />
           {!approvable && (
             <Alert

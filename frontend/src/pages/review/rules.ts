@@ -135,3 +135,30 @@ export function problems(decision: Decision, feedback: string, findings: readonl
 export function buildResponse(decision: Decision, feedback: string): ReviewResponse {
   return { kind: 'review', decision, feedback: decision === 'approve' ? '' : feedback.trim() }
 }
+
+/** 현재 확인 요청의 진단만 표시한다. 이전 interrupt의 제외·라우터 결과를 섞지 않는다. */
+export function reviewDiagnostics(events: readonly SseEvent[], interruptId: string | null | undefined): string[] {
+  if (!interruptId) return []
+  const payload = [...events].reverse().find(e => e.event === 'interrupt' && e.data.payload?.kind === 'review' && e.data.payload?.interrupt_id === interruptId)?.data.payload
+  if (!payload) return []
+  const messages: string[] = []
+  const reasons: Record<string, string> = { unknown_target: '현재 설계에 없는 대상', unknown_req_id: '현재 요구사항에 없는 근거 ID', quote_not_found: '요구사항에서 확인되지 않는 인용' }
+  if (Array.isArray(payload.rejected_findings)) {
+    for (const value of payload.rejected_findings) {
+      if (!value || typeof value !== 'object') continue
+      const r = value as Record<string, unknown>
+      if (typeof r.finding_id !== 'string' || typeof r.reason !== 'string') continue
+      messages.push(`검토 지적 제외: ${typeof r.reviewer_id === 'string' ? r.reviewer_id : ''} ${r.finding_id} — ${reasons[r.reason] ?? '근거 확인 실패'}. 유효한 지적 목록에는 포함하지 않았습니다.`)
+    }
+  }
+  const value = payload.router_decision
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const r = value as Record<string, unknown>
+    const stages: Record<string, string> = { requirements: '요구사항', functions: '기능 설계', data_model: '데이터 모델' }
+    if (typeof r.revision === 'number') {
+      const stage = typeof r.stage === 'string' ? stages[r.stage] ?? '판단 불가' : '판단 불가'
+      messages.push(`A09 판단 (revision ${r.revision} 기준): ${stage}${typeof r.rationale === 'string' ? ` — ${r.rationale}` : ''}${typeof r.error_code === 'string' ? ` · 오류 코드: ${r.error_code}` : ''}`)
+    }
+  }
+  return messages
+}

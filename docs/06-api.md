@@ -123,6 +123,7 @@ view의 선택적 `normalization`은 성공한 정리 결과의 `tables`, `colum
 - `data`: `run_id`, `revision`, `stage`, `message`, 필요한 `payload`
 - `artifact` 이벤트 `payload`는 저장한 `ArtifactRef`(`kind`, `file_format`, `revision`, 파일 `hash`, `approved`)다. 실행·모델·산출물 메타데이터와 함께 커밋하고, 같은 결과를 다시 저장할 때는 이벤트를 추가하지 않는다. 내부 경로와 모델 해시는 응답에 넣지 않는다.
 - `interrupt` 이벤트 `payload`: `interrupt_id`, `kind`. 최종 검토(`review`)는 `failed_branches`(실패하거나 빠진 리뷰 관점, 비어 있지 않으면 불완전 검토, TC-F14)와 자동 루프를 멈춘 사유 `hitl_reason`(있을 때)을 더한다.
+- 최종 검토 이벤트에는 `rejected_findings`(지적 ID·관점·제외 사유: `unknown_target`, `unknown_req_id`, `quote_not_found`)와 `router_decision`(A09 판단 당시 `revision`, `stage`, `rationale`, `error_code`; 없으면 null)을 추가한다. 제외 지적은 유효 지적 수·승인 차단에 포함하지 않는다. 이전 이벤트에 이 필드가 없으면 빈 안내로 처리한다. A09 판단은 노드 종료 이벤트에도 남으며, 최종 검토의 판단 revision은 현재 revision보다 이전일 수 있다. 이 이벤트는 기존 소유자 확인·재조회 경로로 보존한다.
 - 정리 문제에 사람의 조치가 필요하면 `hitl_reason=manual_review`로 알린다. 이때 생성과 LLM 검토를 건너뛰며, 실행하지 않은 리뷰 관점은 `failed_branches`에 넣지 않는다 (#17·#15).
 - `error` 이벤트 `payload`: `code`, `retryable`. `EXTRACTION_FAILED`에 상세 안내가 있으면
   `error.detail`과 같은 문장을 `payload.detail`에도 넣는다. 상세 안내가 없거나 공백뿐이면

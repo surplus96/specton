@@ -126,7 +126,10 @@ def router_node(get_client: Callable[[], LLMClient], settings: Settings) -> Node
         feedback = state.get("review_response", {}).get("feedback", "") if revising else ""
         findings = () if revising else state.get("unrouted", ())
         if not feedback and not findings:
-            return {"router_stage": None}  # 판단할 내용이 없다: 사람에게 다시 묻는다
+            return {
+                "router_stage": None,
+                "router_decision": None,
+            }  # 판단할 내용이 없다: 사람에게 다시 묻는다
         result = a09_rework_router.run(
             get_client(),
             design,
@@ -139,6 +142,12 @@ def router_node(get_client: Callable[[], LLMClient], settings: Settings) -> Node
         versions = _recorded(design, {"A09": (a09_rework_router.PROMPT_VERSION, _review(settings))})
         return {
             "router_stage": result.output.stage,
+            "router_decision": {
+                "revision": design.revision,
+                "stage": result.output.stage.value if result.output.stage else None,
+                "rationale": result.output.rationale,
+                "error_code": result.output.error_code,
+            },
             "design": design.evolve(versions=versions),
             "tokens_used": _used(design.run_id, result.calls),
             "call_summaries": {"A09": tuple(c.model_dump(mode="json") for c in result.calls)},

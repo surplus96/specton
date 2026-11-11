@@ -256,7 +256,7 @@ def test_a08_request_carries_the_chain_result_within_its_inputs() -> None:
     assert data["entities"] == [e.model_dump(mode="json") for e in state.entities]
     assert data["relationships"] == [r.model_dump(mode="json") for r in state.relationships]
     assert state.normalized is not None
-    assert data["normalized"] == normalized_view(state.normalized)
+    assert data["normalized"] == normalized_view(state.normalized, include_fk_names=True)
 
 
 def test_a08_sees_inherited_keys_with_their_source_relationship() -> None:

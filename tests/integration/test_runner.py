@@ -936,3 +936,59 @@ def _wait_for(w: _World, run_id: UUID, status: RunState, timeout: float = 10.0) 
             return
         time.sleep(0.05)
     raise AssertionError(f"{status}에 도달하지 못했습니다: {w.status(run_id).status}")
+
+
+def test_review_diagnostics_survive_checkpoint_and_event_replay(
+    world: Callable[..., _World],
+) -> None:
+    def invalid_review(state: GraphState) -> Mapping[str, Any]:
+        f = Finding(
+            id="A07-0-1",
+            source="llm",
+            reviewer_id="A07",
+            kind="missing_audit",
+            severity="major",
+            targets=[{"kind": "entity", "id": "ENT-missing"}],
+            evidence=[{"req_id": "REQ-01", "quote": "없는 인용"}],
+            suggestion="검토 필요",
+            fingerprint="bad-target",
+            iteration=0,
+        )
+        return {
+            "branches": {
+                "A07": BranchResult(
+                    branch="A07", revision=state["design"].revision, ok=True, findings=(f,)
+                )
+            }
+        }
+
+    record = {"revision": 0, "stage": None, "rationale": None, "error_code": "LLM_TIMEOUT"}
+    nodes = {
+        "A07": invalid_review,
+        "a09": lambda state: {"router_stage": None, "router_decision": record},
+    }
+    w = world(nodes)
+    run_id = w.create()
+    w.runner.run_pending()
+    w.answer(run_id, REQUIREMENTS_OK)
+    w.runner.run_pending()
+    with w.pool.connection() as conn:
+        payload = events_after(conn, run_id, OWNER, 0)[-1].data.payload
+    assert payload["rejected_findings"] == [
+        {"finding_id": "A07-0-1", "reviewer_id": "A07", "reason": "unknown_target"}
+    ]
+    assert payload["failed_branches"] == []
+    w.answer(
+        run_id, {"kind": "review", "decision": "revise", "feedback": "감사 기록을 검토해주세요"}
+    )
+    w.runner.run_pending()
+    assert w.status(run_id).status is RunState.AWAITING_REVIEW
+    with w.pool.connection() as conn:
+        before = events_after(conn, run_id, OWNER, 0)
+    assert before[-1].data.payload["router_decision"] == record
+    assert before[-1].data.payload["hitl_reason"] == "router_undecided"
+    w.runner.stop()
+    restarted = world(nodes)
+    restarted.runner.run_pending()
+    with w.pool.connection() as conn:
+        assert events_after(conn, run_id, OWNER, 0) == before

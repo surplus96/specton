@@ -218,7 +218,7 @@ def test_perspective_that_selects_normalized_receives_the_view() -> None:
 
     data = _sent_data(transport)
     assert list(data) == ["requirements", "entities", "relationships", "normalized"]
-    assert data["normalized"] == normalized_view(state.normalized)
+    assert data["normalized"] == normalized_view(state.normalized, include_fk_names=True)
     assert [r["id"] for r in data["relationships"]] == ["REL-01", "REL-02"]
 
 
@@ -274,7 +274,7 @@ def test_combined_mode_sends_normalized_once_for_all_perspectives() -> None:
     assert list(_sent_data(transport)) == ["requirements", "entities", "normalized"]
 
 
-@pytest.mark.parametrize("reviewer", ["A05", "A06"])
+@pytest.mark.parametrize("reviewer", ["A05", "A06", "A07", "A08"])
 def test_relationship_review_receives_actual_derived_fk_pairs(reviewer):
     from specton.review.perspective import PERSPECTIVES_DIR, load_perspective
 
@@ -288,9 +288,7 @@ def test_relationship_review_receives_actual_derived_fk_pairs(reviewer):
     )
     data = _sent_data(transport)
     assert state.normalized is not None
-    assert data["normalized"] == normalized_view(
-        state.normalized, include_fk_names=reviewer == "A06"
-    )
+    assert data["normalized"] == normalized_view(state.normalized, include_fk_names=True)
     # 모델에서 파생한 FK 컬럼도 빠짐없이 전달한다. A03 속성 목록에 없어도 추적 가능하다.
     for fk in state.normalized.foreign_keys:
         sent = next(f for f in data["normalized"]["foreign_keys"] if f["id"] == fk.id)

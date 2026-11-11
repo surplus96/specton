@@ -135,7 +135,7 @@ def review_perspective(
             state,
             perspective.inputs,
             opaque_source_ids=opaque_source_ids,
-            include_fk_names=perspective.reviewer_id == "A06",
+            include_fk_names=perspective.reviewer_id in {"A05", "A06", "A07", "A08"},
         ),
         examples=_examples(pack, perspective, root=settings.pack_root),
     )
@@ -180,7 +180,9 @@ def review_combined(
             ]
         ),
         data=_review_data(
-            state, tuple(s for p in perspectives for s in p.inputs), include_fk_names="A06" in ids
+            state,
+            tuple(s for p in perspectives for s in p.inputs),
+            include_fk_names=any(i in {"A05", "A06", "A07", "A08"} for i in ids),
         ),
     )
     try:
