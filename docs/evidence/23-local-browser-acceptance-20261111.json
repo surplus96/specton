@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "scope": "local actual Chromium UI automation with real LLM, production pack, public synthetic input",
+  "performed_by": "Codex under R1 delegation",
+  "code_commit": "36aed86f911d9fc45c985b1237decb1c1849eb64",
+  "backend_frontend_production_paths_unchanged_by_324": true,
+  "AWS_acceptance": false,
+  "server_redeployment": "deferred by user pending access details",
+  "local_browser_passed": true,
+  "scenarios": {
+    "invalid_input_failure_then_new_upload": true,
+    "analysis_text_edited_through_UI": true,
+    "reload_and_offline_reconnect_preserve_interrupt": true,
+    "approval_through_UI": true,
+    "completed_reload_preserved": true,
+    "ui_downloads_actual_files_verified": 7,
+    "approved_manifest_verified": true,
+    "page_errors": 0
+  },
+  "artifacts": {
+    "visible_UI_formats": 7,
+    "manifest_API": 1,
+    "all_download_hashes_match": true,
+    "PDF_pages_visually_reviewed": 7,
+    "Korean_tables_figures": "readable, within page, approved revision mark checked"
+  },
+  "calls": 8,
+  "estimated_usd": 0.092588665,
+  "evidence_retention_until": "2026-12-11",
+  "limits": [
+    "local macOS/Chrome only; not AWS/new-machine proof",
+    "synthetic small input only; not all evaluation document quality",
+    "network response instrumentation returned empty buffers; actual browser-saved file bytes checked instead",
+    "final server/main release tag not yet accepted"
+  ]
+}
