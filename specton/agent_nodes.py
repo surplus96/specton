@@ -85,10 +85,16 @@ _DESIGN_AGENTS: Mapping[str, _Agent] = {
 }
 
 
-def design_nodes(get_client: Callable[[], LLMClient], settings: Settings) -> dict[str, Node]:
+def design_nodes(
+    get_client: Callable[[], LLMClient],
+    settings: Settings,
+    *,
+    naming_context: Callable[[DesignState], dict[str, Any]] | None = None,
+) -> dict[str, Node]:
     """A01~A04 그래프 노드. `get_client`는 노드가 LLM을 부를 때마다 호출한다."""
     return {
-        name: _design_node(agent, get_client, settings) for name, agent in _DESIGN_AGENTS.items()
+        name: _design_node(agent, get_client, settings, naming_context=naming_context)
+        for name, agent in _DESIGN_AGENTS.items()
     }
 
 
@@ -150,7 +156,13 @@ def openai_agent_nodes(settings: Settings) -> dict[str, Node]:
     }
 
 
-def _design_node(agent: _Agent, get_client: Callable[[], LLMClient], settings: Settings) -> Node:
+def _design_node(
+    agent: _Agent,
+    get_client: Callable[[], LLMClient],
+    settings: Settings,
+    *,
+    naming_context: Callable[[DesignState], dict[str, Any]] | None = None,
+) -> Node:
     def node(state: GraphState) -> Mapping[str, Any]:
         design = state["design"]
         # 사용자가 수정 요청으로 되돌린 재실행에만 요청 문장을 넘긴다 (A09와 같은 기준)
@@ -165,13 +177,24 @@ def _design_node(agent: _Agent, get_client: Callable[[], LLMClient], settings: S
                 pack=_pack(design, agent.agent_id),
                 token_budget=_remaining(state, settings, agent.agent_id),
                 feedback=feedback.strip() or None,
-                **agent.options(design),
+                **{
+                    **agent.options(design),
+                    **(
+                        naming_context(design) if naming_context and agent.agent_id == "A03" else {}
+                    ),
+                },
             )
         except LLMError as exc:
             _used(design.run_id, exc.calls)  # 실패까지의 호출도 남긴다
             raise
         versions = _recorded(
-            design, {agent.agent_id: (agent.prompt_version, settings.design_model)}
+            design,
+            {
+                agent.agent_id: (
+                    result.calls[-1].prompt_version if result.calls else agent.prompt_version,
+                    settings.design_model,
+                )
+            },
         )
         return {
             "design": agent.apply(design, result.output).evolve(versions=versions),

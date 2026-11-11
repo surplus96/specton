@@ -22,7 +22,7 @@ from specton.review.standard_compliance import (
 )
 
 
-def design_rules_node(*, root: Path) -> Node:
+def design_rules_node(*, root: Path, expected_policy_digest: str | None = None) -> Node:
     """같은 root의 심각도·처리 정책·선별 적용을 사용한다. 기본 팩으로 우회하지 않는다."""
     severities = rule_severities(root=root)
     common = load_common(root=root)
@@ -39,7 +39,12 @@ def design_rules_node(*, root: Path) -> Node:
         if common_digest != pack_content_hash(root / "common"):
             raise ValueError("규칙 검사: 공통 정책이 바뀌었습니다. 실행기를 재시작해야 합니다")
         recorded = design.normalized.policy_digest
-        if recorded is not None and recorded != policy_digest(root, design.normalized.pack):
+        expected = (
+            expected_policy_digest
+            if expected_policy_digest is not None
+            else policy_digest(root, design.normalized.pack)
+        )
+        if recorded is not None and recorded != expected:
             raise ValueError("규칙 검사: 정리 후 팩·표준 원본이 바뀌었습니다. 새 실행이 필요합니다")
         routed = [
             apply_policy(f, policies)

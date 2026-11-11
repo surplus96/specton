@@ -1,6 +1,6 @@
 """FastAPI 앱 진입점."""
 
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -39,6 +39,9 @@ def create_graph(
     settings: Settings,
     checkpointer: BaseCheckpointSaver[Any],
     agent_nodes: Mapping[str, Node] | None = None,
+    *,
+    node_overrides: Mapping[str, Node] | None = None,
+    node_wrapper: Callable[[str, Node], Node] | None = None,
 ) -> CompiledStateGraph[GraphState, None, GraphState, GraphState]:
     """문서·에이전트·정리·생성·SQL 검증·RULE·SC를 연결한다.
 
@@ -69,6 +72,9 @@ def create_graph(
         "wait_review": manifest_node(settings.storage_dir),
         "export": export_node(settings.storage_dir),
     }
+    nodes.update(node_overrides or {})
+    if node_wrapper is not None:
+        nodes = {name: node_wrapper(name, node) for name, node in nodes.items()}
     return build_graph(nodes, checkpointer=checkpointer, max_rework=settings.max_rework_iterations)
 
 

@@ -11,7 +11,7 @@ from typing import Any, TypedDict
 from specton.codegen.normalize_step import normalize_from_state
 from specton.contracts import DesignState, Finding
 from specton.contracts.findings import FindingSource, Severity
-from specton.contracts.normalized import Normalized, Problem, ProblemCode
+from specton.contracts.normalized import Normalized, NormalizeResult, Problem, ProblemCode
 from specton.graph import GraphState, Node
 
 
@@ -25,7 +25,12 @@ class FailureReview(TypedDict):
 type FailureMapper = Callable[[DesignState, tuple[Problem, ...]], FailureReview]
 
 
-def normalization_node(map_failure: FailureMapper, *, root: Path) -> Node:
+def normalization_node(
+    map_failure: FailureMapper,
+    *,
+    root: Path,
+    normalizer: Callable[[DesignState], NormalizeResult] | None = None,
+) -> Node:
     """정리 노드. `root`는 호출자가 settings.pack_root를 넘기며 명명 인자를 따로 주입하지 않는다.
 
     R4의 변환 함수 이름·반환 클래스에 의존하지 않고, 준비된 함수를 콜백으로 감싼다.
@@ -34,7 +39,11 @@ def normalization_node(map_failure: FailureMapper, *, root: Path) -> Node:
 
     def normalize(state: GraphState) -> Mapping[str, Any]:
         design = state["design"].evolve(normalized=None)
-        result = normalize_from_state({"design": design}, root=root)
+        result = (
+            normalizer(design)
+            if normalizer is not None
+            else normalize_from_state({"design": design}, root=root)
+        )
         if isinstance(result, Normalized):
             return {
                 "design": design.evolve(normalized=result.model),

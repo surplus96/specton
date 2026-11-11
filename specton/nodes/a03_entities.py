@@ -402,6 +402,9 @@ def run(
     pack: str,
     token_budget: int | None = None,
     feedback: str | None = None,
+    naming_lexicon: Lexicon | None = None,
+    naming_guidance: Mapping[str, str] | None = None,
+    naming_words: Sequence[Mapping[str, str]] = (),
 ) -> NodeRun[A03Result]:
     """요구사항·기능으로 엔티티를 설계하고 코드가 ID를 붙여 기능의 `entity_ops`를 채운다."""
     if not state.requirements:
@@ -417,13 +420,21 @@ def run(
         feedback,
     )
     examples = load_examples(pack, "A03", A03Output, root=settings.pack_root)
+    if naming_lexicon is not None:
+        data["evaluation_naming"] = {
+            "approved_name_forms": dict(naming_guidance or {}),
+            "source_words": list(naming_words),
+            "scope": "post_observation_exploration; preserve business meaning and constraints",
+        }
 
     def ask(payload: Mapping[str, Any], budget: int | None) -> LLMResult[A03Output]:
         request = build_request(
             settings,
             role="design",
             stage="A03",
-            prompt_version=PROMPT_VERSION,
+            prompt_version=f"{PROMPT_VERSION}-exploration-v1"
+            if naming_lexicon is not None
+            else PROMPT_VERSION,
             system=SYSTEM_PROMPT,
             data=payload,
             examples=examples,
@@ -438,7 +449,12 @@ def run(
     )
     result = ask(data, token_budget)
     draft, calls = result.output, result.calls
-    unresolved = _unresolved_names(draft, load_pack_lexicon(pack, settings.pack_root))
+    unresolved = _unresolved_names(
+        draft,
+        naming_lexicon
+        if naming_lexicon is not None
+        else load_pack_lexicon(pack, settings.pack_root),
+    )
     spent = sum(c.input_tokens + c.output_tokens for c in calls)
     if unresolved and (token_budget is None or spent < token_budget):
         review = ask(

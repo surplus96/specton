@@ -16,6 +16,7 @@ from specton.codegen.model import Normalized
 from specton.codegen.naming import PackLexicon, load_naming_rules, load_pack_lexicon, physical_name
 from specton.codegen.normalize import PackRef, normalize
 from specton.contracts import DesignState
+from specton.contracts.normalized import NormalizeResult
 from specton.packs.build import BuildError, pack_content_hash, read_lock_versions, read_yaml
 from specton.packs.lexicon_sources import Source, validate_lexicon_sources, verified_source_rows
 from specton.packs.loader import Pack, PackError, PackName, Version, Word, load_pack
@@ -233,7 +234,7 @@ class LexiconOverlay:
             ),
         }
 
-    def normalize(self, state: DesignState) -> DesignState:
+    def normalize_result(self, state: DesignState) -> NormalizeResult:
         if self.reviews is None:
             raise ValueError("승인되지 않은 탐색 사전은 실행할 수 없습니다")
         self.assert_current()
@@ -252,8 +253,17 @@ class LexiconOverlay:
             rules=load_naming_rules(self.base_root),
         )
         if not isinstance(result, Normalized):
-            detail = ", ".join(f"{p.code.value}:{p.target}" for p in result.problems)
-            raise ValueError(f"탐색 조건 정리에 실패했습니다 ({detail})")
+            return result
+        return Normalized(
+            model=result.model.evolve(
+                common_version=self.spec.base_common_version,
+                policy_digest=self.policy_digest(),
+            )
+        )
+
+    def policy_digest(self) -> str:
+        if self.reviews is None:
+            raise ValueError("승인되지 않은 탐색 조건입니다")
         policy_record: dict[str, object] = {
             "scope": "evaluation_exploration",
             "base": self.spec.base_policy_digest,
@@ -263,12 +273,16 @@ class LexiconOverlay:
         if self.reviews.r1_override is not None:
             policy_record["approval_mode"] = self.reviews.approval_mode
             policy_record["r1_override"] = self.reviews.r1_override.model_dump(mode="json")
-        policy = _digest(policy_record)
-        return versioned.evolve(
-            normalized=result.model.evolve(
-                common_version=self.spec.base_common_version,
-                policy_digest=policy,
-            )
+        return _digest(policy_record)
+
+    def normalize(self, state: DesignState) -> DesignState:
+        result = self.normalize_result(state)
+        if not isinstance(result, Normalized):
+            detail = ", ".join(f"{p.code.value}:{p.target}" for p in result.problems)
+            raise ValueError(f"탐색 조건 정리에 실패했습니다 ({detail})")
+        return state.evolve(
+            versions=state.versions.evolve(pack_version=self.spec.base_pack_version),
+            normalized=result.model,
         )
 
     def assert_current(self) -> None:
