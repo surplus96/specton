@@ -231,7 +231,7 @@ function Workspace({ runId }: { runId: string }) {
           <select
             value={revision}
             onChange={(e) => setPicked(Number(e.target.value))}
-            style={{ background: dark.card, color: dark.ink, border: `1px solid ${dark.border}`, borderRadius: 6, padding: '2px 6px' }}
+            style={{ background: dark.card, color: dark.ink, border: `1px solid ${dark.border}`, borderRadius: 'var(--radius-sm)', padding: '2px 6px' }}
           >
             {revisionOptions(run?.revision ?? 0).map((r) => (
               <option key={r} value={r}>
