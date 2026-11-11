@@ -61,6 +61,13 @@
 | Function | `id`, `name`, `description`, `priority`, `req_ids`, `entity_ops` | `priority` nullable + 근거·확인 상태 (ADR-0006). A03 전까지 `entity_ops` 비움 |
 | Entity / Attribute | `pack`, `name`, `description`, `attributes`, `req_ids`, `crud_exemptions`, `unique_keys?` / 타입·길이·정밀도·키·NULL·제약 | Entity.unique_keys는 함께 중복을 막는 기존 속성 ID 묶음 목록. 단일 속성 is_unique와 다름. SQL UNIQUE의 NULL 의미 유지 |
 | Relationship | `id`, `parent`, `child`, `cardinality`, `optional`, `identifying`, `rationale`, `req_ids`, `fk_bindings?` | 명시적 parent_attribute_id·child_attribute_id 쌍으로 기존 업무 속성을 FK에 재사용. 미선언 시 파생, 이름·타입만으로 재사용하지 않음 |
+
+명시적 FK 재사용의 NULL은 FK 묶음 단위로 검사한다 (ADR-0009, normalize-v4).
+필수·식별 FK는 모든 구성 칼럼이 NOT NULL, 선택 FK는 한 칸 이상 NULL 허용이어야 한다.
+선택 복합 FK는 다른 필수 FK와 공유하는 NOT NULL 칼럼을 포함할 수 있다. PostgreSQL
+기본 MATCH SIMPLE을 사용하며 바인딩·타입·부모 키 검사는 유지한다. 속성의 NULL 값은
+자동 변경하지 않고 상속 키까지 포함한 실제 FK 구성은 정리에서 최종 검사한다.
+
 | Finding | `id`, `severity`, `kind`, `source`, `targets`, `evidence`, `suggestion`, `target_stage`, `fingerprint`, `iteration` | `reviewer_id`, 근거 위치, 필터 결과 |
 | NormalizedModel | `pack`, `pack_version`, `rules_version`, `lexicon_digest`, `common_version?`, `policy_digest?`, `tables`(`Table`: 컬럼·PK·UNIQUE), `foreign_keys`(`ForeignKey`) | 모델 정리(#12) 성공 결과(`specton/contracts/normalized.py`). PK·FK·UNIQUE는 컬럼 ID 묶음(순서 있음). 실패는 `NormalizeFailed`(`problems`)로 따로 돌려주며 상태에 두지 않는다. ID 기준은 ADR-0016 |
 | SqlValidation | `status`, `artifact_hash`, `validator_version`, `policy_version`, `postgres_version`, `steps`(`ValidationStep`: `name`·`status`·`issues`) | SQL 파일 하나의 검증 결과(`specton/contracts/validation.py`, #167). 단계는 `parse` → `allowed_statements` → `execute` → `rollback` → `cleanup`이 순서대로 한 번씩 있고, 실행하지 않은 단계는 `not_run`이다. 단계 상태 `failed`는 SQL 결함, `error`는 검증 환경·정리 장애이며(`rollback`·`cleanup`에는 `failed`가 없다) 둘 다 `issues`(`ValidationIssue`: `code`·`message`·`statement_index`·`sqlstate`)가 1건 이상이다. 전체 `status`는 `error` > `failed` > `unverified`(실패 없이 `not_run`이 있음) > `passed` 순으로 단계에서 정해지고 계약이 일치를 검사한다. 파싱·허용 문장 검사를 통과하지 않으면 `execute`는 `not_run`이다. `postgres_version`은 대상 DB이며 DDL 생성기의 `DDL_TARGET`과 같은 값(`postgresql-18`)이다. `message`에는 보여도 되는 문장만 넣는다. run·revision·`model_hash`·검증 시도 ID는 검증기가 모르며 실행기·저장 쪽이 붙인다. 최종 승인 근거는 `passed`뿐이다 |

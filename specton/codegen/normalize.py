@@ -27,7 +27,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 
-from specton.codegen.key_constraints import binding_columns, declared_reuse
+from specton.codegen.key_constraints import binding_columns, declared_reuse, fk_nullability_matches
 from specton.codegen.model import (
     RULES_VERSION,
     Column,
@@ -701,6 +701,16 @@ def _check_fk_columns(
     bad: _Bad,
 ) -> None:
     child_cols = {c.id: c for c in child.columns}
+    if (
+        relation is not None
+        and all(c in child_cols for c in fk.columns)
+        and not fk_nullability_matches(
+            (child_cols[c].nullable for c in fk.columns),
+            optional=relation.optional and relation.cardinality is not Cardinality.MANY_TO_MANY,
+            identifying=relation.identifying,
+        )
+    ):
+        bad(fk.id, "FK 묶음의 NULL 조건이 관계의 선택·식별 여부와 다름")
     declared = {b.child_attribute_id for b in relation.fk_bindings or ()} if relation else set()
     actual = {child_cols[c].attribute_id for c in fk.columns if c in child_cols}
     if not declared <= actual:

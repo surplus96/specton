@@ -1,0 +1,163 @@
+{
+  "run_id": "synthetic-optional-composite",
+  "versions": {
+    "pack_id": "inventory",
+    "pack_version": "0.1.23"
+  },
+  "requirements": [
+    {
+      "id": "REQ-01",
+      "source_ref": {
+        "file_format": "csv",
+        "row": 2
+      },
+      "text": "재고는 품목을 반드시 지정하며 로트는 필요할 때만 지정한다.",
+      "draft_text": "재고는 품목을 반드시 지정하며 로트는 필요할 때만 지정한다.",
+      "type": "FR",
+      "analysis_version": 1
+    }
+  ],
+  "entities": [
+    {
+      "id": "ENT-ITEM",
+      "pack": "inventory",
+      "name": "품목",
+      "description": "공유 FK 검증용 새 합성 설계",
+      "attributes": [
+        {
+          "id": "ATTR-ITEM",
+          "name": "품목코드",
+          "data_type": "varchar",
+          "length": 20,
+          "is_key": true,
+          "nullable": false,
+          "req_ids": [
+            "REQ-01"
+          ]
+        }
+      ],
+      "req_ids": [
+        "REQ-01"
+      ]
+    },
+    {
+      "id": "ENT-LOT",
+      "pack": "inventory",
+      "name": "로트",
+      "description": "공유 FK 검증용 새 합성 설계",
+      "attributes": [
+        {
+          "id": "ATTR-LOT-ITEM",
+          "name": "품목코드",
+          "data_type": "varchar",
+          "length": 20,
+          "is_key": true,
+          "nullable": false,
+          "req_ids": [
+            "REQ-01"
+          ]
+        },
+        {
+          "id": "ATTR-LOT-NO",
+          "name": "로트번호",
+          "data_type": "varchar",
+          "length": 20,
+          "is_key": true,
+          "nullable": false,
+          "req_ids": [
+            "REQ-01"
+          ]
+        }
+      ],
+      "req_ids": [
+        "REQ-01"
+      ]
+    },
+    {
+      "id": "ENT-STOCK",
+      "pack": "inventory",
+      "name": "재고",
+      "description": "공유 FK 검증용 새 합성 설계",
+      "attributes": [
+        {
+          "id": "ATTR-STOCK",
+          "name": "재고번호",
+          "data_type": "varchar",
+          "length": 20,
+          "is_key": true,
+          "nullable": false,
+          "req_ids": [
+            "REQ-01"
+          ]
+        },
+        {
+          "id": "ATTR-STOCK-ITEM",
+          "name": "품목코드",
+          "data_type": "varchar",
+          "length": 20,
+          "is_key": false,
+          "nullable": false,
+          "req_ids": [
+            "REQ-01"
+          ]
+        },
+        {
+          "id": "ATTR-STOCK-LOT",
+          "name": "로트번호",
+          "data_type": "varchar",
+          "length": 20,
+          "is_key": false,
+          "nullable": true,
+          "req_ids": [
+            "REQ-01"
+          ]
+        }
+      ],
+      "req_ids": [
+        "REQ-01"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "REL-01",
+      "parent": "ENT-ITEM",
+      "child": "ENT-STOCK",
+      "cardinality": "1:N",
+      "optional": false,
+      "identifying": false,
+      "rationale": "\"재고는 품목을 반드시 지정하며 로트는 필요할 때만 지정한다.\"",
+      "req_ids": [
+        "REQ-01"
+      ],
+      "fk_bindings": [
+        {
+          "parent_attribute_id": "ATTR-ITEM",
+          "child_attribute_id": "ATTR-STOCK-ITEM"
+        }
+      ]
+    },
+    {
+      "id": "REL-02",
+      "parent": "ENT-LOT",
+      "child": "ENT-STOCK",
+      "cardinality": "1:N",
+      "optional": true,
+      "identifying": false,
+      "rationale": "\"재고는 품목을 반드시 지정하며 로트는 필요할 때만 지정한다.\"",
+      "req_ids": [
+        "REQ-01"
+      ],
+      "fk_bindings": [
+        {
+          "parent_attribute_id": "ATTR-LOT-ITEM",
+          "child_attribute_id": "ATTR-STOCK-ITEM"
+        },
+        {
+          "parent_attribute_id": "ATTR-LOT-NO",
+          "child_attribute_id": "ATTR-STOCK-LOT"
+        }
+      ]
+    }
+  ]
+}

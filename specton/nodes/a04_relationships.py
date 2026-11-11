@@ -14,6 +14,7 @@ from typing import Any, Self
 
 from pydantic import model_validator
 
+from specton.codegen.key_constraints import fk_nullability_matches
 from specton.config import Settings
 from specton.contracts import Cardinality, DesignState, Relationship, RelationshipDraft
 from specton.contracts.base import Contract
@@ -28,7 +29,7 @@ from specton.nodes.common import (
 )
 from specton.packs.examples import load_examples
 
-PROMPT_VERSION = "a04-v6"
+PROMPT_VERSION = "a04-v7"
 SYSTEM_PROMPT = """\
 너는 데이터 모델 관계 설계자다. 주어진 엔티티 사이의 관계를 요구사항에 근거해 판단한다.
 - parent_name·child_name에는 입력 엔티티의 name을 그대로 쓴다.
@@ -42,8 +43,10 @@ SYSTEM_PROMPT = """\
   parent_attribute_name·child_attribute_name에 각각 입력 속성 name을 적는다. 이름·타입이
   같다는 이유만으로 선언하지 않는다. 선언하지 않은 FK 칸은 정리 코드가 새로 만든다.
   상속된 키나 다른 관계에서 만든 칸을 이름으로 추측해 바인딩하지 않는다.
-  재사용할 자식 속성의 nullable은 optional=true이고 identifying=false일 때만 true여야 한다.
-  조건이 맞지 않으면 재사용을 선언하지 않는다. 재사용하려고 요구사항의 선택·식별 의미를 바꾸거나
+  필수·식별 FK의 자식 칸은 모두 nullable=false다. 선택 단일 FK는 nullable=true여야 한다.
+  선택 복합 FK는 한 칸 이상 NULL을 허용해야 한다. 다른 필수 FK와 공유하는 칸은 NOT NULL을
+  유지할 수 있고, 나머지 칸의 NULL로 선택 참조의 부재를 표현한다 (MATCH SIMPLE).
+  충돌을 숨기려고 재사용 선언을 빼지 않는다. 재사용하려고 요구사항의 선택·식별 의미를 바꾸거나
   존재하는 업무 속성을 바꾸지 않는다. 타입·NULL·키의 최종 검사는 정리 코드도 수행한다.
 - req_ids에는 근거 요구사항 ID를 적는다.
 - rationale은 req_ids 요구사항 문장에서 근거 부분을 큰따옴표로 그대로 인용하고,
@@ -108,6 +111,9 @@ def run(
         {r.id: r.text for r in state.requirements},
         attributes=attributes,
         nullability={e.name: {a.name: a.nullable for a in e.attributes} for e in state.entities},
+        primary_keys={
+            e.name: frozenset(a.name for a in e.attributes if a.is_key) for e in state.entities
+        },
     )
     result = client.complete(request, output_model, token_budget=token_budget)
     drafts = result.output.relationships
@@ -176,6 +182,7 @@ def _checked_against(
     *,
     attributes: Mapping[str, Mapping[str, str]] | None = None,
     nullability: Mapping[str, Mapping[str, bool]] | None = None,
+    primary_keys: Mapping[str, frozenset[str]] | None = None,
 ) -> type[A04Output]:
     """이번 입력으로 검사하는 출력 모델. 어기면 형식 오류처럼 재요청 대상이 된다.
 
@@ -193,7 +200,7 @@ def _checked_against(
             unknown_names = sorted(names - set(entity_names))
             if unknown_names:
                 raise ValueError(f"입력에 없는 엔티티를 참조했습니다: {', '.join(unknown_names)}")
-            _check_binding_inputs(self.relationships, attributes, nullability)
+            _check_binding_inputs(self.relationships, attributes, nullability, primary_keys)
             referenced = {req_id for r in self.relationships for req_id in r.req_ids}
             unknown_reqs = sorted(referenced - normalized.keys())
             if unknown_reqs:
@@ -217,6 +224,7 @@ def _check_binding_inputs(
     relationships: tuple[RelationshipDraft, ...],
     attributes: Mapping[str, Mapping[str, str]] | None,
     nullability: Mapping[str, Mapping[str, bool]] | None,
+    primary_keys: Mapping[str, frozenset[str]] | None,
 ) -> None:
     """기존 속성 참조와 입력에서 알 수 있는 NULL 호환성을 재요청 전에 검사한다."""
     for relation in relationships:
@@ -226,15 +234,36 @@ def _check_binding_inputs(
                 or binding.child_attribute_name not in attributes[relation.child_name]
             ):
                 raise ValueError(f"FK 재사용은 부모·자식의 기존 속성만 참조합니다: {binding}")
-            expected = relation.optional and not relation.identifying
-            if nullability is not None and (
-                nullability[relation.child_name][binding.child_attribute_name] != expected
-            ):
-                raise ValueError(
-                    f"FK 재사용 NULL 조건 불일치: {relation.parent_name}→{relation.child_name}."
-                    f"{binding.child_attribute_name}의 nullable은 {expected}여야 합니다. "
-                    "업무 의미를 유지하고 호환되지 않는 재사용 선언을 고치세요"
-                )
+        if nullability is not None and relation.fk_bindings:
+            _check_binding_nullability(relation, relationships, nullability, primary_keys)
+
+
+def _check_binding_nullability(
+    relation: RelationshipDraft,
+    relationships: tuple[RelationshipDraft, ...],
+    nullability: Mapping[str, Mapping[str, bool]],
+    primary_keys: Mapping[str, frozenset[str]] | None,
+) -> None:
+    values = [
+        nullability[relation.child_name][b.child_attribute_name] for b in relation.fk_bindings or ()
+    ]
+    if relation.optional and not relation.identifying:
+        # 상속 PK의 실제 구성은 정리 단계에서 확정한다. 추측해 정상 응답을 거절하지 않는다.
+        keys = primary_keys.get(relation.parent_name) if primary_keys is not None else None
+        if not keys or any(
+            r.identifying and r.child_name == relation.parent_name for r in relationships
+        ):
+            return
+        bound = {b.parent_attribute_name for b in relation.fk_bindings or ()}
+        values.extend(True for _ in keys - bound)  # 미선언 키는 정리에서 NULL 허용 칸으로 파생
+    if not fk_nullability_matches(
+        values, optional=relation.optional, identifying=relation.identifying
+    ):
+        raise ValueError(
+            f"FK 재사용 NULL 조건 불일치: {relation.parent_name}→{relation.child_name}. "
+            "필수 FK는 모두 NOT NULL, 선택 FK는 NULL 가능 칸이 필요합니다. "
+            "업무 의미와 명시적 바인딩을 함께 유지하세요"
+        )
 
 
 def _quotes_requirements(rel: RelationshipDraft, texts: Mapping[str, str]) -> bool:
