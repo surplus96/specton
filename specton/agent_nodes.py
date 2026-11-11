@@ -81,6 +81,7 @@ _DESIGN_AGENTS: Mapping[str, _Agent] = {
         a04_relationships.PROMPT_VERSION,
         a04_relationships.run,
         lambda design, output: design.evolve(relationships=output),
+        lambda design: {"defer_binding_conflicts": True},
     ),
 }
 

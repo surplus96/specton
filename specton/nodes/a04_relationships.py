@@ -87,6 +87,7 @@ def run(
     pack: str,
     token_budget: int | None = None,
     feedback: str | None = None,
+    defer_binding_conflicts: bool = False,
 ) -> NodeRun[tuple[Relationship, ...]]:
     """현재 엔티티·요구사항으로 관계를 설계하고 코드가 ID를 붙인다."""
     if not state.entities:
@@ -110,7 +111,11 @@ def run(
         entity_ids.keys(),
         {r.id: r.text for r in state.requirements},
         attributes=attributes,
-        nullability={e.name: {a.name: a.nullable for a in e.attributes} for e in state.entities},
+        # 그래프는 A03에서 만든 기존 속성의 NULL 충돌을 정리 규칙 지적으로 돌려보낸다.
+        # 이름·참조·인용 검사는 그대로 적용하며 속성/관계 의미는 바꾸지 않는다.
+        nullability=None
+        if defer_binding_conflicts
+        else {e.name: {a.name: a.nullable for a in e.attributes} for e in state.entities},
         primary_keys={
             e.name: frozenset(a.name for a in e.attributes if a.is_key) for e in state.entities
         },
