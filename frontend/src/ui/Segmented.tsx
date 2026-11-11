@@ -23,6 +23,18 @@ function Segmented<V extends string>({ options, value, onChange, label, variant 
           type="button"
           role="radio"
           aria-checked={value === o.value}
+          tabIndex={value === o.value || (value === null && o === options.find((x) => !x.disabled)) ? 0 : -1}
+          onKeyDown={(event) => {
+            if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return
+            event.preventDefault()
+            const enabled = options.filter((x) => !x.disabled)
+            const at = enabled.findIndex((x) => x.value === o.value)
+            const step = ['ArrowLeft', 'ArrowUp'].includes(event.key) ? -1 : 1
+            const next = event.key === 'Home' ? 0 : event.key === 'End' ? enabled.length - 1 : (at + step + enabled.length) % enabled.length
+            onChange(enabled[next].value)
+            const buttons = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')
+            buttons?.[next]?.focus()
+          }}
           disabled={disabled || o.disabled}
           title={o.title}
           onClick={() => onChange(o.value)}

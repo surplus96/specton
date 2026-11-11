@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { ApiError, errorMessage } from '../api/errors.ts'
-import { notifyRunsChanged, runFileName } from '../api/runNames.ts'
+import { runFileName } from '../api/runNames.ts'
 import Icon from '../layout/Icon.tsx'
 import StageSteps, { type ScreenId } from '../layout/StageSteps.tsx'
 import Button from '../ui/Button.tsx'
@@ -37,7 +37,6 @@ function RunPage({ runId }: { runId: string }) {
   const [params, setParams] = useSearchParams()
   const { run, events, receivedAt, connection, loadError, refresh } = useRunStatus(runId)
   const file = runFileName(runId)
-  const status = run?.status
   const lastScreen = useRef<ScreenId | null>(null)
   const viewParam = params.get('view')
   const currentScreen: ScreenId | null = run
@@ -54,10 +53,6 @@ function RunPage({ runId }: { runId: string }) {
     lastScreen.current = currentScreen
   }, [currentScreen])
 
-  // 상태가 바뀌면 사이드바·시작 화면의 실행 목록도 다시 읽는다
-  useEffect(() => {
-    if (status) notifyRunsChanged()
-  }, [status])
   const label = file ?? `실행 ${runId.slice(0, 8)}`
 
   if (loadError) {

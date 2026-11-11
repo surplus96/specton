@@ -25,34 +25,11 @@ function StartPage() {
     </Notice>
   )
 
-  if (loading) {
-    return (
-      <div className="stack-lg" aria-busy="true">
-        <div className="skeleton" style={{ height: 56, maxWidth: 520 }} />
-        <div className="skeleton" style={{ height: 300 }} />
-      </div>
-    )
-  }
-
-  if (firstVisit) {
-    return (
-      <div className="stack-lg screen">
-        {loadFailed}
-        <header>
-          <p className="eyebrow">첫 작업 안내</p>
-          <h1 className="hero">
-            어떤 <strong>요구사항</strong>을 설계할까요?
-          </h1>
-        </header>
-        <UploadPanel />
-        <SampleDemo />
-      </div>
-    )
-  }
-
   return (
     <div className="stack-lg screen">
       {loadFailed}
+      {loading && <p role="status">지난 작업을 불러오는 중이에요.</p>}
+      {firstVisit && <h1 className="hero">어떤 <strong>요구사항</strong>을 설계할까요?</h1>}
       {active && (
         <section aria-labelledby="now-title">
           <h2 className="section-title" id="now-title">
@@ -84,6 +61,7 @@ function StartPage() {
         </h2>
         <UploadPanel />
       </section>
+      {firstVisit && <SampleDemo />}
     </div>
   )
 }

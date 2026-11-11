@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { getView } from '../../api/client.ts'
 import { errorMessage } from '../../api/errors.ts'
 import type { RunStatus } from '../../api/types.ts'
-import type { AnalysedRequirement, ArtifactRef, DesignItem, Finding } from '../../api/viewItems.ts'
+import type { ArtifactRef, DesignItem, Finding } from '../../api/viewItems.ts'
 import Icon from '../../layout/Icon.tsx'
 import StatusTag from '../../layout/StatusTag.tsx'
 import Button from '../../ui/Button.tsx'
@@ -20,7 +20,7 @@ import ErdView from './ErdView.tsx'
 import { artifactText } from './files.ts'
 import { workspaceTab, type WorkspaceTab } from './pipeline.ts'
 import ResultSummary from './ResultSummary.tsx'
-import { rtmRows, type RtmRow } from './rtm.ts'
+import { parseRtmCsv, RTM_COLUMNS, type RtmRow } from './rtm.ts'
 import { KIND_LABEL, downloadErrorText, isApproved, isDownloadable, missingKinds, revisionOptions, toArtifacts, type ArtifactKind } from './rules.ts'
 
 // UI-05 결과 작업공간: 기능·ERD·DDL·RTM·검토 탭, revision 고르기, 미완성 가지 표시.
@@ -140,7 +140,7 @@ function WorkspacePanel({ run, label, onReview }: Props) {
               { key: 'design', label: '기능', content: <DesignTables items={data.design} names={names} /> },
               { key: 'erd', label: 'ERD', content: <ErdView runId={run.run_id} artifact={find('erd', 'mmd')} /> },
               { key: 'ddl', label: 'DDL', content: <TextArtifact runId={run.run_id} artifact={find('ddl', 'sql')} kind="ddl" /> },
-              { key: 'rtm', label: 'RTM', content: <RtmTab runId={run.run_id} revision={revision} design={data.design} artifacts={data.artifacts} names={names} /> },
+              { key: 'rtm', label: 'RTM', content: <RtmTab key={`${run.run_id}:${revision}`} runId={run.run_id} artifacts={data.artifacts} /> },
               { key: 'review', label: `검토 ${data.findings.length}`, content: <FindingsTable findings={data.findings} names={names} /> },
             ]}
           />
@@ -198,79 +198,33 @@ const VALIDATION_TEXT: Record<NonNullable<ArtifactRef['validation']>['status'], 
 }
 
 /** RTM: 화면 미리보기 표 + 형식별 내려받기 (Excel·CSV가 정식 산출물) */
-function RtmTab({
-  runId,
-  revision,
-  design,
-  artifacts,
-  names,
-}: {
-  runId: string
-  revision: number
-  design: DesignItem[]
-  artifacts: ArtifactRef[]
-  names: Map<string, string>
-}) {
-  // 엔티티 ID는 서버가 해시로 붙여 길다(ENT-98727d…). 화면에는 이름을 먼저, ID는 마우스를 올리면 보인다
-  const label = (id: string) => (
-    <span key={id} title={id}>
-      {names.get(id) ?? id}
-    </span>
-  )
-  const join = (ids: string[]) =>
-    ids.length === 0 ? '—' : ids.flatMap((id, i) => (i === 0 ? [label(id)] : [<span key={`${id}-sep`}> · </span>, label(id)]))
-  const [reqIds, setReqIds] = useState<string[] | null | undefined>(undefined)
-  const files = artifacts.filter((a) => a.kind === 'rtm' && isDownloadable(a)) // 승인 전 PDF 후보는 받을 수 없다
-
+function RtmTab({ runId, artifacts }: { runId: string; artifacts: ArtifactRef[] }) {
+  const [rows, setRows] = useState<RtmRow[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
+  const files = artifacts.filter((a) => a.kind === 'rtm' && isDownloadable(a))
+  const csv = files.find((a) => a.file_format === 'csv')
   useEffect(() => {
+    if (!csv) return
     let alive = true
-    getView(runId, 'requirements', revision)
-      .then((v) => alive && setReqIds((v.items as AnalysedRequirement[]).map((r) => r.id)))
-      .catch(() => alive && setReqIds(null)) // 못 읽으면 설계에 있는 요구사항만으로 보인다
-    return () => {
-      alive = false
-    }
-  }, [runId, revision])
-
-  const rows = useMemo(() => rtmRows(design, reqIds ?? undefined), [design, reqIds])
-
+    setRows(null)
+    setError(null)
+    artifactText(runId, csv).then(parseRtmCsv)
+      .then((data) => { if (alive) setRows(data) })
+      .catch((err: unknown) => { if (alive) setError(errorMessage(err)) })
+    return () => { alive = false }
+  }, [runId, csv, attempt])
   return (
-    <div className="stack-sm" style={{ gap: 14 }}>
+    <div className="stack-sm">
       <div className="row row--between">
-        <span className="muted" style={{ fontSize: 14 }}>
-          화면 미리보기예요. 정식 추적표는 아래 파일이에요.
-        </span>
-        <div className="row">
-          {files.length === 0 ? (
-            <StatusTag tone="warning">RTM 파일 없음 (미완성)</StatusTag>
-          ) : (
-            files.map((a) => <DownloadButton key={a.file_format} runId={runId} artifact={a} />)
-          )}
-        </div>
+        <span className="muted">서버가 생성한 정식 RTM CSV의 전체 열·행입니다.</span>
+        <div className="row">{files.map((a) => <DownloadButton key={a.file_format} runId={runId} artifact={a} />)}</div>
       </div>
-      {reqIds === undefined ? (
-        <Loading text="요구사항을 불러오는 중이에요" />
-      ) : (
-        <DataTable<RtmRow>
-          label="RTM 미리보기"
-          rows={rows}
-          rowKey={(r) => r.reqId}
-          pageSize={30}
-          minWidth={720}
-          empty="연결할 요구사항이 없어요."
-          columns={[
-            { key: 'req', title: '요구사항', width: 140, render: (r) => <strong className="mono">{r.reqId}</strong> },
-            { key: 'fn', title: '기능', render: (r) => join(r.functions) },
-            { key: 'ent', title: '엔티티', render: (r) => join(r.entities) },
-            {
-              key: 'state',
-              title: '상태',
-              width: 110,
-              render: (r): ReactNode => (r.linked ? '연결됨' : <StatusTag tone="warning">미연결</StatusTag>),
-            },
-          ]}
-        />
-      )}
+      {!csv ? <Notice kind="warning" title="RTM CSV가 아직 없어요 (미완성)" />
+        : error ? <Notice kind="error" title={error} action={<Button onClick={() => setAttempt((n) => n + 1)}>다시 불러오기</Button>} />
+        : rows === null ? <Loading text="정식 RTM을 불러오는 중이에요" />
+        : <DataTable<RtmRow> label="정식 RTM 미리보기" rows={rows} rowKey={(r) => String(rows.indexOf(r))} pageSize={30} minWidth={1500}
+            columns={RTM_COLUMNS.map((name) => ({ key: name, title: name, render: (r: RtmRow) => r[name] || '—' }))} />}
     </div>
   )
 }

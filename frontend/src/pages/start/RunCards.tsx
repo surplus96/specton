@@ -8,6 +8,7 @@ import { recentMessages } from '../run/screens.ts'
 import { useRunStatus } from '../run/useRunStatus.ts'
 import { dotDate, fourStepStates, runAction, runBadge, runMessage } from '../runMeta.ts'
 import FourSteps from './FourSteps.tsx'
+import Notice from '../../ui/Notice.tsx'
 
 // 시작 화면의 실행 카드 (F안 「작업 있음」).
 
@@ -24,10 +25,13 @@ function Badge({ status }: { status: RunSummary['status'] }) {
 /** 지금 진행 중 카드: 상태를 실시간으로 따라가며 네 단계와 최신 소식을 보인다 */
 export function ActiveRunCard({ runId }: { runId: string }) {
   const navigate = useNavigate()
-  const { run, events, connection } = useRunStatus(runId)
+  const { run, events, connection, loadError, refresh } = useRunStatus(runId)
   const { title, file } = runTitle(runId)
   const open = () => navigate(`/?run=${encodeURIComponent(runId)}`)
 
+  if (loadError && !run) {
+    return <Notice kind="error" title="작업 상태를 불러오지 못했어요." action={<Button onClick={() => void refresh()}>다시 시도</Button>} />
+  }
   if (!run) {
     return <div className="card card--strong skeleton" style={{ height: 240 }} aria-label="진행 중인 작업을 불러오는 중" />
   }

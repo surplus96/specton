@@ -12,7 +12,9 @@ function read(): Store {
   try {
     const raw = window.localStorage.getItem(KEY)
     const data: unknown = raw ? JSON.parse(raw) : {}
-    return data && typeof data === 'object' ? (data as Store) : {}
+    return data && typeof data === 'object' && !Array.isArray(data)
+      ? Object.fromEntries(Object.entries(data).filter(([, value]) => typeof value === 'string'))
+      : {}
   } catch {
     return {}
   }

@@ -31,6 +31,13 @@ export function Logo() {
 function AppLayout() {
   const [collapsed, setCollapsed] = useState(readCollapsed)
   const [drawer, setDrawer] = useState(false)
+  const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 960px)').matches)
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 960px)')
+    const change = () => setNarrow(media.matches)
+    media.addEventListener('change', change)
+    return () => media.removeEventListener('change', change)
+  }, [])
   const location = useLocation()
   const navigate = useNavigate()
   const [params] = useSearchParams()
@@ -58,7 +65,7 @@ function AppLayout() {
 
   return (
     <div className={`shell${collapsed ? ' shell--collapsed' : ''}${drawer ? ' shell--drawer' : ''}`}>
-      <aside className="sidebar" aria-label="메뉴">
+      <aside className="sidebar" aria-label="메뉴" inert={narrow && !drawer}>
         <div className="sidebar__top">
           <Link to="/" style={{ textDecoration: 'none' }} aria-label="SPECTON 처음 화면">
             <Logo />

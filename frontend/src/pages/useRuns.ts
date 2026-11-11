@@ -34,7 +34,11 @@ export function useRuns(limit = 20): RunsState {
 
   useEffect(() => {
     window.addEventListener(RUNS_CHANGED, reload)
-    return () => window.removeEventListener(RUNS_CHANGED, reload)
+    const timer = window.setInterval(() => { if (!document.hidden) reload() }, 15_000)
+    return () => {
+      window.removeEventListener(RUNS_CHANGED, reload)
+      window.clearInterval(timer)
+    }
   }, [reload])
 
   return { runs, failed, reload }

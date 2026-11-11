@@ -1,26 +1,32 @@
-// RTM 화면 미리보기 (결과 작업공간 「RTM」 탭). 화면 코드와 분리해 테스트한다.
-// 정식 RTM은 서버가 만든 Excel·CSV 파일이다(specton/rtm_node.py). 화면은 받은 설계 값(req_ids·entity_ops)만으로
-// 요구사항 → 기능 → 엔티티 연결을 보여 주고, 추정해서 메우지 않는다. 연결된 기능이 없으면 「미연결」.
-import type { DesignItem } from '../../api/viewItems.ts'
-import { splitDesign } from '../review/design.ts'
+// 서버 RTM CSV를 그대로 미리 본다. 연결·제외·비고를 재계산하지 않는다.
+export const RTM_COLUMNS = ['원문 ID', '원문 위치', '요구사항 ID', '상위 요구사항', '요구사항', '유형', '기능', '엔티티', '관계', '상태', '비고'] as const
+export type RtmRow = Record<(typeof RTM_COLUMNS)[number], string>
 
-export type RtmRow = { reqId: string; functions: string[]; entities: string[]; linked: boolean }
-
-export function rtmRows(design: readonly DesignItem[], requirementIds?: readonly string[]): RtmRow[] {
-  const { functions, entities } = splitDesign(design)
-  const order: string[] = []
-  const add = (id: string) => {
-    if (!order.includes(id)) order.push(id)
+/** BOM과 RFC 4180 인용 필드(쉼표·개행·이중 따옴표)를 보존한다. */
+export function parseRtmCsv(text: string): RtmRow[] {
+  const rows: string[][] = []
+  let row: string[] = [], field = '', quoted = false
+  const source = text.replace(/^\uFEFF/, '')
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i]
+    if (ch === '"') {
+      if (quoted && source[i + 1] === '"') { field += '"'; i++ }
+      else if (quoted || field === '') quoted = !quoted
+      else throw new Error('RTM CSV 인용 형식이 올바르지 않습니다.')
+    } else if (!quoted && ch === ',') { row.push(field); field = '' }
+    else if (!quoted && (ch === '\r' || ch === '\n')) {
+      if (ch === '\r' && source[i + 1] === '\n') i++
+      row.push(field); rows.push(row); row = []; field = ''
+    } else field += ch
   }
-  requirementIds?.forEach(add)
-  functions.forEach((f) => f.req_ids.forEach(add))
-  entities.forEach((e) => e.req_ids.forEach(add))
-
-  return order.map((reqId) => {
-    const fns = functions.filter((f) => f.req_ids.includes(reqId))
-    const ents = new Set<string>()
-    fns.forEach((f) => f.entity_ops.forEach((op) => ents.add(op.entity_id)))
-    entities.filter((e) => e.req_ids.includes(reqId)).forEach((e) => ents.add(e.id))
-    return { reqId, functions: fns.map((f) => f.id), entities: [...ents], linked: fns.length > 0 }
+  if (quoted) throw new Error('RTM CSV 인용이 닫히지 않았습니다.')
+  if (field || row.length) { row.push(field); rows.push(row) }
+  const header = rows.shift()
+  if (!header || header.length !== RTM_COLUMNS.length || RTM_COLUMNS.some((name, i) => header[i] !== name)) {
+    throw new Error('RTM CSV 열이 서버 계약과 다릅니다.')
+  }
+  return rows.map((values) => {
+    if (values.length !== RTM_COLUMNS.length) throw new Error('RTM CSV 행의 열 수가 올바르지 않습니다.')
+    return Object.fromEntries(RTM_COLUMNS.map((name, i) => [name, values[i]])) as RtmRow
   })
 }

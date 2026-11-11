@@ -6,6 +6,7 @@ import Icon from '../layout/Icon.tsx'
 import StatusTag from '../layout/StatusTag.tsx'
 import Button from '../ui/Button.tsx'
 import DataTable from '../ui/DataTable.tsx'
+import Segmented from '../ui/Segmented.tsx'
 import Loading from '../ui/Loading.tsx'
 import Notice from '../ui/Notice.tsx'
 import { dotDateTime, matchesQuery, runBadge } from './runMeta.ts'
@@ -30,7 +31,7 @@ const FILTERS: { value: Filter; label: string; match: (s: RunState) => boolean }
 function RunsPage() {
   const [params, setParams] = useSearchParams()
   const { runs, failed, reload } = useRuns(100)
-  const [query, setQuery] = useState(params.get('q') ?? '')
+  const query = params.get('q') ?? ''
   const [filter, setFilter] = useState<Filter>('all')
   const search = useRef<HTMLInputElement>(null)
   const searching = params.get('search') === '1'
@@ -45,7 +46,6 @@ function RunsPage() {
   }, [runs, filter, query])
 
   function onQuery(value: string) {
-    setQuery(value)
     setParams(
       (p) => {
         const q = new URLSearchParams(p)
@@ -85,13 +85,8 @@ function RunsPage() {
             onChange={(e) => onQuery(e.target.value)}
           />
         </div>
-        <div className="segmented segmented--sm" role="radiogroup" aria-label="상태로 거르기">
-          {FILTERS.map((f) => (
-            <button key={f.value} type="button" role="radio" aria-checked={filter === f.value} onClick={() => setFilter(f.value)}>
-              {f.label}
-            </button>
-          ))}
-        </div>
+        <Segmented<Filter> label="상태로 거르기" size="sm" value={filter} onChange={setFilter}
+          options={FILTERS.map((f) => ({ value: f.value, label: f.label }))} />
       </div>
 
       {failed ? (
@@ -109,6 +104,7 @@ function RunsPage() {
         </div>
       ) : (
         <DataTable<RunSummary>
+          key={`${query}:${filter}`}
           className="runs-table"
           label="지난 작업"
           rows={shown}

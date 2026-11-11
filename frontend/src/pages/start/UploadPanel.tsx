@@ -118,7 +118,10 @@ function UploadPanel() {
           className="sr-only"
           tabIndex={-1}
           aria-hidden="true"
-          onChange={(e) => choose(e.target.files?.[0])}
+          onChange={(e) => {
+            choose(e.target.files?.[0])
+            e.target.value = ''
+          }}
         />
         {!file ? (
           <>

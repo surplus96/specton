@@ -22,7 +22,7 @@ export const FINAL_EVENTS: ReadonlySet<EventName> = new Set(['completed', 'cance
 /** EventSource 생성자. 테스트에서 바꿔 넣는다 (Node에는 EventSource가 없다). */
 export type EventSourceFactory = (url: string) => EventSource
 
-const browserEventSource: EventSourceFactory = (url) => new EventSource(url)
+const browserEventSource: EventSourceFactory = (url) => new EventSource(url, { withCredentials: true })
 
 export type WatchHandlers = {
   onEvent: (event: SseEvent) => void
