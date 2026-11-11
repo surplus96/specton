@@ -68,6 +68,7 @@ DefectKind = Literal[
     "partial_dependency",
     "derived_value",
 ]
+EVALUATION_INPUT_VERSION = "fixed-review-input-v2"
 NORMAL_KINDS: frozenset[str] = frozenset({"normal", "alt_normal"})
 # normalized는 파일에서 받지 않고 승인된 팩의 실제 정리 코드로 만든다.
 SUPPORTED_INPUTS: frozenset[str] = frozenset(
@@ -410,11 +411,21 @@ def _run_case(
     *,
     extra_provenance: dict[str, str] | None = None,
 ) -> CaseResult:
-    provenance = {**state_provenance(state), **(extra_provenance or {})}
+    provenance = {
+        **state_provenance(state),
+        **(extra_provenance or {}),
+        "input_version": EVALUATION_INPUT_VERSION,
+    }
     if token_budget <= 0:
         return CaseResult(case, False, "BUDGET_EXCEEDED", (), (), provenance)
     run = review_perspective(
-        client, perspective, state, settings, pack=fixtures.pack, token_budget=token_budget
+        client,
+        perspective,
+        state,
+        settings,
+        pack=fixtures.pack,
+        token_budget=token_budget,
+        opaque_source_ids=True,
     )
     [branch] = run.results
     return CaseResult(
@@ -484,6 +495,11 @@ def build_report(
     if len(conditions) > 1:
         raise FixtureError("서로 다른 고정·탐색 사전 조건을 한 보고서에 합산할 수 없습니다")
     return {
+        "input_version": (
+            results[0].provenance.get("input_version", "fixed-review-input-v1")
+            if results
+            else EVALUATION_INPUT_VERSION
+        ),
         "evaluation_scope": results[0].provenance.get("evaluation_scope", "fixed")
         if results
         else "fixed",

@@ -7,6 +7,7 @@
 한 관점이 실패해도 다른 관점의 결과는 남기고, 실패는 ok=False와 오류 코드로 표시한다.
 """
 
+import hashlib
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -121,6 +122,7 @@ def review_perspective(
     *,
     pack: str | None = None,
     token_budget: int | None = None,
+    opaque_source_ids: bool = False,
 ) -> ReviewRun:
     """관점 하나를 검토한다 (parallel 방식의 한 가지). 예시는 대화 쌍으로 넣는다."""
     request = build_request(
@@ -129,7 +131,7 @@ def review_perspective(
         stage=perspective.reviewer_id,
         prompt_version=perspective.prompt_version,
         system=f"{REVIEW_RULES}\n\n{_perspective_block(perspective)}",
-        data=_review_data(state, perspective.inputs),
+        data=_review_data(state, perspective.inputs, opaque_source_ids=opaque_source_ids),
         examples=_examples(pack, perspective, root=settings.pack_root),
     )
 
@@ -228,7 +230,9 @@ def _perspective_block(
     return "\n".join(lines)
 
 
-def _review_data(state: DesignState, sections: Sequence[InputSection]) -> dict[str, Any]:
+def _review_data(
+    state: DesignState, sections: Sequence[InputSection], *, opaque_source_ids: bool = False
+) -> dict[str, Any]:
     """선택한 입력만 담는다. 순서는 관점 설정과 무관하게 고정한다.
 
     `normalized`는 목록이 아니라 정리 결과 하나라 요약 보기로 넣는다. 고른 관점이 있는데 정리
@@ -243,6 +247,12 @@ def _review_data(state: DesignState, sections: Sequence[InputSection]) -> dict[s
             data[section] = normalized_view(state.normalized)
         else:
             data[section] = [item.model_dump(mode="json") for item in getattr(state, section)]
+            if section == "requirements" and opaque_source_ids:
+                for requirement in data[section]:
+                    if isinstance(source_id := requirement.get("source_id"), str):
+                        requirement["source_id"] = (
+                            "source-" + hashlib.sha256(source_id.encode()).hexdigest()
+                        )
     return data
 
 

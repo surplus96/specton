@@ -1,6 +1,7 @@
 """검토 관점 평가 고정 설계 (#40, docs/07 「검토 관점 평가」)."""
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -120,7 +121,7 @@ class TestLoad:
 
 
 class TestCaseState:
-    def test_state_keeps_the_fixture_values_and_fills_the_rest(self) -> None:
+    def test_state_keeps_fixture_semantics_and_fills_the_rest(self) -> None:
         fixtures = load_fixture_set(SAMPLE)
 
         state = case_state(fixtures, fixtures.cases[1])
@@ -304,3 +305,66 @@ def test_requirement_category_is_rejected_when_loading_the_fixture(
     data["cases"][0]["requirements"][0].update(type=kind, nfr_category=category)
     with pytest.raises(FixtureError, match="nfr_category"):
         load_fixture_set(_write(tmp_path, data))
+
+
+def test_source_labels_are_opaque_in_model_inputs_but_preserved_in_reports() -> None:
+    data = _sample()
+    data["cases"] = data["cases"][1:2]
+    data["cases"][0]["case_id"] = "CASE_HINT_expected_cardinality"
+    data["cases"][0]["source_id"] = "ANSWER_HINT_cardinality_defect"
+    fixtures = eval_fixtures.FixtureSet.model_validate(data)
+    client, transport = stub_client(reply(ReviewOutput(findings=())))
+    results = run_cases(client, A05, fixtures, SETTINGS)
+    payload = json.loads(unwrap_data(transport.sent[0].messages[-1].content))
+    requirement = payload["requirements"][0]
+    assert requirement["id"] == "REQ-01"
+    assert requirement["text"] == fixtures.cases[0].requirements[0].text
+    wire = "\n".join(message.content for message in transport.sent[0].messages)
+    assert "ANSWER_HINT_cardinality_defect" not in wire
+    assert "CASE_HINT_expected_cardinality" not in wire
+    assert requirement["source_id"].startswith("source-")
+    assert "expected" not in payload
+    report = build_report(fixtures, A05, results)
+    assert report["input_version"] == "fixed-review-input-v2"
+    assert report["cases"][0]["source_id"] == "ANSWER_HINT_cardinality_defect"
+    assert report["cases"][0]["expected"] == [{"target": "REL-01", "defect": "cardinality"}]
+
+
+def test_cases_of_one_source_keep_tracking_ids_and_share_the_opaque_wire_identity() -> None:
+    data = _sample()
+    data["cases"] = data["cases"][:2]
+    fixtures = eval_fixtures.FixtureSet.model_validate(data)
+    original, defect = fixtures.cases
+    assert original.source_id == defect.source_id
+    client, transport = stub_client(*_answers((), ()))
+    run_cases(client, A05, fixtures, SETTINGS)
+    ids = [
+        json.loads(unwrap_data(request.messages[-1].content))["requirements"][0]["source_id"]
+        for request in transport.sent
+    ]
+    assert ids[0] == ids[1] and ids[0] != original.source_id
+    assert case_state(fixtures, original).requirements[0].source_id == original.source_id
+
+
+def test_report_rejects_mixing_original_and_opaque_source_input_versions() -> None:
+    data = _sample()
+    data["cases"] = data["cases"][:2]
+    fixtures = eval_fixtures.FixtureSet.model_validate(data)
+    client, _ = stub_client(*_answers((), ()))
+    first, second = run_cases(client, A05, fixtures, SETTINGS)
+    old_input = replace(
+        second, provenance={k: v for k, v in second.provenance.items() if k != "input_version"}
+    )
+    with pytest.raises(FixtureError, match="서로 다른"):
+        build_report(fixtures, A05, (first, old_input))
+
+
+def test_normal_runtime_review_keeps_original_source_ids_by_default() -> None:
+    from specton.review.reviewer import review_perspective
+
+    fixtures = eval_fixtures.FixtureSet.model_validate(_sample())
+    state = case_state(fixtures, fixtures.cases[0])
+    client, transport = stub_client(reply(ReviewOutput(findings=())))
+    review_perspective(client, A05, state, SETTINGS)
+    payload = json.loads(unwrap_data(transport.sent[0].messages[-1].content))
+    assert payload["requirements"][0]["source_id"] == fixtures.cases[0].source_id

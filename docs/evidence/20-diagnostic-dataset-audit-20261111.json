@@ -1,0 +1,42 @@
+{
+  "date_kst": "2026-11-11",
+  "scope": "offline provenance/structure/scoring audit; not full independent semantic validation",
+  "original_approved_set": {
+    "documents": 5,
+    "input_rows": 85,
+    "input_and_gold_files_verified": 15,
+    "bytes_unchanged": true,
+    "unrecognized_parsed_gold_source_references": 0,
+    "model_gold_relationships": 48,
+    "relationship_coverage": "required 1:N only",
+    "approval_40_preserved": true,
+    "A01_rows_with_provided_classification_metadata": 85,
+    "A01_interpretation": "classification metadata assisted; not text-only quality"
+  },
+  "new_agent_authored_diagnostic_set": {
+    "A05_cases": 14,
+    "A08_cases": 18,
+    "independently_held_out": false,
+    "original_source_ids_with_category_hints": 30,
+    "normal_alternative_pairs_with_same_structure": 10,
+    "observed_target_granularity_dispute": 1,
+    "many_to_many_materialized_key_columns": {
+      "direct_association": 2,
+      "junction_alternative": 3
+    },
+    "eligible_for_release_quality_claim": false
+  },
+  "changes": {
+    "model_facing_source_ids": "opaque deterministic IDs; original IDs retained in reports",
+    "evaluation_input_version": "fixed-review-input-v2",
+    "production_A08_prompt": "unchanged a08-v2",
+    "additional_live_calls": 0,
+    "gold_changed": false
+  },
+  "review_required": [
+    "acceptable finding-target granularity",
+    "structural diversity and normal-alternative equivalence",
+    "five-document scope versus operating pack coverage",
+    "separate independent validation before using diagnostic scores to select prompts"
+  ]
+}

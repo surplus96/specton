@@ -138,8 +138,13 @@
     "v3 increased normal false positives and was not selected",
     "v4 improves strict target recall but retains two normal false positives, versus one under v2",
     "no full five-document regeneration, DDL, artifact generation, or pack-applied/unapplied comparison in this experiment",
-    "the v2 repeated-group finding described the defect but targeted attributes instead of the pre-approved entity; keep strict target miss, do not alter gold after observing it"
+    "the v2 repeated-group finding described the defect but targeted attributes instead of the pre-approved entity; keep strict target miss, do not alter gold after observing it",
+    "historical source-family IDs carried category hints in the model-facing requirement metadata; expected targets themselves were not sent",
+    "10 normal/alternative pairs are structurally identical context variants, not independent structural alternatives",
+    "a correct repeating-group description on member attributes is a strict target miss under the current entity-only expectation; semantic adjudication is required"
   ],
   "base_policy_digest": "f2fe73f722263bbc231f59ddd01300684143aa2783c8b156f9164ded2228b37c",
-  "base_lexicon_digest": "50ab1a9fd72271bd79edf0b1b8842298cabff0c1793c5a7813132b4d7a8119d3"
+  "base_lexicon_digest": "50ab1a9fd72271bd79edf0b1b8842298cabff0c1793c5a7813132b4d7a8119d3",
+  "selection_decision": "No A08 prompt candidate selected; retain production a08-v2 pending dataset adjudication",
+  "dataset_audit_ref": "20-diagnostic-dataset-audit-20261111.json"
 }

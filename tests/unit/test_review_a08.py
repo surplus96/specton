@@ -188,7 +188,7 @@ def _settings() -> Settings:
 
 def test_a08_reads_relationships_and_the_normalized_result() -> None:
     assert A08.inputs == ("requirements", "entities", "relationships", "normalized")
-    assert A08.prompt_version == "a08-v4"
+    assert A08.prompt_version == "a08-v2"
     # 정리 결과의 테이블·컬럼 ID는 구조 연결용이고 지적 대상은 원래 ID라는 안내
     assert "엔티티·속성·관계 ID" in A08.instructions
     assert "A08" in [p.reviewer_id for p in load_perspectives()]
