@@ -9,6 +9,8 @@ import { useResume } from '../run/useResume.ts'
 import DesignTables from './DesignTables.tsx'
 import FindingsTable from './FindingsTable.tsx'
 import ReviewSummary from './ReviewSummary.tsx'
+import SqlValidationPanel from './SqlValidationPanel.tsx'
+import { sqlReview, type SqlReview } from './sqlValidation.ts'
 import {
   HITL_REASON_TEXT,
   SEVERITY_LABEL,
@@ -40,6 +42,7 @@ function ReviewPanel({ run, events, onChanged }: Props) {
   const interruptId = run.interrupt?.interrupt_id
   const [findings, setFindings] = useState<Finding[] | null>(null)
   const [design, setDesign] = useState<DesignItem[]>([])
+  const [sql, setSql] = useState<SqlReview>({ status: 'unverified', validatedAt: null })
   const [loadError, setLoadError] = useState<unknown>(null)
   const [decision, setDecision] = useState<Decision | null>(null)
   const [feedback, setFeedback] = useState('')
@@ -50,6 +53,7 @@ function ReviewPanel({ run, events, onChanged }: Props) {
   useEffect(() => {
     let alive = true
     setFindings(null)
+    setSql({ status: 'unverified', validatedAt: null })
     setLoadError(null)
     setDecision(null)
     setFeedback('')
@@ -59,6 +63,7 @@ function ReviewPanel({ run, events, onChanged }: Props) {
         if (!alive) return
         setFindings(review.items as Finding[])
         setDesign(designView.items as DesignItem[])
+        setSql(sqlReview(designView.artifacts, run.revision))
       })
       .catch((err: unknown) => alive && setLoadError(err))
     return () => {
@@ -104,6 +109,7 @@ function ReviewPanel({ run, events, onChanged }: Props) {
             />
           )}
           {hitlReason && <Alert type="info" showIcon title={HITL_REASON_TEXT[hitlReason] ?? hitlReason} />}
+          <SqlValidationPanel result={sql} />
           {!approvable && (
             <Alert
               type="error"

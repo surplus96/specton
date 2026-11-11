@@ -88,7 +88,7 @@ def _official() -> OfficialStandard:
             "배정": OfficialWord("ALTMNT", False, None, ()),
             "일자": OfficialWord("YMD", True, "연월일", ()),
             "코드": OfficialWord("CD", True, "코드", ()),
-            "경로": OfficialWord("PATH", False, None, ("패스",)),
+            "경로": OfficialWord("PATH", False, None, ("패스",), ("루트",)),
             "대장": OfficialWord("LDGR", False, None, ("장부",)),
         },
         terms={
@@ -304,6 +304,39 @@ def test_sc04_forbidden_word_needs_a_person_unless_the_pack_registered_it() -> N
     )
 
 
+def test_sc04_synonym_is_a_minor_note_that_needs_no_person() -> None:
+    review = _check(_col("C1", "루트코드", "route_cd", SqlType.VARCHAR, 10))
+    [finding] = review["findings"]
+    # rules.yaml subtypes.synonym: minor·informational (#260)
+    assert (finding.rule_code, finding.kind, finding.severity, finding.target_stage) == (
+        "SC-04",
+        "synonym:루트",
+        Severity.MINOR,
+        None,
+    )
+    assert "「경로」" in finding.evidence[0].quote
+    assert not review["requires_manual_review"]
+    assert _item(review, "SC-04") == (1, 1, 0, 0)
+    # 팩에 등록한 낱말(선별 적용 목록의 「장부」와 같은 경우)은 지적하지 않는다
+    registered = (*WORDS, _word("루트", "ROUTE"))
+    assert (
+        _check(_col("C1", "루트코드", "route_cd", SqlType.VARCHAR, 10), words=registered)[
+            "findings"
+        ]
+        == ()
+    )
+
+
+def test_synonym_index_skips_official_words_and_forbidden_words() -> None:
+    words = {
+        **_official().words,
+        # 「배정」은 그 자체로 공식 단어, 「패스」는 이미 금칙어라 이음동의어로 다시 세지 않는다
+        "할당": OfficialWord("ASGN", False, None, (), ("배정", "패스", "할애")),
+    }
+    official = OfficialStandard(**{**vars(_official()), "words": words})
+    assert official.synonym_index() == {"루트": "경로", "할애": "할당"}
+
+
 def test_sc05_same_name_as_an_official_term_but_different_abbreviation() -> None:
     review = _check(_col("C1", "경로코드", "ruut_cd", SqlType.VARCHAR, 10))
     [finding] = review["findings"]
@@ -380,6 +413,9 @@ def test_real_sources_are_pinned_and_skip_retired_and_clashing_rows() -> None:
     assert not official.ambiguous_terms & set(official.terms)
     # 번호C9처럼 이름이 겹치는 도메인도 분류어 타입 비교에는 두 타입을 모두 넣는다
     assert {SqlType.CHAR, SqlType.VARCHAR} <= official.class_types["번호"]["strict"]
+    # 「장부」는 공식 단어 「대장」의 이음동의어다(재고 팩 선별 적용 목록과 같은 관계)
+    assert "장부" in official.words["대장"].synonyms
+    assert official.synonym_index()["장부"] == "대장"
 
 
 def _copy_sources(tmp_path: Path) -> Path:

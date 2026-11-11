@@ -5,6 +5,11 @@
 # 요구사항 문장과 A03 출력이 장부라고 써서 팩에서 별도 낱말(BK, 장부가액 BKVL의 앞부분)로 둔다.
 # 표준과 다른 선택이다. 표준의 방향(대장.synonyms = [장부])과 반대로 읽히지 않게 장부의 synonyms는 비워 둔다.
 # "수불"은 공통표준 단어가 없어 재고+거래(INVT_DLNG)로 표준화하고 terms의 synonyms로만 남긴다.
+# 간선·금형·거점·연차는 공통표준에 없다(#291). 개발용 합성 세트 실제 실행에서 풀리지 않던 낱말이고,
+# 약어·영문명은 공공데이터포털의 이용허락범위 제한 없는 공공기관 표준사전 값을 그대로 썼다.
+#   간선 MNN·금형 MLD: 국립공원공단_약어사전_20240911 (data.go.kr 15136194)
+#   거점 FTHL·연차 CNYR: 한국주택금융공사_단어사전_20260727 (data.go.kr 15160532). 설명도 이 사전의 것이다.
+# 연차는 해의 차례 뜻이다(연차 휴가가 아님). 공식 단어 약어와 겹치지 않는다.
 words:
 - word: 거래처
   abbreviation: CNPT
@@ -291,6 +296,38 @@ words:
   abbreviation: DOC
   english: Document
   definition: 文書. 글이나 기호 따위로 일정한 의사나 관념 또는 사상을 나타낸 것
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 간선
+  abbreviation: MNN
+  english: Main Line
+  definition: 幹線. 도로·철도·운송망에서 중심이 되는 주요 구간 (팩에서 정한 설명, 공통표준에 없음)
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 금형
+  abbreviation: MLD
+  english: Mold
+  definition: 金型. 제품을 같은 모양으로 찍어 내는 금속 틀 (팩에서 정한 설명, 공통표준에 없음)
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 거점
+  abbreviation: FTHL
+  english: Foothold
+  definition: 據點. 어떤 활동의 근거가 되는 중요한 지점
+  is_classifier: false
+  domain_group: null
+  synonyms: []
+  forbidden_synonyms: []
+- word: 연차
+  abbreviation: CNYR
+  english: Count Of Years
+  definition: 年次. 나이의 차례, 횟수의 차례
   is_classifier: false
   domain_group: null
   synonyms: []

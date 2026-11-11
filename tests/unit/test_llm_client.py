@@ -4,7 +4,7 @@ import pytest
 from pydantic import BaseModel
 
 from specton.contracts.api import ErrorCode
-from specton.llm.client import LLMClient
+from specton.llm.client import LLMClient, RawReply
 from specton.llm.errors import (
     LLMAPIError,
     LLMBudgetExceededError,
@@ -73,6 +73,17 @@ def test_raises_contract_error_after_retries_are_used_up() -> None:
     assert len(caught.value.calls) == 3
     assert all(c.outcome == "invalid_output" for c in caught.value.calls)
     assert len(transport.sent) == 3
+
+
+def test_output_cut_at_the_token_limit_is_not_retried() -> None:
+    cut = RawReply(text='{"label": "FR", "sco', input_tokens=10, output_tokens=100, truncated=True)
+    client, transport = stub_client(cut, reply('{"label": "FR", "score": 1}'))
+
+    with pytest.raises(LLMContractError, match="출력 한도") as caught:
+        client.complete(make_request(), Answer)
+
+    assert len(transport.sent) == 1  # 같은 한도로 다시 물어도 또 잘린다
+    assert [c.outcome for c in caught.value.calls] == ["invalid_output"]
 
 
 def test_zero_retries_means_a_single_attempt() -> None:

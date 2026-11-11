@@ -47,6 +47,8 @@ class OpenAITransport:
             refusal=_refusal(response),
             input_tokens=usage.input_tokens if usage else 0,
             output_tokens=usage.output_tokens if usage else 0,
+            truncated=getattr(getattr(response, "incomplete_details", None), "reason", None)
+            == "max_output_tokens",
         )
 
 
@@ -61,11 +63,16 @@ def _refusal(response: Response) -> str | None:
 
 
 def openai_client(settings: Settings) -> LLMClient:
-    """설정값(ADR-0007)으로 실제 OpenAI client를 만든다. 키가 없으면 바로 실패한다."""
-    if settings.openai_api_key is None:
+    """설정값(ADR-0007)으로 실제 OpenAI client를 만든다. 키가 없으면 바로 실패한다.
+
+    `.env.example`을 그대로 복사한 빈 값도 키 없음으로 본다. 그대로 넘기면 SDK가 자체 오류를 내
+    실행이 「키 없음」이 아니라 서버 오류(INTERNAL)로 끝난다.
+    """
+    key = settings.openai_api_key
+    if key is None or not key.get_secret_value().strip():
         raise LLMAPIError("SPECTON_OPENAI_API_KEY가 설정되지 않았다")
     sdk = OpenAI(
-        api_key=settings.openai_api_key.get_secret_value(),
+        api_key=key.get_secret_value(),
         timeout=settings.llm_timeout_seconds,
         max_retries=settings.llm_api_retries,
     )

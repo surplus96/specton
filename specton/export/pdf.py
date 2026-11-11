@@ -9,7 +9,8 @@
 
 ERD PDF 구성 (ADR-0004):
 1. 표지: 실행 정보 표 (#14 출력 manifest와 같은 이름: run_id·revision·model_hash·pack·pack_version)
-2. 전체 관계 개요: 속성 없이 엔티티와 관계만. 나누지 않으며 인쇄 글자가 6pt보다 작으면 경고 (#236)
+2. 전체 관계 개요: 속성 없이 엔티티와 관계만. 관계 이름이 겹치지 않게 ELK로 배치한다 (#261).
+   나누지 않으며 인쇄 글자가 6pt보다 작으면 경고 (#236)
 3. 업무 영역별 상세도: 키 속성(PK·FK·UK)만, 좌우 배치. 인쇄 글자가 6pt보다 작으면 경고
 4. 테이블 정의서: 전체 속성. 긴 표는 쪽마다 머리글 반복
 
@@ -27,6 +28,7 @@ import되므로 PDF로 바꿀 때만 불러온다.
 """
 
 import base64
+import functools
 import html
 import json
 import logging
@@ -34,11 +36,11 @@ import re
 import subprocess
 import tempfile
 import threading
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, Protocol
 
 from specton.codegen.erd import render_erd
 from specton.codegen.erd_areas import ErdArea, assign_areas, render_area_erd
@@ -84,6 +86,7 @@ MERMAID_SECURE_KEYS: tuple[str, ...] = (
     "fontFamily",
     "altFontFamily",
     "htmlLabels",
+    "layout",
     "dompurifyConfig",
 )
 
@@ -96,11 +99,23 @@ MERMAID_CONFIG: dict[str, Any] = {
     # HTML 조각(foreignObject) 대신 SVG 글자로 그린다. WeasyPrint는 SVG 이미지 안의 HTML을 그리지
     # 못해 상자 안 글자가 사라진다 (실제 렌더링에서 확인). HTML을 넣지 않으니 보안에도 낫다.
     "htmlLabels": False,
+    "layout": "dagre",  # 그림별 배치는 `MermaidCli` 호출 때 정한다 (FIGURE_LAYOUT)
     "er": {"useMaxWidth": False},
 }
 
-MermaidRenderer = Callable[[str], str]
-"""Mermaid 원문 → SVG 글자. 기본은 `MermaidCli`, 테스트는 가짜를 넘긴다."""
+# Mermaid 배치 엔진. elk는 mermaid-cli에 들어 있다(@mermaid-js/layout-elk).
+MermaidLayout = Literal["dagre", "elk"]
+
+# 그림 종류별 배치 (#261). dagre는 긴 관계선 두 개가 가운데에서 교차하면 두 관계 이름을 같은
+# 자리에 둬 한쪽이 가려진다. ELK는 이름 자리까지 함께 배치해 겹치지 않는다. 개요만 ELK로 그린다:
+# 상세도까지 바꾸면 20테이블 실측에서 수불 상세도가 6.4pt → 5.4pt로 작아져 경고가 새로 난다.
+FIGURE_LAYOUT: dict[str, MermaidLayout] = {"overview": "elk", "area": "dagre"}
+
+
+class MermaidRenderer(Protocol):
+    """Mermaid 원문 → SVG 글자. 기본은 `MermaidCli`, 테스트는 가짜를 넘긴다."""
+
+    def __call__(self, source: str, *, layout: MermaidLayout = "dagre") -> str: ...
 
 
 class PdfError(RuntimeError):
@@ -120,12 +135,12 @@ class MermaidCli:
     puppeteer_config: Path | None = None
     timeout_seconds: float = 120.0
 
-    def __call__(self, source: str) -> str:
+    def __call__(self, source: str, *, layout: MermaidLayout = "dagre") -> str:
         with tempfile.TemporaryDirectory(prefix="specton-erd-") as tmp:
             folder = Path(tmp)
             src, out, config = folder / "erd.mmd", folder / "erd.svg", folder / "mermaid.json"
             src.write_text(source, encoding="utf-8")
-            config.write_text(json.dumps(MERMAID_CONFIG), encoding="utf-8")
+            config.write_text(json.dumps({**MERMAID_CONFIG, "layout": layout}), encoding="utf-8")
             args = [*self.command, "-i", str(src), "-o", str(out), "-c", str(config), "-b", "white"]
             if self.puppeteer_config is not None:
                 args += ["-p", str(self.puppeteer_config)]
@@ -274,7 +289,7 @@ def build_erd_document(
     figures = []
     warnings = []
     for kind, title, source in erd_sources(model, relationships, areas):
-        svg = mermaid(source)
+        svg = mermaid(source, layout=FIGURE_LAYOUT[kind])
         fit = fit_wide(svg)
         figures.append(ErdFigure(kind=kind, title=title, source=source, svg=svg, fit=fit))
         if fit.text_pt < MIN_PRINT_PT:
@@ -497,20 +512,42 @@ def _glyph_watch() -> _MissingGlyphs:
     return _GLYPHS
 
 
-def html_to_pdf(document: str) -> PdfResult:
-    """HTML → PDF. `data:` 외의 주소는 가져오지 않고 막은 주소를 돌려준다.
+_WEASYPRINT_LOCK = threading.Lock()
 
-    폰트에 없는 글자가 있으면(한글 폰트 미설치 등) 깨진 PDF를 내지 않고 `PdfError`로 멈춘다.
+
+@functools.cache
+def _import_weasyprint() -> tuple[Any, Any] | str:
+    """WeasyPrint를 프로세스에서 한 번만 불러온다. 실패하면 그 이유를 기억하고 다시 시도하지 않는다.
+
+    불러오기가 중간에 실패하면 이미 연 네이티브 라이브러리(gobject)가 닫히고 glib만 남는다.
+    다시 열면 gobject 초기화가 끊긴 포인터를 읽어 프로세스가 죽는다 (macOS conda 파이썬).
     """
     try:
         from weasyprint import HTML  # type: ignore[import-untyped]
         from weasyprint.urls import URLFetcher  # type: ignore[import-untyped]
     except (ImportError, OSError) as exc:  # Windows에서 GTK가 없으면 OSError
-        raise PdfError(f"WeasyPrint를 불러오지 못했습니다: {exc}") from exc
+        return f"WeasyPrint를 불러오지 못했습니다: {exc}"
+    return HTML, URLFetcher
 
+
+def load_weasyprint() -> tuple[Any, Any]:
+    """(HTML, URLFetcher). 불러올 수 없는 환경이면 매번 같은 `PdfError`를 낸다."""
+    with _WEASYPRINT_LOCK:  # 실행기가 PDF를 동시에 만들 때도 불러오기는 한 번
+        loaded = _import_weasyprint()
+    if isinstance(loaded, str):
+        raise PdfError(loaded)
+    return loaded
+
+
+def html_to_pdf(document: str) -> PdfResult:
+    """HTML → PDF. `data:` 외의 주소는 가져오지 않고 막은 주소를 돌려준다.
+
+    폰트에 없는 글자가 있으면(한글 폰트 미설치 등) 깨진 PDF를 내지 않고 `PdfError`로 멈춘다.
+    """
+    HTML, URLFetcher = load_weasyprint()
     blocked: list[str] = []
 
-    class _DataOnly(URLFetcher):  # type: ignore[misc]
+    class _DataOnly(URLFetcher):  # type: ignore[misc,valid-type]
         """엔진이 직접 넣은 data URI만 허용한다 (ADR-0004 외부 URL·임의 파일 차단)."""
 
         def fetch(self, url: str, headers: Any = None) -> Any:

@@ -1,6 +1,8 @@
 """실제 API·정리·SQL 검증·규칙·저장·재작업·승인. 에이전트 판단만 고정 응답이다."""
 
+import csv
 import hashlib
+import io
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack
 from pathlib import Path
@@ -9,6 +11,7 @@ from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
+from openpyxl import load_workbook
 
 from specton.api import main
 from specton.config import Settings
@@ -21,6 +24,32 @@ from specton.runner import Runner
 
 pytestmark = pytest.mark.db
 DOMAINS = {"inventory": ("창고", "창고코드"), "maintenance": ("설비", "설비코드")}
+
+
+def _downloaded_rtm(w: "_World", run_id: str, revision: int) -> dict[str, bytes]:
+    """CSV·Excel을 실제 API로 내려받아 같은 추적 행이 담겼는지 확인한다."""
+    content = {}
+    for fmt in ("csv", "xlsx"):
+        response = w.client.get(
+            f"/runs/{run_id}/artifacts/rtm", params={"file_format": fmt, "revision": revision}
+        )
+        assert response.status_code == 200
+        content[fmt] = response.content
+    csv_rows = list(csv.DictReader(io.StringIO(content["csv"].decode("utf-8-sig"))))
+    book = load_workbook(io.BytesIO(content["xlsx"]), data_only=True)
+    header, *values = list(book["RTM"].iter_rows(values_only=True))
+    xlsx_rows = [
+        dict(zip(header, (v if v is not None else "" for v in row), strict=True)) for row in values
+    ]
+    assert csv_rows == xlsx_rows
+    assert [row["요구사항 ID"] for row in csv_rows] == ["REQ-01", "REQ-02"]
+    assert csv_rows[0]["상태"] == "연결" and csv_rows[0]["기능"] == "FUNC-01 조회"
+    expected = "미연결" if revision == 0 else "연결"
+    assert csv_rows[1]["상태"] == expected
+    assert csv_rows[1]["기능"] == ("" if revision == 0 else "FUNC-01 조회")
+    metadata = dict(book["문서 정보"].iter_rows(min_row=2, values_only=True))
+    assert metadata["미연결 건수"] == (1 if revision == 0 else 0)
+    return content
 
 
 class _World:
@@ -105,8 +134,9 @@ class _World:
             attr_name, attr_type, length = {
                 "sc_minor": ("창고", "varchar", 10),
                 "sc_rework": ("창고수", "varchar", 10),
-                "sc_manual": ("수작업여부", "char", 1),
-                "sc_manual_critical": ("수작업여부", "char", 1),
+                # 단어 조합(LIB_LI_NO)이 공식 용어 약어(BOOK_MNG_NO)와 달라 SC-05가 난다
+                "sc_manual": ("도서관리번호", "varchar", 50),
+                "sc_manual_critical": ("도서관리번호", "varchar", 50),
             }[self.kind]
             extra = Attribute(
                 id="ATTR-02",
@@ -238,6 +268,47 @@ def world(
         yield make
         for item in worlds:
             item.runner.stop()
+
+
+def test_unlinked_rtm_survives_hold_restart_and_only_repaired_revision_is_approved(
+    world: Callable[..., _World],
+) -> None:
+    """TC-F12: 기능 연결을 뺀 FR은 CSV·Excel에 미연결로 남고 승인으로 숨겨지지 않는다."""
+    w = world("inventory", "unlinked_fr", repair=True, limit=0)
+    run_id = w.create()
+    w.prepare(run_id)
+    assert (w.status(run_id)["status"], w.status(run_id)["revision"]) == ("awaiting_review", 0)
+    missing = _downloaded_rtm(w, run_id, 0)
+    assert any(f["rule_code"] == "RULE-02" for f in w.findings(run_id))
+    assert w.answer(run_id, "hold").status_code == 202
+    w.runner.run_pending()
+    resumed = world(previous=w, repair=True, limit=0)
+    assert _downloaded_rtm(resumed, run_id, 0) == missing
+    before = resumed.status(run_id)
+    assert resumed.answer(run_id, "approve").status_code == 422
+    assert resumed.status(run_id) == before
+    assert resumed.answer(run_id, "revise").status_code == 202
+    resumed.runner.run_pending()
+    assert resumed.status(run_id)["revision"] == 1
+    repaired = _downloaded_rtm(resumed, run_id, 1)
+    assert resumed.findings(run_id) == []
+    assert resumed.answer(run_id, "approve").status_code == 202
+    resumed.runner.run_pending()
+    assert resumed.status(run_id)["status"] == "completed"
+    assert _downloaded_rtm(resumed, run_id, 0) == missing
+    assert _downloaded_rtm(resumed, run_id, 1) == repaired
+    with resumed.pool.connection() as conn:
+        rows = conn.execute(
+            "SELECT s.revision,a.approval_status FROM artifact a "
+            "JOIN model_snapshot s USING(snapshot_id) WHERE s.run_id=%s AND a.kind='rtm'",
+            (UUID(run_id),),
+        ).fetchall()
+    assert sorted((r["revision"], r["approval_status"]) for r in rows) == [
+        (0, "draft"),
+        (0, "draft"),
+        (1, "approved"),
+        (1, "approved"),
+    ]
 
 
 @pytest.mark.parametrize("pack", DOMAINS)

@@ -76,6 +76,12 @@ describe('UI-07 다운로드 표', () => {
     expect(artifactLabel(ref('erd', 'mmd'))).toBe('ERD Mermaid')
   })
 
+  it('새로 생성하지 않는 검토 보고서는 빈 다운로드 행을 만들지 않고 기존 파일만 보존한다', () => {
+    expect(downloadRows([ref('ddl', 'sql')], false).some((r) => r.kind === 'review')).toBe(false)
+    expect(downloadRows([ref('ddl', 'sql', true)], true).some((r) => r.kind === 'review')).toBe(false)
+    const historical = downloadRows([ref('review', 'md', true)], true).find((r) => r.kind === 'review')
+    expect(historical?.files[0].file.state).toBe('ready')
+  })
   it('승인 전에는 PDF를 「승인 후」, 없는 파일을 「없음」으로 나눈다', () => {
     const rows = downloadRows([ref('erd', 'mmd'), ref('ddl', 'sql')], false)
     const erd = rows.find((r) => r.kind === 'erd')!.files
@@ -185,6 +191,10 @@ describe('서버(mock)와 같은 결과', () => {
     const artifacts = toArtifacts((await getView(run.run_id, 'design')).artifacts)
     expect(missingKinds(artifacts)).toEqual([])
     expect(isApproved(artifacts)).toBe(false)
+    expect(artifacts.some((a) => a.kind === 'review')).toBe(false)
+    expect((await getView(run.run_id, 'design')).artifacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'ddl', validation: { status: 'passed', validated_at: '2026-11-10T00:00:00Z' } }),
+    ]))
     const pdfs = artifacts.filter((a) => a.file_format === 'pdf')
     expect(pdfs.map((a) => [a.kind, a.approved])).toEqual([['erd', false]])
     expect(pdfs.some(isDownloadable)).toBe(false)
@@ -201,6 +211,7 @@ describe('서버(mock)와 같은 결과', () => {
 
   it('승인 뒤: 모두 승인본, PDF를 받을 수 있고 이름에 -draft가 없다. 이력에 완료로 보인다', async () => {
     const run = await atReview()
+    const reviewBefore = (await getView(run.run_id, 'review', run.revision)).items
     await resumeRun(run.run_id, {
       interrupt_id: run.interrupt!.interrupt_id,
       expected_revision: run.revision,
@@ -209,6 +220,9 @@ describe('서버(mock)와 같은 결과', () => {
     const done = await getRun(run.run_id)
     expect(done.status).toBe('completed')
     expect(chosenView(done.status, null)).toBe('downloads')
+    const findings = (await getView(done.run_id, 'review', done.revision)).items
+    expect(findings.length).toBeGreaterThan(0)
+    expect(findings).toEqual(reviewBefore)
 
     const artifacts = toArtifacts((await getView(run.run_id, 'design')).artifacts)
     expect(isApproved(artifacts)).toBe(true)

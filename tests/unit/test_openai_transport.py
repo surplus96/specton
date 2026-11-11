@@ -91,6 +91,20 @@ def test_sends_structured_output_request() -> None:
     assert sent["text"]["format"]["name"] == "Answer"
 
 
+def test_reports_output_cut_at_the_token_limit() -> None:
+    response = sdk_response('{"label": "FR", "sco')
+    response.incomplete_details = SimpleNamespace(reason="max_output_tokens")
+    sdk, _ = fake_sdk(response)
+
+    assert OpenAITransport(sdk).send(make_request(), Answer).truncated is True
+
+
+def test_complete_response_is_not_reported_as_cut() -> None:
+    sdk, _ = fake_sdk(sdk_response('{"label": "FR", "score": 1}'))
+
+    assert OpenAITransport(sdk).send(make_request(), Answer).truncated is False
+
+
 def test_omits_reasoning_when_not_set() -> None:
     sdk, responses = fake_sdk(sdk_response("{}"))
 
@@ -161,6 +175,13 @@ def test_works_end_to_end_through_llm_client() -> None:
 def test_openai_client_requires_api_key() -> None:
     with pytest.raises(LLMAPIError):
         openai_client(Settings(_env_file=None, openai_api_key=None))
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_blank_api_key_from_env_example_counts_as_missing(blank: str) -> None:
+    # .env.example을 그대로 복사하면 `SPECTON_OPENAI_API_KEY=`가 빈 값으로 읽힌다
+    with pytest.raises(LLMAPIError, match="SPECTON_OPENAI_API_KEY"):
+        openai_client(Settings(_env_file=None, openai_api_key=SecretStr(blank)))
 
 
 def test_openai_client_applies_timeout_and_sdk_retries(monkeypatch: pytest.MonkeyPatch) -> None:

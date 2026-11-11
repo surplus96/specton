@@ -31,6 +31,11 @@ inventory/ · maintenance/
 
 ## 작업 방법
 
+운영 확장 어휘는 `inventory/lexicon_sources.yaml`에 기준 사전·공개 CSV 사본·포함/제외 근거를
+기록하고 manifest.lexicon_sources로 선언한다(#291). build·loader가 동일한 형식·행·해시 검증을
+수행한다. 원본은 inventory/sources 아래에 두며 CP949 CSV 바이트를 변환하지 않는다.
+자세한 형식과 기존 팩 호환은 [문서 입출력·팩](../docs/10-io-and-packs.md)을 따른다.
+
 ```bash
 uv run python -m specton.packs.build          # ✍ 입력을 고친 뒤 ⚙ 파일 재생성
 uv run python -m specton.packs.build --check  # ⚙ 파일이 최신인지 검사 (CI에서 실행)
@@ -50,7 +55,7 @@ uv run python -m specton.packs.build --check  # ⚙ 파일이 최신인지 검�
 
 ## 재고·공통 팩 고정 (#11, 2026-11-09)
 
-현재 범위는 common 0.1.4·inventory 0.1.21(approved)이다. 설비 팩은 후속으로 유지한다.
+현재 범위는 common 0.1.5·inventory 0.1.21(approved)이다. 설비 팩은 후속으로 유지한다.
 처리 방식은 `common/rules.yaml`의 `handling`으로 명시한다. fixed만 target_stage가 있으며,
 dynamic·manual·informational의 null은 미정값이 아니다. SC critical과 major 참고 의견은 거절한다.
 선별 적용에는 낱말·표준어·사유를 모두 적고, 목록에 없는 공식 이음동의어·금칙어 등록은 금지한다.

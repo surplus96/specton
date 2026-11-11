@@ -1,0 +1,463 @@
+{
+  "scope": "synthetic diagnostic; not approved private evaluation set",
+  "cases": [
+    {
+      "case_id": "normal",
+      "design": {
+        "run_id": "synthetic-review-comparison",
+        "versions": {
+          "pack_id": "inventory"
+        },
+        "requirements": [
+          {
+            "id": "REQ-01",
+            "text": "창고는 고유한 창고코드와 필수 창고명으로 등록·조회·수정·삭제한다.",
+            "draft_text": "창고는 고유한 창고코드와 필수 창고명으로 등록·조회·수정·삭제한다.",
+            "source_ref": {
+              "file_format": "csv",
+              "row": 2
+            },
+            "analysis_version": 1,
+            "type": "FR"
+          },
+          {
+            "id": "REQ-02",
+            "text": "입고기록은 고유한 입고코드로 등록·조회·수정·삭제한다. 각 입고기록은 반드시 하나의 창고에 속하며 창고 하나에 입고기록 여러 개를 저장한다. 창고명은 창고에서만 관리하고 입고기록에는 창고 연결만 둔다.",
+            "draft_text": "입고기록은 고유한 입고코드로 등록·조회·수정·삭제한다. 각 입고기록은 반드시 하나의 창고에 속하며 창고 하나에 입고기록 여러 개를 저장한다. 창고명은 창고에서만 관리하고 입고기록에는 창고 연결만 둔다.",
+            "source_ref": {
+              "file_format": "csv",
+              "row": 3
+            },
+            "analysis_version": 1,
+            "type": "FR"
+          }
+        ],
+        "entities": [
+          {
+            "id": "ENT-01",
+            "pack": "inventory",
+            "name": "창고",
+            "description": "창고 기준정보",
+            "req_ids": [
+              "REQ-01"
+            ],
+            "attributes": [
+              {
+                "id": "ATTR-01",
+                "name": "창고코드",
+                "data_type": "varchar",
+                "length": 10,
+                "is_key": true,
+                "nullable": false,
+                "req_ids": [
+                  "REQ-01"
+                ]
+              },
+              {
+                "id": "ATTR-02",
+                "name": "창고명",
+                "data_type": "varchar",
+                "length": 200,
+                "is_key": false,
+                "nullable": false,
+                "req_ids": [
+                  "REQ-01"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "ENT-02",
+            "pack": "inventory",
+            "name": "입고기록",
+            "description": "입고 발생 기록. 창고와 연결한다.",
+            "req_ids": [
+              "REQ-02"
+            ],
+            "attributes": [
+              {
+                "id": "ATTR-03",
+                "name": "입고코드",
+                "data_type": "varchar",
+                "length": 20,
+                "is_key": true,
+                "nullable": false,
+                "req_ids": [
+                  "REQ-02"
+                ]
+              }
+            ]
+          }
+        ],
+        "relationships": [
+          {
+            "id": "REL-01",
+            "parent": "ENT-01",
+            "child": "ENT-02",
+            "cardinality": "1:N",
+            "optional": false,
+            "identifying": false,
+            "rationale": "입고기록은 고유한 입고코드로 등록·조회·수정·삭제한다. 각 입고기록은 반드시 하나의 창고에 속하며 창고 하나에 입고기록 여러 개를 저장한다. 창고명은 창고에서만 관리하고 입고기록에는 창고 연결만 둔다.",
+            "req_ids": [
+              "REQ-02"
+            ]
+          }
+        ],
+        "functions": [
+          {
+            "id": "FUNC-01",
+            "name": "창고 등록·조회·수정·삭제",
+            "description": "창고는 고유한 창고코드와 필수 창고명으로 등록·조회·수정·삭제한다.",
+            "req_ids": [
+              "REQ-01"
+            ],
+            "entity_ops": [
+              {
+                "entity_id": "ENT-01",
+                "operations": [
+                  "C",
+                  "R",
+                  "U",
+                  "D"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "FUNC-02",
+            "name": "입고기록 등록·조회·수정·삭제",
+            "description": "입고기록은 고유한 입고코드로 등록·조회·수정·삭제한다. 각 입고기록은 반드시 하나의 창고에 속하며 창고 하나에 입고기록 여러 개를 저장한다. 창고명은 창고에서만 관리하고 입고기록에는 창고 연결만 둔다.",
+            "req_ids": [
+              "REQ-02"
+            ],
+            "entity_ops": [
+              {
+                "entity_id": "ENT-02",
+                "operations": [
+                  "C",
+                  "R",
+                  "U",
+                  "D"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "case_id": "cardinality",
+      "design": {
+        "run_id": "synthetic-review-comparison",
+        "versions": {
+          "pack_id": "inventory"
+        },
+        "requirements": [
+          {
+            "id": "REQ-01",
+            "text": "창고는 고유한 창고코드와 필수 창고명으로 등록·조회·수정·삭제한다.",
+            "draft_text": "창고는 고유한 창고코드와 필수 창고명으로 등록·조회·수정·삭제한다.",
+            "source_ref": {
+              "file_format": "csv",
+              "row": 2
+            },
+            "analysis_version": 1,
+            "type": "FR"
+          },
+          {
+            "id": "REQ-02",
+            "text": "입고기록은 고유한 입고코드로 등록·조회·수정·삭제한다. 각 입고기록은 반드시 하나의 창고에 속하며 창고 하나에 입고기록 여러 개를 저장한다. 창고명은 창고에서만 관리하고 입고기록에는 창고 연결만 둔다.",
+            "draft_text": "입고기록은 고유한 입고코드로 등록·조회·수정·삭제한다. 각 입고기록은 반드시 하나의 창고에 속하며 창고 하나에 입고기록 여러 개를 저장한다. 창고명은 창고에서만 관리하고 입고기록에는 창고 연결만 둔다.",
+            "source_ref": {
+              "file_format": "csv",
+              "row": 3
+            },
+            "analysis_version": 1,
+            "type": "FR"
+          }
+        ],
+        "entities": [
+          {
+            "id": "ENT-01",
+            "pack": "inventory",
+            "name": "창고",
+            "description": "창고 기준정보",
+            "req_ids": [
+              "REQ-01"
+            ],
+            "attributes": [
+              {
+                "id": "ATTR-01",
+                "name": "창고코드",
+                "data_type": "varchar",
+                "length": 10,
+                "is_key": true,
+                "nullable": false,
+                "req_ids": [
+                  "REQ-01"
+                ]
+              },
+              {
+                "id": "ATTR-02",
+                "name": "창고명",
+                "data_type": "varchar",
+                "length": 200,
+                "is_key": false,
+                "nullable": false,
+                "req_ids": [
+                  "REQ-01"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "ENT-02",
+            "pack": "inventory",
+            "name": "입고기록",
+            "description": "입고 발생 기록. 창고와 연결한다.",
+            "req_ids": [
+              "REQ-02"
+            ],
+            "attributes": [
+              {
+                "id": "ATTR-03",
+                "name": "입고코드",
+                "data_type": "varchar",
+                "length": 20,
+                "is_key": true,
+                "nullable": false,
+                "req_ids": [
+                  "REQ-02"
+                ]
+              }
+            ]
+          }
+        ],
+        "relationships": [
+          {
+            "id": "REL-01",
+            "parent": "ENT-01",
+            "child": "ENT-02",
+            "cardinality": "1:1",
+            "optional": false,
+            "identifying": false,
+            "rationale": "입고기록은 고유한 입고코드로 등록·조회·수정·삭제한다. 각 입고기록은 반드시 하나의 창고에 속하며 창고 하나에 입고기록 여러 개를 저장한다. 창고명은 창고에서만 관리하고 입고기록에는 창고 연결만 둔다.",
+            "req_ids": [
+              "REQ-02"
+            ]
+          }
+        ],
+        "functions": [
+          {
+            "id": "FUNC-01",
+            "name": "창고 등록·조회·수정·삭제",
+            "description": "창고는 고유한 창고코드와 필수 창고명으로 등록·조회·수정·삭제한다.",
+            "req_ids": [
+              "REQ-01"
+            ],
+            "entity_ops": [
+              {
+                "entity_id": "ENT-01",
+                "operations": [
+                  "C",
+                  "R",
+                  "U",
+                  "D"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "FUNC-02",
+            "name": "입고기록 등록·조회·수정·삭제",
+            "description": "입고기록은 고유한 입고코드로 등록·조회·수정·삭제한다. 각 입고기록은 반드시 하나의 창고에 속하며 창고 하나에 입고기록 여러 개를 저장한다. 창고명은 창고에서만 관리하고 입고기록에는 창고 연결만 둔다.",
+            "req_ids": [
+              "REQ-02"
+            ],
+            "entity_ops": [
+              {
+                "entity_id": "ENT-02",
+                "operations": [
+                  "C",
+                  "R",
+                  "U",
+                  "D"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        {
+          "reviewer_id": "A05",
+          "target": "REL-01",
+          "meaning": "여러 입고기록을 요구하는 1:N 관계를 1:1로 잘못 설계"
+        }
+      ]
+    },
+    {
+      "case_id": "duplicate-fact",
+      "design": {
+        "run_id": "synthetic-review-comparison",
+        "versions": {
+          "pack_id": "inventory"
+        },
+        "requirements": [
+          {
+            "id": "REQ-01",
+            "text": "창고는 고유한 창고코드와 필수 창고명으로 등록·조회·수정·삭제한다.",
+            "draft_text": "창고는 고유한 창고코드와 필수 창고명으로 등록·조회·수정·삭제한다.",
+            "source_ref": {
+              "file_format": "csv",
+              "row": 2
+            },
+            "analysis_version": 1,
+            "type": "FR"
+          },
+          {
+            "id": "REQ-02",
+            "text": "입고기록은 고유한 입고코드로 등록·조회·수정·삭제한다. 각 입고기록은 반드시 하나의 창고에 속하며 창고 하나에 입고기록 여러 개를 저장한다. 창고명은 창고에서만 관리하고 입고기록에는 창고 연결만 둔다.",
+            "draft_text": "입고기록은 고유한 입고코드로 등록·조회·수정·삭제한다. 각 입고기록은 반드시 하나의 창고에 속하며 창고 하나에 입고기록 여러 개를 저장한다. 창고명은 창고에서만 관리하고 입고기록에는 창고 연결만 둔다.",
+            "source_ref": {
+              "file_format": "csv",
+              "row": 3
+            },
+            "analysis_version": 1,
+            "type": "FR"
+          }
+        ],
+        "entities": [
+          {
+            "id": "ENT-01",
+            "pack": "inventory",
+            "name": "창고",
+            "description": "창고 기준정보",
+            "req_ids": [
+              "REQ-01"
+            ],
+            "attributes": [
+              {
+                "id": "ATTR-01",
+                "name": "창고코드",
+                "data_type": "varchar",
+                "length": 10,
+                "is_key": true,
+                "nullable": false,
+                "req_ids": [
+                  "REQ-01"
+                ]
+              },
+              {
+                "id": "ATTR-02",
+                "name": "창고명",
+                "data_type": "varchar",
+                "length": 200,
+                "is_key": false,
+                "nullable": false,
+                "req_ids": [
+                  "REQ-01"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "ENT-02",
+            "pack": "inventory",
+            "name": "입고기록",
+            "description": "입고 발생 기록. 창고와 연결한다.",
+            "req_ids": [
+              "REQ-02"
+            ],
+            "attributes": [
+              {
+                "id": "ATTR-03",
+                "name": "입고코드",
+                "data_type": "varchar",
+                "length": 20,
+                "is_key": true,
+                "nullable": false,
+                "req_ids": [
+                  "REQ-02"
+                ]
+              },
+              {
+                "id": "ATTR-04",
+                "name": "창고명",
+                "data_type": "varchar",
+                "length": 200,
+                "is_key": false,
+                "nullable": false,
+                "req_ids": [
+                  "REQ-02"
+                ]
+              }
+            ]
+          }
+        ],
+        "relationships": [
+          {
+            "id": "REL-01",
+            "parent": "ENT-01",
+            "child": "ENT-02",
+            "cardinality": "1:N",
+            "optional": false,
+            "identifying": false,
+            "rationale": "입고기록은 고유한 입고코드로 등록·조회·수정·삭제한다. 각 입고기록은 반드시 하나의 창고에 속하며 창고 하나에 입고기록 여러 개를 저장한다. 창고명은 창고에서만 관리하고 입고기록에는 창고 연결만 둔다.",
+            "req_ids": [
+              "REQ-02"
+            ]
+          }
+        ],
+        "functions": [
+          {
+            "id": "FUNC-01",
+            "name": "창고 등록·조회·수정·삭제",
+            "description": "창고는 고유한 창고코드와 필수 창고명으로 등록·조회·수정·삭제한다.",
+            "req_ids": [
+              "REQ-01"
+            ],
+            "entity_ops": [
+              {
+                "entity_id": "ENT-01",
+                "operations": [
+                  "C",
+                  "R",
+                  "U",
+                  "D"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "FUNC-02",
+            "name": "입고기록 등록·조회·수정·삭제",
+            "description": "입고기록은 고유한 입고코드로 등록·조회·수정·삭제한다. 각 입고기록은 반드시 하나의 창고에 속하며 창고 하나에 입고기록 여러 개를 저장한다. 창고명은 창고에서만 관리하고 입고기록에는 창고 연결만 둔다.",
+            "req_ids": [
+              "REQ-02"
+            ],
+            "entity_ops": [
+              {
+                "entity_id": "ENT-02",
+                "operations": [
+                  "C",
+                  "R",
+                  "U",
+                  "D"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        {
+          "reviewer_id": "A08",
+          "target": "ATTR-04",
+          "meaning": "창고에서만 관리하는 창고명을 입고기록에 중복 저장"
+        }
+      ]
+    }
+  ]
+}

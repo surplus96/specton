@@ -27,7 +27,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    IN["문서 입력·추출<br/>Excel·CSV·PDF·HWPX"]:::r2 --> CHK{{"추출 확인<br/>필요 시 확인·제외"}}:::human
+    IN["문서 입력·추출<br/>Excel·CSV·HWPX·HWP"]:::r2 --> CHK{{"추출 확인<br/>필요 시 확인·제외"}}:::human
     CHK --> A01["A01 요구사항 분석"]:::r2
     A01 --> H1{{"HITL 1<br/>요구사항 확인"}}:::human
 
@@ -263,7 +263,7 @@ stateDiagram-v2
 | 폴더 | 책임 |
 |---|---|
 | `specton/contracts/` | 단계 간 데이터 계약 (상태·LLM 입출력·Finding) |
-| `specton/ingest/` | Excel·CSV·PDF·HWPX 추출, 원문 위치 보존 |
+| `specton/ingest/` | Excel·CSV·HWPX·HWP 추출, 원문 위치 보존 |
 | `specton/packs/` | 도메인 팩 로더·생성기 |
 | `specton/llm/` | 공통 LLM client·재요청·프롬프트 버전 |
 | `specton/nodes/` | 에이전트 노드 A01~A09 (얇은 어댑터) |

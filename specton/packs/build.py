@@ -21,6 +21,7 @@ from typing import Any
 import yaml
 
 from specton.contracts.base import SqlType
+from specton.packs.term_names import term_name_conflicts
 
 Record = dict[str, Any]
 
@@ -54,7 +55,13 @@ class BuildError(Exception):
 
 
 def read_yaml(path: Path) -> Record:
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    # 전체 공식 사전은 수천 항목이다. C 구현이 있으면 같은 안전 생성자를 사용한다.
+    data = (
+        yaml.load(
+            path.read_text(encoding="utf-8"), Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+        )
+        or {}
+    )
     if not isinstance(data, dict):
         raise BuildError(f"{path}: 최상위가 매핑이 아님")
     return data
@@ -241,11 +248,17 @@ def build(root: Path) -> dict[Path, str]:
     all_domains = {r["공통표준도메인명"].strip(): domain_entry(r) for r in domain_rows}
 
     outputs: dict[Path, str] = {}
-    used_words: set[str] = set()
     used_domains: set[str] = set()
     from specton.packs.selection import SelectionError, validate_selection
 
     for pack in discover_packs(root):
+        from specton.packs.lexicon_sources import LexiconSourceError, validate_lexicon_sources
+
+        try:
+            validate_lexicon_sources(pack)
+        except LexiconSourceError as exc:
+            # -m 실행의 __main__.BuildError와 가져온 모듈의 BuildError는 다른 클래스다.
+            raise BuildError(str(exc)) from exc
         project_words = {w["word"]: w for w in read_yaml(pack / "words.yaml").get("words") or []}
         try:
             validate_selection(pack, map(word_entry, word_rows), registered_words=project_words)
@@ -254,13 +267,16 @@ def build(root: Path) -> dict[Path, str]:
         words = {**all_words, **project_words}
         specs = read_yaml(pack / "term_specs.yaml").get("terms") or []
         terms = [build_term(s, words, all_domains, official, pack.name) for s in specs]
+        # 이름 충돌이 물리명 충돌보다 원인이 분명하므로 먼저 알린다 (#264). 로더도 같은 함수를 쓴다.
+        if problems := term_name_conflicts((t["term"], t["synonyms"]) for t in terms):
+            raise BuildError(f"{pack / 'term_specs.yaml'}:\n" + "\n".join(problems))
         unique_physical_names(terms, pack.name)
-        used_words |= {w for t in terms for w in t["composition"] if w in all_words}
         used_domains |= {t["domain"] for t in terms}
         outputs[pack / "terms.yaml"] = render({"terms": terms})
 
     edition = sources["edition"]
-    common_words = [w for name, w in all_words.items() if name in used_words or w["is_classifier"]]
+    # 정리는 팩 용어 밖의 이름도 분해한다. 사용 용어로 단어를 줄이면 공식 단어도 누락된다.
+    common_words = list(all_words.values())
     common_domains = [d for name, d in all_domains.items() if name in used_domains]
     outputs[root / "common/words.yaml"] = render({"edition": edition, "words": common_words})
     outputs[root / "common/domains.yaml"] = render(

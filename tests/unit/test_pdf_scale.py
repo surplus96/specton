@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 from erd_scale_model import build_scale_model
-from test_pdf_engine import COVER, _weasyprint
+from test_pdf_engine import COVER, _label_boxes, _overlapping_labels, _weasyprint
 
 from specton.codegen.erd_areas import OTHER_AREA, assign_areas
 from specton.export.pdf import MIN_PRINT_PT, MermaidCli, build_erd_document, html_to_pdf, svg_size
@@ -56,12 +56,19 @@ def test_scale_erd_pdf_renders_every_figure() -> None:
     assert len(overview) == 1
     assert len(area_figures) == 4  # 수불 · 재고 이력 · 기준정보 · 기타
     assert all("<svg" in f.svg for f in document.figures)
-    # 이 모델은 품목·창고에 자식이 많아 개요가 넓어 6pt보다 작다(실측 4.5pt). 개요는 나누지 않고
-    # 경고만 한다 (#236 R1 결정). 경고는 6pt 미만 그림마다 하나: 개요 + 기준정보 상세도.
-    assert overview[0].fit.text_pt < MIN_PRINT_PT
+    # 관계 이름이 다른 이름에 가려지지 않는다 (#261). 개요는 ELK로 그려 FK마다 이름이 있고, 상세도도
+    # 이름이 있다. dagre로 그린 개요에서는 창고·품목 → 창고재고의 REL-04·REL-05가 겹쳤다.
+    assert len(_label_boxes(overview[0].svg)) == len(model.foreign_keys)
+    assert all(_label_boxes(f.svg) for f in area_figures)
+    assert {f.title: _overlapping_labels(f.svg) for f in document.figures} == {
+        f.title: [] for f in document.figures
+    }
+    # 이 모델은 품목·창고에 자식이 많아 개요가 넓다. dagre로는 6pt보다 작았지만(4.5pt) ELK로 그리면
+    # 넘는다. 경고는 6pt 미만 그림마다 하나: 상자가 많은 기준정보 상세도만.
+    assert overview[0].fit.text_pt >= MIN_PRINT_PT
     small = [f.title for f in document.figures if f.fit.text_pt < MIN_PRINT_PT]
     assert [w.split(":")[0] for w in document.warnings] == small
-    assert small[0] == "전체 관계 개요" and any(t.startswith("영역 상세 · 기준정보") for t in small)
+    assert len(small) == 1 and small[0].startswith("영역 상세 · 기준정보")
 
     report = os.environ.get("SPECTON_SCALE_REPORT")
     if report:

@@ -217,6 +217,7 @@ class RunView(Contract):
     section: Literal["extraction", "requirements", "design", "review"]
     items: tuple[dict[str, Any], ...]
     artifacts: tuple[dict[str, Any], ...] = ()
+    normalization: dict[str, Any] | None = None  # 정리 성공 결과의 수치·버전 요약 (#289)
 
 
 class SseEventType(StrEnum):

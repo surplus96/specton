@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from functools import cache
 from typing import Any
 
+from langgraph.config import get_stream_writer
+
 from specton.config import Settings
 from specton.contracts import DesignState
 from specton.graph import REVIEWERS, GraphState, Node
@@ -132,6 +134,7 @@ def router_node(get_client: Callable[[], LLMClient], settings: Settings) -> Node
             "router_stage": result.output.stage,
             "design": design.evolve(versions=versions),
             "tokens_used": _used(design.run_id, result.calls),
+            "call_summaries": {"A09": tuple(c.model_dump(mode="json") for c in result.calls)},
         }
 
     return node
@@ -150,6 +153,10 @@ def openai_agent_nodes(settings: Settings) -> dict[str, Node]:
 def _design_node(agent: _Agent, get_client: Callable[[], LLMClient], settings: Settings) -> Node:
     def node(state: GraphState) -> Mapping[str, Any]:
         design = state["design"]
+        # 사용자가 수정 요청으로 되돌린 재실행에만 요청 문장을 넘긴다 (A09와 같은 기준)
+        feedback = (
+            state.get("review_response", {}).get("feedback", "") if state.get("revising") else ""
+        )
         try:
             result = agent.run(
                 get_client(),
@@ -157,6 +164,7 @@ def _design_node(agent: _Agent, get_client: Callable[[], LLMClient], settings: S
                 settings,
                 pack=_pack(design, agent.agent_id),
                 token_budget=_remaining(state, settings, agent.agent_id),
+                feedback=feedback.strip() or None,
                 **agent.options(design),
             )
         except LLMError as exc:
@@ -168,6 +176,9 @@ def _design_node(agent: _Agent, get_client: Callable[[], LLMClient], settings: S
         return {
             "design": agent.apply(design, result.output).evolve(versions=versions),
             "tokens_used": _used(design.run_id, result.calls),
+            "call_summaries": {
+                agent.agent_id: tuple(c.model_dump(mode="json") for c in result.calls)
+            },
         }
 
     return node
@@ -217,6 +228,10 @@ def _branch_update(
             p.reviewer_id: (p.prompt_version, _review(settings)) for p in perspectives
         },
         "tokens_used": _used(run_id, run.calls),
+        "call_summaries": {
+            p.reviewer_id: tuple(c.model_dump(mode="json") for c in run.calls)
+            for p in perspectives[:1]
+        },
     }
 
 
@@ -236,6 +251,12 @@ def _used(run_id: str, calls: Sequence[CallRecord]) -> int:
     기록에는 단계·프롬프트 버전·모델·시도·결과·토큰·시간만 있다. 원문·키는 없다 (docs/04).
     """
     for c in calls:
+        try:
+            writer = get_stream_writer()
+        except RuntimeError:
+            writer = None  # 단위 호출처럼 그래프 실행 문맥이 없을 수 있다
+        if writer is not None:
+            writer({"llm_call": c.model_dump(mode="json")})
         logger.info(
             "LLM 호출 run=%s stage=%s prompt=%s model=%s attempt=%d outcome=%s "
             "input_tokens=%d output_tokens=%d duration_ms=%d",

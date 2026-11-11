@@ -19,7 +19,7 @@
 | 웹 | React (`frontend/`) |
 | 품질 | ruff, mypy, pytest |
 
-미정: PDF 추출(ADR-0004, PDF 출력은 승인, HWP·HWPX 엔진은 2026-11-08 채택), 화면 라이브러리(ADR-0005). AWS 구성은 EC2 1대 + Docker Compose로 승인(ADR-0013, 2026-11-09).
+입력은 Excel·CSV·HWP·HWPX를 지원합니다. PDF 입력·추출은 이번 인수 범위 밖(후속, #10)이며 PDF 출력은 지원합니다. HWP·HWPX 엔진은 2026-11-08 채택(ADR-0004), 화면 라이브러리는 미정(ADR-0005)입니다. AWS 구성은 EC2 1대 + Docker Compose로 승인(ADR-0013, 2026-11-09).
 
 ## 시작하기
 
@@ -37,6 +37,23 @@ curl localhost:8000/health
 cd frontend && npm install && npm run dev
 ```
 
+### 첫 실행
+
+- **API 키:** `.env`의 `SPECTON_OPENAI_API_KEY`에 키를 넣어야 실행이 된다. 키가 없어도 기동과 `/health`는 되지만, 문서를 올리면 요구사항 분석 단계에서 실패한다. 실제 호출이라 비용이 든다(아래 예시는 실행 1회에 수 센트).
+- **포트:** DB는 5432, API는 8000, 웹은 5173을 쓴다. 5432를 이미 쓰는 PostgreSQL이 있으면 `docker compose up -d db`가 실패한다.
+- **올릴 문서:** 저장소에는 예시 입력이 없다(개발용·평가용 자료는 비공개). 아래처럼 작은 합성 CSV를 만들어 쓴다. 첫 줄은 열 이름이다.
+
+```bash
+cat > sample_inventory.csv <<'CSV'
+요구사항 ID,요구사항명,상세 내용
+SFR-001,창고 관리,사용자는 창고의 코드와 이름을 등록하고 조회할 수 있다.
+SFR-002,품목 관리,사용자는 품목의 코드와 이름을 등록하고 조회할 수 있다.
+SFR-003,입고 등록,사용자는 창고별로 품목의 입고 수량과 입고 일자를 등록하고 조회할 수 있다.
+CSV
+```
+
+브라우저에서 `http://localhost:5173`을 열어 이 파일을 올리고 팩은 `inventory`를 고른다. 확인 질문이 나오면 답하고, 최종 검토에서 승인하면 DDL·ERD·기능 명세·RTM을 내려받을 수 있다. 화면 흐름은 [docs/09](docs/09-ui-flow.md)에 있다.
+
 ## 품질 검사
 
 ```bash
@@ -44,7 +61,7 @@ uv run ruff check . && uv run ruff format --check .
 uv run mypy
 uv run pytest                     # 단위 테스트 (db·llm 제외)
 uv run pytest -m db               # 격리 DB 필요
-uv run pytest -m llm              # 실제 LLM 호출, 예산 승인 후 수동 실행
+uv run pytest -m llm              # 실제 LLM 호출, 수동 실행 (이번 시범·평가 총 약 $100, ADR-0007)
 ```
 
 ## 도메인 팩
@@ -61,7 +78,7 @@ uv run python -m specton.packs.build --check  # 생성 파일 최신 여부 (CI)
 ```text
 specton/
   contracts/    단계 간 데이터 계약 (상태·LLM 입출력·Finding)
-  ingest/       Excel·CSV·PDF·HWPX 추출, 원문 위치 보존
+  ingest/       Excel·CSV·HWPX·HWP 추출, 원문 위치 보존
   packs/        도메인 팩 로더
   llm/          공통 LLM client·재요청·프롬프트 버전
   nodes/        에이전트 노드 A01~A09

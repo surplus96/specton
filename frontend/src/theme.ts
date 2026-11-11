@@ -39,6 +39,35 @@ export const tones = {
 
 export type Tone = keyof typeof tones
 
+/**
+ * AI Workspace(개발용 결과 확인, /workspace)에서만 쓰는 어두운 캔버스 색 (#281).
+ * 다른 화면은 위의 밝은 프로젝터용 색을 그대로 쓴다. 글자는 바탕과 7:1 이상, 상태 색은 아이콘·글자와 함께 쓴다.
+ */
+export const dark = {
+  page: '#0b1220', // 페이지 바탕
+  panel: '#111a2e', // 왼쪽·오른쪽 패널
+  canvas: '#0e1628', // 가운데 캔버스
+  card: '#17233b', // 노드·카드
+  cardHover: '#1d2b47',
+  border: '#2a3a58', // 카드 테두리 (바탕과 구분)
+  line: '#4b5d80', // 연결선
+  ink: '#e5edf9', // 본문 글자 (바탕과 14:1)
+  inkMuted: '#a3b3cc', // 보조 글자 (7:1)
+  accent: '#60a5fa', // 선택·강조 파랑 (어두운 바탕에서 보이게 밝힌 primary)
+  focus: '#93c5fd', // 키보드 포커스 테두리
+}
+
+/** 실행 단계 노드 상태 색 (어두운 바탕용). 색만으로 구분하지 않고 아이콘·글자를 함께 보인다. */
+export const darkTones = {
+  waiting: { fg: '#a3b3cc', border: '#4b5d80' },
+  running: { fg: '#60a5fa', border: '#60a5fa' },
+  awaiting: { fg: '#fbbf24', border: '#fbbf24' },
+  done: { fg: '#4ade80', border: '#4ade80' },
+  failed: { fg: '#f87171', border: '#f87171' },
+  skipped: { fg: '#a3b3cc', border: '#4b5d80' },
+  cancelled: { fg: '#cbd5e1', border: '#64748b' },
+} as const
+
 const fontFamily =
   "'Pretendard Variable', Pretendard, system-ui, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif"
 

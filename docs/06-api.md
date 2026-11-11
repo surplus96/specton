@@ -75,6 +75,11 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 
 `GET /runs/{id}/view`는 실행기(#17)가 노드 뒤 저장한 DB 표만 읽는다. 체크포인트는 읽지 않는다 (ADR-0012).
 
+설계 항목에서 Entity의 선택적 `unique_keys`는 속성 ID 묶음이고 Relationship의 `fk_bindings`는
+`parent_attribute_id`·`child_attribute_id` 쌍이다(#290). 없는 옛 항목은 기존 의미를 유지한다.
+LLM 초안의 이름은 저장 전에 코드가 ID로 바꾸며, API의 설계 항목은 이름 기반 선언이 아니다.
+누락된 업무 제약의 의미는 검토·HITL에서 확인한다. 이 계약 검증이 업무 요구의 완전성을 증명하지는 않는다.
+
 | section | `items` 한 건 | 읽는 곳 |
 |---|---|---|
 | `extraction` | `SourceRequirement` | `source_block` (run의 문서 전체, revision 무관) |
@@ -86,6 +91,28 @@ Specton 실행 제어용 API다. 후속 확장에서 생성하는 재고·설비
 - 그 단계 결과가 아직 없으면 `items`는 빈 목록이다. `artifacts`는 그 revision의 `ArtifactRef` 목록이다. DDL/SQL 항목에는 `validation: {status, validated_at}`을 더한다: 지금 요구하는 버전 기준의 가장 최근 검증 시도의 상태(`passed`·`failed`·`error`·`unverified`)와 시각이고, 맞는 기록이 없으면 `{"status": "unverified", "validated_at": null}`이다. 단계별 내부 메시지는 넣지 않는다 (#195).
 
 ## SSE
+
+### 노드 진행 메타데이터 (#289)
+
+기존 `status` 이벤트의 선택적 `payload`로 `node`, `task_id`, `phase`(`started`/`finished`),
+`at`(서버 UTC ISO 시각)를 보낸다. `finished`에는 `duration_ms`, `outcome`(`ok`/`error`/`cancelled`),
+`result_saved`, `calls`가 있다. `calls`의 각 항목은 `stage`, `prompt_version`, `model`, `attempt`
+(1=최초, 2 이상=재요청), `outcome`, `input_tokens`, `output_tokens`, `duration_ms`다.
+SDK 내부 HTTP 재시도 횟수는 이 값으로 추정하지 않는다. 호출 원문·응답·내부 예외는 내보내지 않는다.
+노드 시각·소요는 실행기가 task 신호를 관측한 기준이다. pending write 복구로 시작을 다시 관측하지
+못한 종료는 `recovered=true`이며 노드 소요를 생략한다. 호출별 소요는 보존한 CallRecord 값이다.
+combined 검토의 호출은 A05 이벤트에 한 번 기록하고 `reviewers`에 포함된 관점을 적는다.
+
+시작은 실행기가 즉시 기록하며 run 상태·last_checkpoint를 바꾸지 않는다. 정상 종료는 모델·산출물
+체크포인트와 같은 트랜잭션에서 게시한다. 취소로 폐기한 결과는 `result_saved=false`다.
+`task_id`·`phase` 중복은 run 잠금 안에서 제거하며, 재생은 기존 SSE ID 규칙을 따른다.
+노드 메타데이터가 없는 옛 이벤트는 단계 묶음에 의한 추정으로 표시한다. 노드 이벤트를 모든
+상태 전환으로 해석하지 않으며, 실행 상태는 GET /runs 응답을 기준으로 한다.
+
+정리 종료 이벤트는 `normalization_failed`, `problem_kinds`(정리 문제 종류만)를 추가한다.
+view의 선택적 `normalization`은 성공한 정리 결과의 `tables`, `columns`, `foreign_keys`,
+`pack_id`, `pack_version`, `common_version`이다. 결과가 없으면 null이며 성공을 뜻하지 않는다.
+요약·호출 시각은 모델 해시·승인 근거에 넣지 않는다. 원문·프롬프트·파일 경로는 포함하지 않는다.
 
 - 이벤트 ID는 run 안에서 단조 증가한다.
 - `event`: `status` / `interrupt` / `artifact` / `error` / `completed` / `cancelled`
@@ -178,7 +205,7 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 | `LLM_OUTPUT_INVALID` | 실행 실패: 재요청 후에도 출력 형식 위반 (`LLMContractError`) | 실행 상태 | 예 |
 | `LLM_UNAVAILABLE` | 실행 실패: LLM 타임아웃·API 오류 (`LLMTimeoutError`, `LLMAPIError`) | 실행 상태 | 예, 잠시 후 |
 | `BUDGET_EXCEEDED` | 실행 실패: 토큰·시간 예산 초과 (`LLMBudgetExceededError`) | 실행 상태 | 아니오, 입력 축소 |
-| `EXTRACTION_FAILED` | 실행 실패: 파일 단위로 읽지 못함(손상, 시트를 읽지 못함, 요구사항 표를 찾지 못함, 파일 전체가 빈 양식 등) 또는 추출 확인에서 제외한 뒤 남은 원문이 0건 | 실행 상태 | 아니오, 다른 파일 |
+| `EXTRACTION_FAILED` | 실행 실패: 파일 단위로 읽지 못함(손상, 시트를 읽지 못함, 요구사항 표를 찾지 못함, 파일 전체가 빈 양식 등) 또는 추출 확인에서 제외한 뒤 남은 원문이 0건, 파싱 후 원문 블록 수가 설정 상한을 초과함 | 실행 상태 | 아니오, 다른 파일 |
 | `INTERNAL` | 그 밖의 서버 오류 | 500 / 실행 상태 | 경우에 따라 |
 
 - "실행 상태"는 HTTP 오류가 아니라 실패한 실행의 `GET /runs/{id}` 응답 `error` 필드와 SSE `error` 이벤트로 전달된다는 뜻이다.
@@ -194,7 +221,7 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 | `erd` | mmd, pdf | PDF는 승인된 revision에서만 |
 | `ddl` | sql | |
 | `rtm` | xlsx, csv | |
-| `review` | md | |
+| `review` | md | 기존 API·저장 호환 목록. 현재 생성하지 않으며 파일이 없으면 409. 검토는 최종 HITL 및 `view?section=review`로 조회 |
 | `manifest` | json | 승인 후에만 다운로드 |
 
 - 다른 조합은 422.

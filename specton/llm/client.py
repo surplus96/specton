@@ -31,6 +31,7 @@ class RawReply:
     refusal: str | None = None
     input_tokens: int = 0
     output_tokens: int = 0
+    truncated: bool = False  # 출력이 max_output_tokens에서 잘렸다
 
 
 class Transport(Protocol):
@@ -75,6 +76,12 @@ class LLMClient:
                 output = output_model.model_validate_json(reply.text or "")
             except ValidationError as exc:
                 calls = (*calls, _record(current, attempt, "invalid_output", reply, duration_ms))
+                if reply.truncated:  # 같은 한도로 다시 물어도 또 잘린다
+                    raise LLMContractError(
+                        f"{request.stage}: 출력이 호출 1회 출력 한도"
+                        f"({request.max_output_tokens}토큰)에서 잘림",
+                        calls,
+                    ) from exc
                 problems = _summarize(exc)
                 current = _with_retry_prompt(current, reply.text or "", problems)
                 continue

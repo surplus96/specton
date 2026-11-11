@@ -1,0 +1,1341 @@
+{
+  "scope": "post-observation synthetic regression, same frozen cases as #18; not independent or private evaluation",
+  "prompts": {
+    "A05": "a05-v1",
+    "A06": "a06-v4",
+    "A07": "a07-v1",
+    "A08": "a08-v2"
+  },
+  "summary": {
+    "parallel": {
+      "conditions": 6,
+      "tp": 3,
+      "fn": 1,
+      "false_positives": 2,
+      "cross_perspective_duplicates": 1,
+      "a06_findings": 0,
+      "input_tokens": 112620,
+      "output_tokens": 1761,
+      "mean_wall_time_ms": 3399.1666666666665
+    },
+    "combined": {
+      "conditions": 6,
+      "tp": 3,
+      "fn": 1,
+      "false_positives": 0,
+      "cross_perspective_duplicates": 0,
+      "a06_findings": 0,
+      "input_tokens": 68738,
+      "output_tokens": 1483,
+      "mean_wall_time_ms": 6141.166666666667
+    }
+  },
+  "runs": [
+    {
+      "mode": "parallel",
+      "complete": true,
+      "wall_time_ms": 2585,
+      "branch_times": {
+        "A08": {
+          "start_ms": 5,
+          "end_ms": 1959
+        },
+        "A07": {
+          "start_ms": 2,
+          "end_ms": 2005
+        },
+        "A05": {
+          "start_ms": 2,
+          "end_ms": 2021
+        },
+        "A06": {
+          "start_ms": 2,
+          "end_ms": 2583
+        }
+      },
+      "failed_branches": [],
+      "findings": [],
+      "rejected": [],
+      "calls": [
+        {
+          "stage": "A05",
+          "prompt_version": "a05-v1",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 3226,
+          "output_tokens": 13,
+          "duration_ms": 2017
+        },
+        {
+          "stage": "A06",
+          "prompt_version": "a06-v4",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 6963,
+          "output_tokens": 13,
+          "duration_ms": 2569
+        },
+        {
+          "stage": "A07",
+          "prompt_version": "a07-v1",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 3623,
+          "output_tokens": 60,
+          "duration_ms": 1993
+        },
+        {
+          "stage": "A08",
+          "prompt_version": "a08-v2",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 4849,
+          "output_tokens": 13,
+          "duration_ms": 1940
+        }
+      ],
+      "input_tokens": 18661,
+      "output_tokens": 99,
+      "structured_retries": 0,
+      "sdk_retry_count": null,
+      "provenance": {
+        "pack": "inventory",
+        "pack_version": "0.1.23",
+        "common_version": "0.1.7",
+        "policy_digest": "f2fe73f722263bbc231f59ddd01300684143aa2783c8b156f9164ded2228b37c",
+        "lexicon_digest": "50ab1a9fd72271bd79edf0b1b8842298cabff0c1793c5a7813132b4d7a8119d3",
+        "rules_version": "normalize-v3",
+        "model_hash": "e647dae337cedb28f86c15cfb15745364a7324e0f439e3b31cda280b01d0c9ec"
+      },
+      "scoring": "unscored; target and semantic matching must be reviewed separately",
+      "case_id": "normal",
+      "repetition": 1,
+      "fixture_sha256": "b712b41afc2522a7da2c7faf574b6e4c42a92baa70c01fdbb4564ea0e035f3d4",
+      "scope": "synthetic diagnostic; no design/rework/generation; not blind evaluation",
+      "semantic_review": {
+        "reviewed_by": "R1 execution agent",
+        "method": "targets, evidence and suggestion against unchanged synthetic expectations; kind not scored",
+        "matched_finding_ids": [],
+        "false_positive_finding_ids": [],
+        "cross_perspective_duplicate_ids": [],
+        "expected_count": 0,
+        "missed_expected_count": 0
+      }
+    },
+    {
+      "mode": "combined",
+      "complete": true,
+      "wall_time_ms": 3879,
+      "branch_times": {
+        "A06": {
+          "start_ms": 1,
+          "end_ms": 1
+        },
+        "A07": {
+          "start_ms": 1,
+          "end_ms": 1
+        },
+        "A08": {
+          "start_ms": 1,
+          "end_ms": 1
+        },
+        "A05": {
+          "start_ms": 1,
+          "end_ms": 3877
+        }
+      },
+      "failed_branches": [],
+      "findings": [],
+      "rejected": [],
+      "calls": [
+        {
+          "stage": "REVIEW",
+          "prompt_version": "A05=a05-v1,A06=a06-v4,A07=a07-v1,A08=a08-v2",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 11418,
+          "output_tokens": 129,
+          "duration_ms": 3863
+        }
+      ],
+      "input_tokens": 11418,
+      "output_tokens": 129,
+      "structured_retries": 0,
+      "sdk_retry_count": null,
+      "provenance": {
+        "pack": "inventory",
+        "pack_version": "0.1.23",
+        "common_version": "0.1.7",
+        "policy_digest": "f2fe73f722263bbc231f59ddd01300684143aa2783c8b156f9164ded2228b37c",
+        "lexicon_digest": "50ab1a9fd72271bd79edf0b1b8842298cabff0c1793c5a7813132b4d7a8119d3",
+        "rules_version": "normalize-v3",
+        "model_hash": "e647dae337cedb28f86c15cfb15745364a7324e0f439e3b31cda280b01d0c9ec"
+      },
+      "scoring": "unscored; target and semantic matching must be reviewed separately",
+      "case_id": "normal",
+      "repetition": 1,
+      "fixture_sha256": "b712b41afc2522a7da2c7faf574b6e4c42a92baa70c01fdbb4564ea0e035f3d4",
+      "scope": "synthetic diagnostic; no design/rework/generation; not blind evaluation",
+      "semantic_review": {
+        "reviewed_by": "R1 execution agent",
+        "method": "targets, evidence and suggestion against unchanged synthetic expectations; kind not scored",
+        "matched_finding_ids": [],
+        "false_positive_finding_ids": [],
+        "cross_perspective_duplicate_ids": [],
+        "expected_count": 0,
+        "missed_expected_count": 0
+      }
+    },
+    {
+      "mode": "parallel",
+      "complete": true,
+      "wall_time_ms": 3166,
+      "branch_times": {
+        "A06": {
+          "start_ms": 1,
+          "end_ms": 1625
+        },
+        "A07": {
+          "start_ms": 1,
+          "end_ms": 1626
+        },
+        "A08": {
+          "start_ms": 1,
+          "end_ms": 2452
+        },
+        "A05": {
+          "start_ms": 1,
+          "end_ms": 3165
+        }
+      },
+      "failed_branches": [],
+      "findings": [
+        {
+          "kind": "relationship_cardinality_mismatch",
+          "severity": "major",
+          "targets": [
+            {
+              "kind": "relationship",
+              "id": "REL-01"
+            }
+          ],
+          "evidence": [
+            {
+              "req_id": "REQ-02",
+              "quote": "각 입고기록은 반드시 하나의 창고에 속하며 창고 하나에 입고기록 여러 개를 저장한다.",
+              "source_ref": {
+                "file_format": "csv",
+                "sheet": null,
+                "row": 3,
+                "page": null,
+                "block": null,
+                "section": null,
+                "paragraph": null,
+                "table": null,
+                "cell": null
+              }
+            }
+          ],
+          "suggestion": "관계 카디널리티를 1:N으로 수정한다.",
+          "target_stage": "data_model",
+          "id": "A05-0-1",
+          "source": "llm",
+          "reviewer_id": "A05",
+          "rule_code": null,
+          "fingerprint": "94738dc4e93dd927",
+          "iteration": 0
+        }
+      ],
+      "rejected": [],
+      "calls": [
+        {
+          "stage": "A05",
+          "prompt_version": "a05-v1",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 3227,
+          "output_tokens": 190,
+          "duration_ms": 3162
+        },
+        {
+          "stage": "A06",
+          "prompt_version": "a06-v4",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 6964,
+          "output_tokens": 13,
+          "duration_ms": 1614
+        },
+        {
+          "stage": "A07",
+          "prompt_version": "a07-v1",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 3623,
+          "output_tokens": 13,
+          "duration_ms": 1612
+        },
+        {
+          "stage": "A08",
+          "prompt_version": "a08-v2",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 4861,
+          "output_tokens": 104,
+          "duration_ms": 2434
+        }
+      ],
+      "input_tokens": 18675,
+      "output_tokens": 320,
+      "structured_retries": 0,
+      "sdk_retry_count": null,
+      "provenance": {
+        "pack": "inventory",
+        "pack_version": "0.1.23",
+        "common_version": "0.1.7",
+        "policy_digest": "f2fe73f722263bbc231f59ddd01300684143aa2783c8b156f9164ded2228b37c",
+        "lexicon_digest": "50ab1a9fd72271bd79edf0b1b8842298cabff0c1793c5a7813132b4d7a8119d3",
+        "rules_version": "normalize-v3",
+        "model_hash": "a42190c13a52c6b5260c99f383ca01afd528c91d02ac9b35747b036e0eeb2c29"
+      },
+      "scoring": "unscored; target and semantic matching must be reviewed separately",
+      "case_id": "cardinality",
+      "repetition": 1,
+      "fixture_sha256": "b712b41afc2522a7da2c7faf574b6e4c42a92baa70c01fdbb4564ea0e035f3d4",
+      "scope": "synthetic diagnostic; no design/rework/generation; not blind evaluation",
+      "semantic_review": {
+        "reviewed_by": "R1 execution agent",
+        "method": "targets, evidence and suggestion against unchanged synthetic expectations; kind not scored",
+        "matched_finding_ids": [
+          "A05-0-1"
+        ],
+        "false_positive_finding_ids": [],
+        "cross_perspective_duplicate_ids": [],
+        "expected_count": 1,
+        "missed_expected_count": 0
+      }
+    },
+    {
+      "mode": "combined",
+      "complete": true,
+      "wall_time_ms": 9377,
+      "branch_times": {
+        "A06": {
+          "start_ms": 1,
+          "end_ms": 1
+        },
+        "A07": {
+          "start_ms": 1,
+          "end_ms": 1
+        },
+        "A08": {
+          "start_ms": 1,
+          "end_ms": 1
+        },
+        "A05": {
+          "start_ms": 1,
+          "end_ms": 9376
+        }
+      },
+      "failed_branches": [],
+      "findings": [
+        {
+          "kind": "relationship_cardinality_mismatch",
+          "severity": "major",
+          "targets": [
+            {
+              "kind": "relationship",
+              "id": "REL-01"
+            }
+          ],
+          "evidence": [
+            {
+              "req_id": "REQ-02",
+              "quote": "창고 하나에 입고기록 여러 개를 저장한다.",
+              "source_ref": {
+                "file_format": "csv",
+                "sheet": null,
+                "row": 3,
+                "page": null,
+                "block": null,
+                "section": null,
+                "paragraph": null,
+                "table": null,
+                "cell": null
+              }
+            }
+          ],
+          "suggestion": "관계 REL-01의 1:1 카디널리티는 창고 하나에 입고기록 여러 개가 저장된다는 요구와 모순된다. 창고에서 입고기록으로 1:N 관계가 되도록 수정한다.",
+          "target_stage": "data_model",
+          "id": "A05-0-1",
+          "source": "llm",
+          "reviewer_id": "A05",
+          "rule_code": null,
+          "fingerprint": "94738dc4e93dd927",
+          "iteration": 0
+        }
+      ],
+      "rejected": [],
+      "calls": [
+        {
+          "stage": "REVIEW",
+          "prompt_version": "A05=a05-v1,A06=a06-v4,A07=a07-v1,A08=a08-v2",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 11430,
+          "output_tokens": 305,
+          "duration_ms": 9362
+        }
+      ],
+      "input_tokens": 11430,
+      "output_tokens": 305,
+      "structured_retries": 0,
+      "sdk_retry_count": null,
+      "provenance": {
+        "pack": "inventory",
+        "pack_version": "0.1.23",
+        "common_version": "0.1.7",
+        "policy_digest": "f2fe73f722263bbc231f59ddd01300684143aa2783c8b156f9164ded2228b37c",
+        "lexicon_digest": "50ab1a9fd72271bd79edf0b1b8842298cabff0c1793c5a7813132b4d7a8119d3",
+        "rules_version": "normalize-v3",
+        "model_hash": "a42190c13a52c6b5260c99f383ca01afd528c91d02ac9b35747b036e0eeb2c29"
+      },
+      "scoring": "unscored; target and semantic matching must be reviewed separately",
+      "case_id": "cardinality",
+      "repetition": 1,
+      "fixture_sha256": "b712b41afc2522a7da2c7faf574b6e4c42a92baa70c01fdbb4564ea0e035f3d4",
+      "scope": "synthetic diagnostic; no design/rework/generation; not blind evaluation",
+      "semantic_review": {
+        "reviewed_by": "R1 execution agent",
+        "method": "targets, evidence and suggestion against unchanged synthetic expectations; kind not scored",
+        "matched_finding_ids": [
+          "A05-0-1"
+        ],
+        "false_positive_finding_ids": [],
+        "cross_perspective_duplicate_ids": [],
+        "expected_count": 1,
+        "missed_expected_count": 0
+      }
+    },
+    {
+      "mode": "parallel",
+      "complete": true,
+      "wall_time_ms": 4878,
+      "branch_times": {
+        "A06": {
+          "start_ms": 1,
+          "end_ms": 1478
+        },
+        "A07": {
+          "start_ms": 1,
+          "end_ms": 1919
+        },
+        "A05": {
+          "start_ms": 1,
+          "end_ms": 3254
+        },
+        "A08": {
+          "start_ms": 1,
+          "end_ms": 4877
+        }
+      },
+      "failed_branches": [],
+      "findings": [
+        {
+          "kind": "relationship_attribute_conflict",
+          "severity": "major",
+          "targets": [
+            {
+              "kind": "attribute",
+              "id": "ATTR-04"
+            }
+          ],
+          "evidence": [
+            {
+              "req_id": "REQ-02",
+              "quote": "창고명은 창고에서만 관리하고 입고기록에는 창고 연결만 둔다.",
+              "source_ref": {
+                "file_format": "csv",
+                "sheet": null,
+                "row": 3,
+                "page": null,
+                "block": null,
+                "section": null,
+                "paragraph": null,
+                "table": null,
+                "cell": null
+              }
+            }
+          ],
+          "suggestion": "입고기록의 창고명 속성을 제거하고 창고와의 관계만 유지한다.",
+          "target_stage": "data_model",
+          "id": "A05-0-1",
+          "source": "llm",
+          "reviewer_id": "A05",
+          "rule_code": null,
+          "fingerprint": "0e0e2d11a0af6303",
+          "iteration": 0
+        },
+        {
+          "kind": "정규화 위반",
+          "severity": "major",
+          "targets": [
+            {
+              "kind": "attribute",
+              "id": "ATTR-04"
+            }
+          ],
+          "evidence": [
+            {
+              "req_id": "REQ-02",
+              "quote": "창고명은 창고에서만 관리하고 입고기록에는 창고 연결만 둔다.",
+              "source_ref": {
+                "file_format": "csv",
+                "sheet": null,
+                "row": 3,
+                "page": null,
+                "block": null,
+                "section": null,
+                "paragraph": null,
+                "table": null,
+                "cell": null
+              }
+            }
+          ],
+          "suggestion": "입고기록의 창고명 속성을 제거하고 창고와의 연결을 통해 창고명을 조회하도록 수정한다.",
+          "target_stage": "data_model",
+          "id": "A08-0-1",
+          "source": "llm",
+          "reviewer_id": "A08",
+          "rule_code": null,
+          "fingerprint": "aff86eed0e35c2dc",
+          "iteration": 0
+        }
+      ],
+      "rejected": [],
+      "calls": [
+        {
+          "stage": "A05",
+          "prompt_version": "a05-v1",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 3296,
+          "output_tokens": 145,
+          "duration_ms": 3251
+        },
+        {
+          "stage": "A06",
+          "prompt_version": "a06-v4",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 7033,
+          "output_tokens": 13,
+          "duration_ms": 1463
+        },
+        {
+          "stage": "A07",
+          "prompt_version": "a07-v1",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 3693,
+          "output_tokens": 49,
+          "duration_ms": 1900
+        },
+        {
+          "stage": "A08",
+          "prompt_version": "a08-v2",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 4952,
+          "output_tokens": 200,
+          "duration_ms": 4869
+        }
+      ],
+      "input_tokens": 18974,
+      "output_tokens": 407,
+      "structured_retries": 0,
+      "sdk_retry_count": null,
+      "provenance": {
+        "pack": "inventory",
+        "pack_version": "0.1.23",
+        "common_version": "0.1.7",
+        "policy_digest": "f2fe73f722263bbc231f59ddd01300684143aa2783c8b156f9164ded2228b37c",
+        "lexicon_digest": "50ab1a9fd72271bd79edf0b1b8842298cabff0c1793c5a7813132b4d7a8119d3",
+        "rules_version": "normalize-v3",
+        "model_hash": "51f3e7bcded46e5031356f58906bd5e29378024ed4b0139b784e2b5ff8a8d4bf"
+      },
+      "scoring": "unscored; target and semantic matching must be reviewed separately",
+      "case_id": "duplicate-fact",
+      "repetition": 1,
+      "fixture_sha256": "b712b41afc2522a7da2c7faf574b6e4c42a92baa70c01fdbb4564ea0e035f3d4",
+      "scope": "synthetic diagnostic; no design/rework/generation; not blind evaluation",
+      "semantic_review": {
+        "reviewed_by": "R1 execution agent",
+        "method": "targets, evidence and suggestion against unchanged synthetic expectations; kind not scored",
+        "matched_finding_ids": [
+          "A08-0-1"
+        ],
+        "false_positive_finding_ids": [],
+        "cross_perspective_duplicate_ids": [
+          "A05-0-1"
+        ],
+        "expected_count": 1,
+        "missed_expected_count": 0
+      }
+    },
+    {
+      "mode": "combined",
+      "complete": true,
+      "wall_time_ms": 5625,
+      "branch_times": {
+        "A06": {
+          "start_ms": 1,
+          "end_ms": 1
+        },
+        "A07": {
+          "start_ms": 1,
+          "end_ms": 1
+        },
+        "A08": {
+          "start_ms": 1,
+          "end_ms": 1
+        },
+        "A05": {
+          "start_ms": 1,
+          "end_ms": 5624
+        }
+      },
+      "failed_branches": [],
+      "findings": [
+        {
+          "kind": "duplicated_attribute",
+          "severity": "major",
+          "targets": [
+            {
+              "kind": "attribute",
+              "id": "ATTR-04"
+            }
+          ],
+          "evidence": [
+            {
+              "req_id": "REQ-02",
+              "quote": "창고명은 창고에서만 관리하고 입고기록에는 창고 연결만 둔다.",
+              "source_ref": {
+                "file_format": "csv",
+                "sheet": null,
+                "row": 3,
+                "page": null,
+                "block": null,
+                "section": null,
+                "paragraph": null,
+                "table": null,
+                "cell": null
+              }
+            }
+          ],
+          "suggestion": "입고기록의 ATTR-04 창고명은 창고 엔티티의 창고명(ATTR-02)과 같은 사실을 중복 저장하며, 요구사항은 창고명은 창고에서만 관리하도록 명시한다. 입고기록에서 ATTR-04를 제거하고 창고 관계를 통해 창고명을 조회한다.",
+          "target_stage": "data_model",
+          "id": "A08-0-1",
+          "source": "llm",
+          "reviewer_id": "A08",
+          "rule_code": null,
+          "fingerprint": "41c01e0173c6e221",
+          "iteration": 0
+        }
+      ],
+      "rejected": [],
+      "calls": [
+        {
+          "stage": "REVIEW",
+          "prompt_version": "A05=a05-v1,A06=a06-v4,A07=a07-v1,A08=a08-v2",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 11521,
+          "output_tokens": 406,
+          "duration_ms": 5610
+        }
+      ],
+      "input_tokens": 11521,
+      "output_tokens": 406,
+      "structured_retries": 0,
+      "sdk_retry_count": null,
+      "provenance": {
+        "pack": "inventory",
+        "pack_version": "0.1.23",
+        "common_version": "0.1.7",
+        "policy_digest": "f2fe73f722263bbc231f59ddd01300684143aa2783c8b156f9164ded2228b37c",
+        "lexicon_digest": "50ab1a9fd72271bd79edf0b1b8842298cabff0c1793c5a7813132b4d7a8119d3",
+        "rules_version": "normalize-v3",
+        "model_hash": "51f3e7bcded46e5031356f58906bd5e29378024ed4b0139b784e2b5ff8a8d4bf"
+      },
+      "scoring": "unscored; target and semantic matching must be reviewed separately",
+      "case_id": "duplicate-fact",
+      "repetition": 1,
+      "fixture_sha256": "b712b41afc2522a7da2c7faf574b6e4c42a92baa70c01fdbb4564ea0e035f3d4",
+      "scope": "synthetic diagnostic; no design/rework/generation; not blind evaluation",
+      "semantic_review": {
+        "reviewed_by": "R1 execution agent",
+        "method": "targets, evidence and suggestion against unchanged synthetic expectations; kind not scored",
+        "matched_finding_ids": [
+          "A08-0-1"
+        ],
+        "false_positive_finding_ids": [],
+        "cross_perspective_duplicate_ids": [],
+        "expected_count": 1,
+        "missed_expected_count": 0
+      }
+    },
+    {
+      "mode": "combined",
+      "complete": true,
+      "wall_time_ms": 5709,
+      "branch_times": {
+        "A06": {
+          "start_ms": 1,
+          "end_ms": 1
+        },
+        "A07": {
+          "start_ms": 2,
+          "end_ms": 2
+        },
+        "A08": {
+          "start_ms": 2,
+          "end_ms": 2
+        },
+        "A05": {
+          "start_ms": 1,
+          "end_ms": 5708
+        }
+      },
+      "failed_branches": [],
+      "findings": [],
+      "rejected": [],
+      "calls": [
+        {
+          "stage": "REVIEW",
+          "prompt_version": "A05=a05-v1,A06=a06-v4,A07=a07-v1,A08=a08-v2",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 11418,
+          "output_tokens": 125,
+          "duration_ms": 5694
+        }
+      ],
+      "input_tokens": 11418,
+      "output_tokens": 125,
+      "structured_retries": 0,
+      "sdk_retry_count": null,
+      "provenance": {
+        "pack": "inventory",
+        "pack_version": "0.1.23",
+        "common_version": "0.1.7",
+        "policy_digest": "f2fe73f722263bbc231f59ddd01300684143aa2783c8b156f9164ded2228b37c",
+        "lexicon_digest": "50ab1a9fd72271bd79edf0b1b8842298cabff0c1793c5a7813132b4d7a8119d3",
+        "rules_version": "normalize-v3",
+        "model_hash": "e647dae337cedb28f86c15cfb15745364a7324e0f439e3b31cda280b01d0c9ec"
+      },
+      "scoring": "unscored; target and semantic matching must be reviewed separately",
+      "case_id": "normal",
+      "repetition": 2,
+      "fixture_sha256": "b712b41afc2522a7da2c7faf574b6e4c42a92baa70c01fdbb4564ea0e035f3d4",
+      "scope": "synthetic diagnostic; no design/rework/generation; not blind evaluation",
+      "semantic_review": {
+        "reviewed_by": "R1 execution agent",
+        "method": "targets, evidence and suggestion against unchanged synthetic expectations; kind not scored",
+        "matched_finding_ids": [],
+        "false_positive_finding_ids": [],
+        "cross_perspective_duplicate_ids": [],
+        "expected_count": 0,
+        "missed_expected_count": 0
+      }
+    },
+    {
+      "mode": "parallel",
+      "complete": true,
+      "wall_time_ms": 1933,
+      "branch_times": {
+        "A05": {
+          "start_ms": 1,
+          "end_ms": 1399
+        },
+        "A06": {
+          "start_ms": 1,
+          "end_ms": 1400
+        },
+        "A08": {
+          "start_ms": 13,
+          "end_ms": 1400
+        },
+        "A07": {
+          "start_ms": 1,
+          "end_ms": 1933
+        }
+      },
+      "failed_branches": [],
+      "findings": [],
+      "rejected": [],
+      "calls": [
+        {
+          "stage": "A05",
+          "prompt_version": "a05-v1",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 3226,
+          "output_tokens": 13,
+          "duration_ms": 1396
+        },
+        {
+          "stage": "A06",
+          "prompt_version": "a06-v4",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 6963,
+          "output_tokens": 13,
+          "duration_ms": 1382
+        },
+        {
+          "stage": "A07",
+          "prompt_version": "a07-v1",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 3623,
+          "output_tokens": 13,
+          "duration_ms": 1921
+        },
+        {
+          "stage": "A08",
+          "prompt_version": "a08-v2",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 4849,
+          "output_tokens": 13,
+          "duration_ms": 1385
+        }
+      ],
+      "input_tokens": 18661,
+      "output_tokens": 52,
+      "structured_retries": 0,
+      "sdk_retry_count": null,
+      "provenance": {
+        "pack": "inventory",
+        "pack_version": "0.1.23",
+        "common_version": "0.1.7",
+        "policy_digest": "f2fe73f722263bbc231f59ddd01300684143aa2783c8b156f9164ded2228b37c",
+        "lexicon_digest": "50ab1a9fd72271bd79edf0b1b8842298cabff0c1793c5a7813132b4d7a8119d3",
+        "rules_version": "normalize-v3",
+        "model_hash": "e647dae337cedb28f86c15cfb15745364a7324e0f439e3b31cda280b01d0c9ec"
+      },
+      "scoring": "unscored; target and semantic matching must be reviewed separately",
+      "case_id": "normal",
+      "repetition": 2,
+      "fixture_sha256": "b712b41afc2522a7da2c7faf574b6e4c42a92baa70c01fdbb4564ea0e035f3d4",
+      "scope": "synthetic diagnostic; no design/rework/generation; not blind evaluation",
+      "semantic_review": {
+        "reviewed_by": "R1 execution agent",
+        "method": "targets, evidence and suggestion against unchanged synthetic expectations; kind not scored",
+        "matched_finding_ids": [],
+        "false_positive_finding_ids": [],
+        "cross_perspective_duplicate_ids": [],
+        "expected_count": 0,
+        "missed_expected_count": 0
+      }
+    },
+    {
+      "mode": "combined",
+      "complete": true,
+      "wall_time_ms": 6578,
+      "branch_times": {
+        "A06": {
+          "start_ms": 1,
+          "end_ms": 1
+        },
+        "A07": {
+          "start_ms": 2,
+          "end_ms": 2
+        },
+        "A08": {
+          "start_ms": 2,
+          "end_ms": 2
+        },
+        "A05": {
+          "start_ms": 1,
+          "end_ms": 6576
+        }
+      },
+      "failed_branches": [],
+      "findings": [],
+      "rejected": [
+        {
+          "finding_id": "A05-0-1",
+          "reason": "quote_not_found"
+        }
+      ],
+      "calls": [
+        {
+          "stage": "REVIEW",
+          "prompt_version": "A05=a05-v1,A06=a06-v4,A07=a07-v1,A08=a08-v2",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 11430,
+          "output_tokens": 197,
+          "duration_ms": 6545
+        }
+      ],
+      "input_tokens": 11430,
+      "output_tokens": 197,
+      "structured_retries": 0,
+      "sdk_retry_count": null,
+      "provenance": {
+        "pack": "inventory",
+        "pack_version": "0.1.23",
+        "common_version": "0.1.7",
+        "policy_digest": "f2fe73f722263bbc231f59ddd01300684143aa2783c8b156f9164ded2228b37c",
+        "lexicon_digest": "50ab1a9fd72271bd79edf0b1b8842298cabff0c1793c5a7813132b4d7a8119d3",
+        "rules_version": "normalize-v3",
+        "model_hash": "a42190c13a52c6b5260c99f383ca01afd528c91d02ac9b35747b036e0eeb2c29"
+      },
+      "scoring": "unscored; target and semantic matching must be reviewed separately",
+      "case_id": "cardinality",
+      "repetition": 2,
+      "fixture_sha256": "b712b41afc2522a7da2c7faf574b6e4c42a92baa70c01fdbb4564ea0e035f3d4",
+      "scope": "synthetic diagnostic; no design/rework/generation; not blind evaluation",
+      "semantic_review": {
+        "reviewed_by": "R1 execution agent",
+        "method": "targets, evidence and suggestion against unchanged synthetic expectations; kind not scored",
+        "matched_finding_ids": [],
+        "false_positive_finding_ids": [],
+        "cross_perspective_duplicate_ids": [],
+        "expected_count": 1,
+        "missed_expected_count": 1
+      }
+    },
+    {
+      "mode": "parallel",
+      "complete": true,
+      "wall_time_ms": 2982,
+      "branch_times": {
+        "A07": {
+          "start_ms": 1,
+          "end_ms": 1418
+        },
+        "A06": {
+          "start_ms": 1,
+          "end_ms": 1475
+        },
+        "A08": {
+          "start_ms": 7,
+          "end_ms": 2873
+        },
+        "A05": {
+          "start_ms": 1,
+          "end_ms": 2980
+        }
+      },
+      "failed_branches": [],
+      "findings": [],
+      "rejected": [
+        {
+          "finding_id": "A05-0-1",
+          "reason": "quote_not_found"
+        }
+      ],
+      "calls": [
+        {
+          "stage": "A05",
+          "prompt_version": "a05-v1",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 3227,
+          "output_tokens": 179,
+          "duration_ms": 2977
+        },
+        {
+          "stage": "A06",
+          "prompt_version": "a06-v4",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 6964,
+          "output_tokens": 13,
+          "duration_ms": 1461
+        },
+        {
+          "stage": "A07",
+          "prompt_version": "a07-v1",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 3623,
+          "output_tokens": 13,
+          "duration_ms": 1413
+        },
+        {
+          "stage": "A08",
+          "prompt_version": "a08-v2",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 4861,
+          "output_tokens": 78,
+          "duration_ms": 2854
+        }
+      ],
+      "input_tokens": 18675,
+      "output_tokens": 283,
+      "structured_retries": 0,
+      "sdk_retry_count": null,
+      "provenance": {
+        "pack": "inventory",
+        "pack_version": "0.1.23",
+        "common_version": "0.1.7",
+        "policy_digest": "f2fe73f722263bbc231f59ddd01300684143aa2783c8b156f9164ded2228b37c",
+        "lexicon_digest": "50ab1a9fd72271bd79edf0b1b8842298cabff0c1793c5a7813132b4d7a8119d3",
+        "rules_version": "normalize-v3",
+        "model_hash": "a42190c13a52c6b5260c99f383ca01afd528c91d02ac9b35747b036e0eeb2c29"
+      },
+      "scoring": "unscored; target and semantic matching must be reviewed separately",
+      "case_id": "cardinality",
+      "repetition": 2,
+      "fixture_sha256": "b712b41afc2522a7da2c7faf574b6e4c42a92baa70c01fdbb4564ea0e035f3d4",
+      "scope": "synthetic diagnostic; no design/rework/generation; not blind evaluation",
+      "semantic_review": {
+        "reviewed_by": "R1 execution agent",
+        "method": "targets, evidence and suggestion against unchanged synthetic expectations; kind not scored",
+        "matched_finding_ids": [],
+        "false_positive_finding_ids": [],
+        "cross_perspective_duplicate_ids": [],
+        "expected_count": 1,
+        "missed_expected_count": 1
+      }
+    },
+    {
+      "mode": "combined",
+      "complete": true,
+      "wall_time_ms": 5679,
+      "branch_times": {
+        "A06": {
+          "start_ms": 1,
+          "end_ms": 1
+        },
+        "A07": {
+          "start_ms": 1,
+          "end_ms": 1
+        },
+        "A08": {
+          "start_ms": 1,
+          "end_ms": 1
+        },
+        "A05": {
+          "start_ms": 1,
+          "end_ms": 5677
+        }
+      },
+      "failed_branches": [],
+      "findings": [
+        {
+          "kind": "redundant_attribute",
+          "severity": "major",
+          "targets": [
+            {
+              "kind": "entity",
+              "id": "ENT-02"
+            },
+            {
+              "kind": "attribute",
+              "id": "ATTR-04"
+            }
+          ],
+          "evidence": [
+            {
+              "req_id": "REQ-02",
+              "quote": "창고명은 창고에서만 관리하고 입고기록에는 창고 연결만 둔다.",
+              "source_ref": null
+            }
+          ],
+          "suggestion": "입고기록 엔티티에 창고명을 별도로 저장하고 있어 요구사항과 모순되며, 창고명 변경 시 창고와 입고기록의 값이 달라질 수 있다. 입고기록의 창고명 속성을 제거하고 창고 연결을 통해 조회한다.",
+          "target_stage": "data_model",
+          "id": "A08-0-1",
+          "source": "llm",
+          "reviewer_id": "A08",
+          "rule_code": null,
+          "fingerprint": "f8f934071fbe51c0",
+          "iteration": 0
+        }
+      ],
+      "rejected": [],
+      "calls": [
+        {
+          "stage": "REVIEW",
+          "prompt_version": "A05=a05-v1,A06=a06-v4,A07=a07-v1,A08=a08-v2",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 11521,
+          "output_tokens": 321,
+          "duration_ms": 5664
+        }
+      ],
+      "input_tokens": 11521,
+      "output_tokens": 321,
+      "structured_retries": 0,
+      "sdk_retry_count": null,
+      "provenance": {
+        "pack": "inventory",
+        "pack_version": "0.1.23",
+        "common_version": "0.1.7",
+        "policy_digest": "f2fe73f722263bbc231f59ddd01300684143aa2783c8b156f9164ded2228b37c",
+        "lexicon_digest": "50ab1a9fd72271bd79edf0b1b8842298cabff0c1793c5a7813132b4d7a8119d3",
+        "rules_version": "normalize-v3",
+        "model_hash": "51f3e7bcded46e5031356f58906bd5e29378024ed4b0139b784e2b5ff8a8d4bf"
+      },
+      "scoring": "unscored; target and semantic matching must be reviewed separately",
+      "case_id": "duplicate-fact",
+      "repetition": 2,
+      "fixture_sha256": "b712b41afc2522a7da2c7faf574b6e4c42a92baa70c01fdbb4564ea0e035f3d4",
+      "scope": "synthetic diagnostic; no design/rework/generation; not blind evaluation",
+      "semantic_review": {
+        "reviewed_by": "R1 execution agent",
+        "method": "targets, evidence and suggestion against unchanged synthetic expectations; kind not scored",
+        "matched_finding_ids": [
+          "A08-0-1"
+        ],
+        "false_positive_finding_ids": [],
+        "cross_perspective_duplicate_ids": [],
+        "expected_count": 1,
+        "missed_expected_count": 0
+      }
+    },
+    {
+      "mode": "parallel",
+      "complete": true,
+      "wall_time_ms": 4851,
+      "branch_times": {
+        "A07": {
+          "start_ms": 1,
+          "end_ms": 1439
+        },
+        "A06": {
+          "start_ms": 1,
+          "end_ms": 2974
+        },
+        "A05": {
+          "start_ms": 1,
+          "end_ms": 3487
+        },
+        "A08": {
+          "start_ms": 1,
+          "end_ms": 4850
+        }
+      },
+      "failed_branches": [],
+      "findings": [
+        {
+          "kind": "relationship_cardinality_mismatch",
+          "severity": "major",
+          "targets": [
+            {
+              "kind": "relationship",
+              "id": "REL-01"
+            }
+          ],
+          "evidence": [
+            {
+              "req_id": "REQ-02",
+              "quote": "창고 하나에 입고기록 여러 개를 저장한다.",
+              "source_ref": {
+                "file_format": "csv",
+                "sheet": null,
+                "row": 3,
+                "page": null,
+                "block": null,
+                "section": null,
+                "paragraph": null,
+                "table": null,
+                "cell": null
+              }
+            }
+          ],
+          "suggestion": "관계 카디널리티를 창고 하나에 입고기록 여러 개가 연결되도록 표현하세요.",
+          "target_stage": "data_model",
+          "id": "A05-0-1",
+          "source": "llm",
+          "reviewer_id": "A05",
+          "rule_code": null,
+          "fingerprint": "94738dc4e93dd927",
+          "iteration": 0
+        },
+        {
+          "kind": "relationship_requiredness_mismatch",
+          "severity": "major",
+          "targets": [
+            {
+              "kind": "relationship",
+              "id": "REL-01"
+            }
+          ],
+          "evidence": [
+            {
+              "req_id": "REQ-02",
+              "quote": "각 입고기록은 반드시 하나의 창고에 속하며",
+              "source_ref": {
+                "file_format": "csv",
+                "sheet": null,
+                "row": 3,
+                "page": null,
+                "block": null,
+                "section": null,
+                "paragraph": null,
+                "table": null,
+                "cell": null
+              }
+            }
+          ],
+          "suggestion": "입고기록이 반드시 하나의 창고에 속하도록 관계의 필수 여부를 표현하세요.",
+          "target_stage": "data_model",
+          "id": "A05-0-2",
+          "source": "llm",
+          "reviewer_id": "A05",
+          "rule_code": null,
+          "fingerprint": "ceb1012c09925729",
+          "iteration": 0
+        },
+        {
+          "kind": "정규화 위반",
+          "severity": "major",
+          "targets": [
+            {
+              "kind": "attribute",
+              "id": "ATTR-04"
+            }
+          ],
+          "evidence": [
+            {
+              "req_id": "REQ-02",
+              "quote": "창고명은 창고에서만 관리하고 입고기록에는 창고 연결만 둔다.",
+              "source_ref": {
+                "file_format": "csv",
+                "sheet": null,
+                "row": 3,
+                "page": null,
+                "block": null,
+                "section": null,
+                "paragraph": null,
+                "table": null,
+                "cell": null
+              }
+            }
+          ],
+          "suggestion": "입고기록의 창고명 속성을 제거하고 창고 연결만 유지하세요.",
+          "target_stage": "data_model",
+          "id": "A08-0-1",
+          "source": "llm",
+          "reviewer_id": "A08",
+          "rule_code": null,
+          "fingerprint": "aff86eed0e35c2dc",
+          "iteration": 0
+        }
+      ],
+      "rejected": [],
+      "calls": [
+        {
+          "stage": "A05",
+          "prompt_version": "a05-v1",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 3296,
+          "output_tokens": 268,
+          "duration_ms": 3475
+        },
+        {
+          "stage": "A06",
+          "prompt_version": "a06-v4",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 7033,
+          "output_tokens": 135,
+          "duration_ms": 2960
+        },
+        {
+          "stage": "A07",
+          "prompt_version": "a07-v1",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 3693,
+          "output_tokens": 13,
+          "duration_ms": 1436
+        },
+        {
+          "stage": "A08",
+          "prompt_version": "a08-v2",
+          "model": "gpt-6-luna",
+          "attempt": 1,
+          "outcome": "ok",
+          "input_tokens": 4952,
+          "output_tokens": 184,
+          "duration_ms": 4831
+        }
+      ],
+      "input_tokens": 18974,
+      "output_tokens": 600,
+      "structured_retries": 0,
+      "sdk_retry_count": null,
+      "provenance": {
+        "pack": "inventory",
+        "pack_version": "0.1.23",
+        "common_version": "0.1.7",
+        "policy_digest": "f2fe73f722263bbc231f59ddd01300684143aa2783c8b156f9164ded2228b37c",
+        "lexicon_digest": "50ab1a9fd72271bd79edf0b1b8842298cabff0c1793c5a7813132b4d7a8119d3",
+        "rules_version": "normalize-v3",
+        "model_hash": "51f3e7bcded46e5031356f58906bd5e29378024ed4b0139b784e2b5ff8a8d4bf"
+      },
+      "scoring": "unscored; target and semantic matching must be reviewed separately",
+      "case_id": "duplicate-fact",
+      "repetition": 2,
+      "fixture_sha256": "b712b41afc2522a7da2c7faf574b6e4c42a92baa70c01fdbb4564ea0e035f3d4",
+      "scope": "synthetic diagnostic; no design/rework/generation; not blind evaluation",
+      "semantic_review": {
+        "reviewed_by": "R1 execution agent",
+        "method": "targets, evidence and suggestion against unchanged synthetic expectations; kind not scored",
+        "matched_finding_ids": [
+          "A08-0-1"
+        ],
+        "false_positive_finding_ids": [
+          "A05-0-1",
+          "A05-0-2"
+        ],
+        "cross_perspective_duplicate_ids": [],
+        "expected_count": 1,
+        "missed_expected_count": 0
+      }
+    }
+  ],
+  "discarded_experiments": {
+    "a06_v3": "relationship information removed the observed missing-link issue but extra primary-key uniqueness findings occurred; corrected interpretation in v4",
+    "a05_v2_a06_v4": "A05 no-problem wording experiment missed both cardinality repetitions in parallel; A05 change reverted; raw logs retained privately"
+  }
+}

@@ -9,8 +9,11 @@
   한계: 같은 이름은 같은 객체로 보고, 이름이 바뀌면 새 객체로 본다 (최종 형식은 #12).
 - 다시 실행하면 `entity_ops`는 누적하지 않고 새 결과로 바꾼다.
 - 팩 타입은 `naming.yaml`의 `type_profile`로 고른다 (ADR-0009 재고·공통 결정, #11).
+- 사전으로 물리명을 만들 수 없는 이름은 한 번만 다시 묻는다. 그래도 남으면 그대로 두어
+  정리 단계가 사람 조치로 멈춘다 (ADR-0009, #291).
 """
 
+import logging
 import unicodedata
 from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
@@ -18,6 +21,7 @@ from typing import Any, Self
 
 from pydantic import Field, model_validator
 
+from specton.codegen.naming import Lexicon, load_pack_lexicon, physical_name
 from specton.config import Settings
 from specton.contracts import (
     AttributeDraft,
@@ -33,13 +37,22 @@ from specton.contracts import (
 from specton.contracts.base import Contract, NonEmptyText
 from specton.ids import stable_id
 from specton.llm.client import LLMClient
-from specton.nodes.common import NodeRun, build_request
+from specton.llm.types import LLMResult
+from specton.nodes.common import (
+    USER_REQUEST_RULE,
+    NodeRun,
+    build_request,
+    with_design_rework,
+    with_user_request,
+)
 from specton.packs.build import DEFAULT_ROOT
 from specton.packs.examples import load_examples
 from specton.packs.loader import PgType, load_pack
 from specton.type_limits import type_limit_problems
 
-PROMPT_VERSION = "a03-v2"
+logger = logging.getLogger(__name__)
+
+PROMPT_VERSION = "a03-v6"
 SYSTEM_PROMPT = """\
 너는 업무 시스템의 데이터 모델 설계자다.
 요구사항과 기능으로 저장할 엔티티·속성과 기능별 CRUD를 정한다.
@@ -56,6 +69,10 @@ SYSTEM_PROMPT = """\
 - 업무 키는 is_key=true이고 nullable=false다. 키가 아닌 값의 중복을 막아야 하면 is_unique=true다.
 - 필수 입력이라고 요구사항에 있는 속성만 nullable=false로 한다.
 - 값의 범위·형식 제약은 쓰지 않는다. 속성마다 req_ids를 적는다.
+- unique_keys에는 함께 중복을 막을 속성 name의 목록을 묶음별로 쓴다. 각 속성의 is_unique와
+  다르다. 대리키를 도입해도 기존 업무 조합의 유일성을 잃지 않는다.
+- 관계에서만 필요한 FK 속성을 만들지는 않는다. 다만 업무 키·유일성에 필요한 참조 값은
+  업무 속성으로 명시할 수 있다. FK 재사용 여부는 A04가 별도로 선언한다.
 
 기능별 CRUD(entity_ops):
 - function_id에는 입력 functions의 id를, entity_name에는 이 출력의 엔티티 name을 쓴다.
@@ -68,7 +85,23 @@ CRUD 면제(crud_exemptions):
   근거가 요구사항에 있을 때만 쓴다. reason은 pack.crud_exemption_reasons의 키 중 하나다.
 - operation은 그 reason에 나열된 조작만 쓴다. 면제한 조작은 그 엔티티의 operations에 넣지 않는다.
 
-출력하지 않는 것: 엔티티·속성 ID, FK(외래키) 속성, 관계, 값 범위 제약."""
+재작업(rework_context가 있을 때):
+- 직전 엔티티·관계와 지적의 대상·근거·수정 안내를 대조하여 원인이 되는 설계를 고친다.
+- 이름이 같다는 이유만으로 업무 속성이나 키를 삭제하지 않는다. FK를 중복 표현한 속성인지,
+  별개의 업무 값인지 먼저 판단한다. 관계가 표현하는 업무 의미를 없애 충돌을 숨기지 않는다.
+- 사전·명명 지원이 필요한 지적은 약어를 지어내거나 근거 없는 이름 교체로 통과시키지 않는다.
+- 이전 ID는 지적을 찾기 위한 자료다. 출력 형식은 최초 설계와 같으며 ID는 출력하지 않는다.
+
+이름 재검토(name_review가 있을 때):
+- name_review.previous는 직전 출력이고, name_review.unresolved는 표준 단어 사전으로 물리명을
+  만들 수 없는 엔티티 이름(엔티티)과 속성 이름(엔티티.속성)이다.
+- 뜻이 같은 표준 표현이 있으면 그 이름만 바꾼다. 줄임말이나 한 글자 접사는 완전한 낱말로 풀어 쓴다.
+- 뜻이 달라지거나 맞는 표현이 없으면 바꾸지 않는다. 약어·영문 이름을 지어내지 않는다.
+- 엔티티·속성을 더하거나 빼지 않는다. 그 밖의 내용은 previous와 같게 출력하고,
+  이름을 바꾸면 entity_ops·unique_keys가 가리키는 이름도 같이 바꾼다.
+
+출력하지 않는 것: 엔티티·속성 ID, 관계 전용 FK 속성, 관계, 값 범위 제약."""
+SYSTEM_PROMPT += "\n\n" + USER_REQUEST_RULE
 
 
 class A03Output(EntityDesignDraft):
@@ -202,6 +235,8 @@ def _checked_against(
     속성 이름이 팩 용어의 동의어이거나 띄어쓰기만 다르면 정식 용어명으로 다시 요청한다.
     면제 사유는 팩이 인정하는 것만, 면제 조작은 그 사유에 나열된 것만 허용한다.
     """
+    # 팩 로더(load_pack)가 NFC·앞뒤 공백 기준으로 같아지는 용어 이름을 거절하므로(#264)
+    # 키가 겹쳐 뒤의 용어가 앞의 용어를 덮어쓰는 일은 없다. 여기서 다시 검사하지 않는다.
     by_term = {_nfc(t.term): t for t in terms}
     official = _official_names(terms)
 
@@ -366,6 +401,7 @@ def run(
     *,
     pack: str,
     token_budget: int | None = None,
+    feedback: str | None = None,
 ) -> NodeRun[A03Result]:
     """요구사항·기능으로 엔티티를 설계하고 코드가 ID를 붙여 기능의 `entity_ops`를 채운다."""
     if not state.requirements:
@@ -373,23 +409,53 @@ def run(
     if not state.functions:
         raise ValueError("A03: 엔티티를 설계할 기능이 없습니다")
     context = load_pack_context(pack, root=settings.pack_root)
-    request = build_request(
-        settings,
-        role="design",
-        stage="A03",
-        prompt_version=PROMPT_VERSION,
-        system=SYSTEM_PROMPT,
-        data=input_data(state, terms=context.terms, exemption_reasons=context.exemption_reasons),
-        examples=load_examples(pack, "A03", A03Output, root=settings.pack_root),
+    data = with_user_request(
+        with_design_rework(
+            input_data(state, terms=context.terms, exemption_reasons=context.exemption_reasons),
+            state,
+        ),
+        feedback,
     )
+    examples = load_examples(pack, "A03", A03Output, root=settings.pack_root)
+
+    def ask(payload: Mapping[str, Any], budget: int | None) -> LLMResult[A03Output]:
+        request = build_request(
+            settings,
+            role="design",
+            stage="A03",
+            prompt_version=PROMPT_VERSION,
+            system=SYSTEM_PROMPT,
+            data=payload,
+            examples=examples,
+        )
+        return client.complete(request, output_model, token_budget=budget)
+
     output_model = _checked_against(
         {f.id for f in state.functions},
         {r.id for r in state.requirements},
         context.terms,
         context.exemption_reasons,
     )
-    result = client.complete(request, output_model, token_budget=token_budget)
-    draft = result.output
+    result = ask(data, token_budget)
+    draft, calls = result.output, result.calls
+    unresolved = _unresolved_names(draft, load_pack_lexicon(pack, settings.pack_root))
+    spent = sum(c.input_tokens + c.output_tokens for c in calls)
+    if unresolved and (token_budget is None or spent < token_budget):
+        review = ask(
+            {
+                **data,
+                "name_review": {
+                    "unresolved": unresolved,
+                    "previous": draft.model_dump(mode="json"),
+                },
+            },
+            None if token_budget is None else token_budget - spent,
+        )
+        calls = (*calls, *review.calls)
+        if _same_shape(draft, review.output):
+            draft = review.output
+        else:
+            logger.warning("A03 이름 재검토가 엔티티·속성 구성을 바꿔 직전 출력을 유지합니다")
     entities = _with_ids(draft.entities, pack)
     # 출력 검사와 같이 NFC로 찾는다. 엔티티는 NFC, entity_ops는 NFD로 써도 같은 엔티티다 (#255)
     id_by_name = {_nfc(e.name): e.id for e in entities}
@@ -401,7 +467,30 @@ def run(
     functions = tuple(
         f.evolve(entity_ops=tuple(ops_by_function.get(f.id, ()))) for f in state.functions
     )
-    return NodeRun(output=A03Result(entities=entities, functions=functions), calls=result.calls)
+    return NodeRun(output=A03Result(entities=entities, functions=functions), calls=calls)
+
+
+def _unresolved_names(draft: EntityDesignDraft, lexicon: Lexicon) -> list[str]:
+    """정리 단계(`normalize`)가 물리명을 만들지 못할 엔티티(엔티티)·속성(엔티티.속성) 이름."""
+    return [
+        label
+        for e in draft.entities
+        for label, name in (
+            (e.name, e.name),
+            *((f"{e.name}.{a.name}", a.name) for a in e.attributes),
+        )
+        if physical_name(name, lexicon) is None
+    ]
+
+
+def _same_shape(before: EntityDesignDraft, after: EntityDesignDraft) -> bool:
+    """이름 재검토가 이름 말고 구성을 바꾸지 않았는지 본다.
+
+    shortcut: 엔티티별 속성 수와 CRUD 항목 수만 비교한다. 타입·키까지 바뀌는 사례가 보이면 넓힌다.
+    """
+    return [len(e.attributes) for e in before.entities] == [
+        len(e.attributes) for e in after.entities
+    ] and len(before.entity_ops) == len(after.entity_ops)
 
 
 # 해시 앞 16자리(64비트). 한 실행의 엔티티·속성 수에서 충돌 확률은 무시할 만하고, 나면 멈춘다.
@@ -416,9 +505,15 @@ def _with_ids(drafts: Sequence[EntityDraft], pack: str) -> tuple[Entity, ...]:
     entities = tuple(
         Entity.model_validate(
             {
-                **d.model_dump(exclude={"attributes"}),
+                **d.model_dump(exclude={"attributes", "unique_keys"}),
                 "id": stable_id("ENT", pack, d.name),
                 "pack": pack,
+                "unique_keys": tuple(
+                    tuple(stable_id("ATTR", pack, d.name, name) for name in group)
+                    for group in d.unique_keys
+                )
+                if d.unique_keys
+                else None,
                 "attributes": [
                     {**a.model_dump(), "id": stable_id("ATTR", pack, d.name, a.name)}
                     for a in d.attributes

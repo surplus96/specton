@@ -17,6 +17,7 @@
 //   critical     최종 검토에 차단 오류(critical)가 있어 승인 불가. 수정 요청 한 번 뒤에 사라진다
 //   partial-review 최종 검토에서 일부 검토 관점이 빠짐(failed_branches)·자동 재작업을 멈춘 이유(hitl_reason)
 //   erd-attack   (다른 낱말과 함께) ERD 원문에 지시문을 넣어 돌려줌. 웹이 그리지 않는지 보는 보안 시험 (#190)
+//   large        (다른 낱말과 함께) 설계를 엔티티 50개·관계 60개로 돌려줌. AI Workspace 성능 확인 (#281)
 import { delay, http, HttpResponse } from 'msw'
 import type {
   ApiErrorBody,
@@ -37,6 +38,7 @@ import type {
 import {
   ARTIFACT_FORMATS,
   designItems,
+  LARGE_DESIGN_ITEMS,
   DDL_SAMPLE,
   ERD_ATTACK_SAMPLE,
   ERD_SAMPLE,
@@ -78,6 +80,7 @@ type MockRun = {
   scenario: 'normal' | 'quick' | 'slow-queue' | 'fail' | 'unreadable' | 'conflict' | 'no-questions' | 'critical' | 'partial-review'
   conflictPending: boolean // conflict: 다음 답을 409로 돌려준다
   erdAttack: boolean // erd-attack: ERD 원문에 지시문을 넣어 돌려준다 (웹 보안 시험, #190)
+  large: boolean // large: 엔티티 50개 설계를 돌려준다 (AI Workspace 성능 확인, #281)
   status: RunState
   revision: number
   stage: string | null
@@ -332,6 +335,7 @@ export function createMockBackend(options: MockOptions = {}) {
       scenario,
       conflictPending: scenario === 'conflict',
       erdAttack: name.includes('erd-attack'),
+      large: name.includes('large'),
       status: 'queued',
       revision: 0,
       stage: null,
@@ -379,12 +383,12 @@ export function createMockBackend(options: MockOptions = {}) {
     const source: Record<ViewSection, Item[]> = {
       extraction: run.extraction,
       requirements: run.requirements,
-      design: designItems,
+      design: run.large ? LARGE_DESIGN_ITEMS : designItems,
       review: run.findings,
     }
     const items = run.sections.has(section) ? source[section] : []
     const artifacts = run.artifactRevisions.has(revision)
-      ? Object.entries(ARTIFACT_FORMATS).flatMap(([kind, formats]) =>
+      ? Object.entries(ARTIFACT_FORMATS).filter(([kind]) => kind !== 'review').flatMap(([kind, formats]) =>
           formats
             // 서버처럼 ERD PDF는 승인 전에도 비공개 후보(approved=false)로 목록에 있다. 받으면 409 (docs/06, #217).
             // 기능 명세 PDF 연결은 후속 범위라 승인 뒤에만 넣는다.
@@ -395,15 +399,7 @@ export function createMockBackend(options: MockOptions = {}) {
               revision,
               hash: `mock-${kind}-${revision}`,
               approved: run.approvedRevisions.has(revision),
-              // 서버처럼 DDL/SQL에만 검증 상태를 붙인다 (docs/06 `/view`, #195). 차단 시나리오는 검증 실패.
-              ...(kind === 'ddl' && file_format === 'sql'
-                ? {
-                    validation: {
-                      status: run.scenario === 'critical' ? 'failed' : 'passed',
-                      validated_at: '2026-11-09T09:00:00+09:00',
-                    },
-                  }
-                : {}),
+              ...(kind === 'ddl' ? { validation: { status: 'passed', validated_at: '2026-11-10T00:00:00Z' } } : {}),
             })),
         )
       : []
@@ -528,7 +524,7 @@ export function createMockBackend(options: MockOptions = {}) {
       throw new Reject(422, 'ARTIFACT_FORMAT_UNSUPPORTED', '이 산출물은 그 형식으로 받을 수 없습니다.', run.run_id)
     }
     const approved = run.approvedRevisions.has(revision)
-    if (!run.artifactRevisions.has(revision) || (fileFormat === 'pdf' && !approved)) {
+    if (kind === 'review' || !run.artifactRevisions.has(revision) || (fileFormat === 'pdf' && !approved)) {
       throw new Reject(
         409,
         'ARTIFACT_NOT_READY',

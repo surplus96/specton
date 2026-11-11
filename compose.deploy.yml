@@ -56,6 +56,7 @@ services:
       SPECTON_ENABLE_ERD_PDF: ${SPECTON_ENABLE_ERD_PDF:-true}
       # 기능 명세서 PDF는 WeasyPrint·한글 폰트만 쓴다 (#243, #17).
       SPECTON_ENABLE_FUNCTION_SPEC_PDF: ${SPECTON_ENABLE_FUNCTION_SPEC_PDF:-true}
+      SPECTON_MAX_SOURCE_BLOCKS: ${SPECTON_MAX_SOURCE_BLOCKS:-1000}
     volumes:
       - storage:/data/storage
     # 포트를 밖에 열지 않는다. web(Caddy)이 /runs·/health를 넘긴다.

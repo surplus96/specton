@@ -19,7 +19,7 @@ The design reference documents (Korean) live in [docs/](docs/README.md), and dec
 | Web | React (`frontend/`) |
 | Quality | ruff, mypy, pytest |
 
-Undecided: PDF extraction (ADR-0004; PDF output is approved and the HWP/HWPX engine was adopted on 2026-11-08), UI library (ADR-0005). The AWS setup was approved on 2026-11-09 as one EC2 instance with Docker Compose (ADR-0013).
+Supported inputs: Excel, CSV, HWP and HWPX. PDF input/extraction is outside the current acceptance scope (follow-up, #10); PDF output is supported. The HWP/HWPX engine was adopted on 2026-11-08 (ADR-0004). The UI library remains undecided (ADR-0005). The AWS setup was approved on 2026-11-09 as one EC2 instance with Docker Compose (ADR-0013).
 
 ## Getting started
 
@@ -36,6 +36,23 @@ Web (`frontend/`):
 ```bash
 cd frontend && npm install && npm run dev
 ```
+
+### First run
+
+- **API key:** set `SPECTON_OPENAI_API_KEY` in `.env` before running a document. Without a key the API still starts and `/health` answers, but a run fails at the requirements analysis step. Runs call the real API and cost money (a few cents for the sample below).
+- **Ports:** the DB uses 5432, the API 8000 and the web app 5173. `docker compose up -d db` fails if another PostgreSQL already uses 5432.
+- **Input document:** the repository ships no sample input (development and evaluation data are kept private). Create a small synthetic CSV as below. The first line is the header.
+
+```bash
+cat > sample_inventory.csv <<'CSV'
+요구사항 ID,요구사항명,상세 내용
+SFR-001,창고 관리,사용자는 창고의 코드와 이름을 등록하고 조회할 수 있다.
+SFR-002,품목 관리,사용자는 품목의 코드와 이름을 등록하고 조회할 수 있다.
+SFR-003,입고 등록,사용자는 창고별로 품목의 입고 수량과 입고 일자를 등록하고 조회할 수 있다.
+CSV
+```
+
+Open `http://localhost:5173`, upload the file and choose the `inventory` pack. Answer any confirmation questions, then approve at the final review to download the DDL, ERD, function specification and RTM. The screen flow is in [docs/09](docs/09-ui-flow.md).
 
 ## Quality checks
 
@@ -61,7 +78,7 @@ uv run python -m specton.packs.build --check  # check generated files are up to 
 ```text
 specton/
   contracts/    data contracts between stages (state, LLM I/O, Finding)
-  ingest/       Excel·CSV·PDF·HWPX extraction, keeps source locations
+  ingest/       Excel·CSV·HWPX·HWP extraction, keeps source locations
   packs/        domain pack loader
   llm/          shared LLM client, retries, prompt versions
   nodes/        agent nodes A01–A09

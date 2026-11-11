@@ -1,0 +1,86 @@
+schema_version: 1
+pack: inventory
+baseline:
+  path: sources/words_0.1.21.yaml
+  sha256: e70f5e9fb4cee40036c82e343326462ac6eea98b7913a6ccb9f41e623229c763
+  hash_mode: raw_bytes
+  version: 0.1.21
+  ref: 'main before PR #299 (2f145a5 parent)'
+selection:
+  policy_version: development-sourced-v1
+  scope: 'PR #299에서 승인한 개발용 어휘 4개와 공개된 제외 후보. 평가에서만 관측한 이름·자유 별칭은 추가하지 않음.'
+  input_basis: development
+  criteria:
+  - 기존 승인 개발용 범위만 사용. 평가 원문·정답·관측 설계 목록을 선정 입력으로 읽지 않음.
+  - 기존 공식 표현으로 의미를 보존할 수 있는 경우를 우선.
+  - 공개 기관 원본에 한국어·영문·약어가 있고 이용 조건이 허용된 경우만 등록.
+  - 미지원 어휘 RULE-05 critical/manual 유지.
+  review_ref: 'R1 registration approval: PR #299; source and semantic review records: issue #291 and its
+    implementation PR.'
+sources:
+  knps:
+    path: sources/knps_20240911.csv
+    sha256: 4b23f267bd9ad1d6ce11b3b8a5ff405a246c2fd4548d56c367c79c47a9334938
+    hash_mode: raw_bytes
+    edition: '2024-09-11'
+    publisher: 국립공원공단
+    url: https://www.data.go.kr/data/15136194/fileData.do
+    license: 이용허락범위 제한 없음
+    retrieved_on: '2026-11-10'
+    encoding: cp949
+    word_column: 한글
+    english_column: 영어
+    abbreviation_column: 약어
+  hf:
+    path: sources/hf_20260727.csv
+    sha256: d75cc92298cab6da0f0385c67e487298086727d4fb7d31c5dcc9f38aa6f41e81
+    hash_mode: raw_bytes
+    edition: '2026-07-27'
+    publisher: 한국주택금융공사
+    url: https://www.data.go.kr/data/15160532/fileData.do
+    license: 이용허락범위 제한 없음
+    retrieved_on: '2026-11-10'
+    encoding: cp949
+    word_column: 단어 명
+    english_column: 단어 영문 전체 명
+    abbreviation_column: 단어 영문 명
+candidates:
+- word: 간선
+  decision: include
+  reason: 'PR #299에서 승인한 개발용 운영 어휘의 출처를 소급 고정. 평가 전용 관측 이름은 선정 입력으로 사용하지 않음.'
+  source: knps
+  row: 338
+  definition_basis: 운송망의 주요 구간. Main Line/MNN은 원본 값이고 설명은 팩에서 작성.
+- word: 금형
+  decision: include
+  reason: 'PR #299에서 승인한 개발용 운영 어휘의 출처를 소급 고정. 평가 전용 관측 이름은 선정 입력으로 사용하지 않음.'
+  source: knps
+  row: 2356
+  definition_basis: 제조용 틀. Mold/MLD는 원본 값이고 설명은 팩에서 작성.
+- word: 거점
+  decision: include
+  reason: 'PR #299에서 승인한 개발용 운영 어휘의 출처를 소급 고정. 평가 전용 관측 이름은 선정 입력으로 사용하지 않음.'
+  source: hf
+  row: 1090
+  definition_basis: 활동의 근거가 되는 지점(Foothold). 위치(Position) 의미와 구분.
+- word: 연차
+  decision: include
+  reason: 'PR #299에서 승인한 개발용 운영 어휘의 출처를 소급 고정. 평가 전용 관측 이름은 선정 입력으로 사용하지 않음.'
+  source: hf
+  row: 745
+  definition_basis: 해의 차례·횟수(Count Of Years). 연차 휴가 의미로 확장하지 않음.
+- word: 수금
+  decision: exclude
+  reason: 찾은 약어가 기존 승인 길이 범위를 벗어남.
+- word: 상차
+  decision: exclude
+  reason: 검토한 공개 사전에서 의미·약어 근거를 함께 확보하지 못함.
+- word: 양품
+  decision: exclude
+  reason: 검토한 공개 사전에서 의미·약어 근거를 함께 확보하지 못함.
+- word: 적재함
+  decision: exclude
+  reason: 검토한 공개 사전에서 의미·약어 근거를 함께 확보하지 못함.
+- word: 출하자
+  decision: exclude
+  reason: 검토한 공개 사전에서 의미·약어 근거를 함께 확보하지 못함.

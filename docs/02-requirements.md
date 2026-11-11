@@ -10,7 +10,7 @@
 | 서비스 사용자 | 문서를 넣고 검토하는 기획자·개발자 |
 | 팩 | 승인된 용어·패턴·명명 문맥. 로컬 파일 기반이며 벡터 DB를 전제하지 않는다 |
 | HITL | 사용자 답변·승인을 기다리는 실행 중단/재개 지점 |
-| source_ref | Excel 시트·행, PDF 페이지·블록 등 원문 위치. 내부 REQ-xx와 별도로 유지 |
+| source_ref | Excel 시트·행, HWPX·HWP 구역·문단·표·셀 등 원문 위치. 내부 REQ-xx와 별도로 유지 |
 
 ID 규칙: 이 문서의 프로젝트 요구사항은 `REQ-01`~`REQ-27`. 고객 입력을 분석해 붙이는 내부 ID도 `REQ-xx` 형식이지만 실행별로 따로 관리한다. 고객 원문 ID는 `source_id`에 그대로 보존한다. ID는 재사용하지 않는다.
 
@@ -21,7 +21,7 @@ ID 규칙: 이 문서의 프로젝트 요구사항은 `REQ-01`~`REQ-27`. 고객 
 | ID | 요구사항 | 핵심 내용 | 범위 | 설계 문서 | 작업 (이슈) | TC |
 |---|---|---|---|---|---|---|
 | REQ-01 | Excel·CSV 입력 | 원문 ID·명칭·상세·출처와 행 위치 보존. 필수 열 누락·중복 ID는 확인 대상 | 필수 | [10](10-io-and-packs.md) | [#10](https://github.com/surplus96/specton/issues/10) | TC-F01, TC-F22 |
-| REQ-02 | PDF 입력·추출 확인 | 텍스트·표 추출, 페이지·위치 보존, 사용자 확인 후 분석 | 필수 | [10](10-io-and-packs.md) | [#10](https://github.com/surplus96/specton/issues/10) | TC-F02 |
+| REQ-02 | PDF 입력·추출 확인 | 텍스트·표 추출, 페이지·위치 보존은 후속. 10/29 결정 2·11/2 #10 공지, 2026-11-10 R1 재확인 | 범위 밖(후속) | [10](10-io-and-packs.md) | [#10](https://github.com/surplus96/specton/issues/10) | TC-F02 |
 | REQ-03 | 도메인 팩 적용 | 팩 명시 선택. 미지원 팩은 외부 검색 없이 안내 | 필수 | [10](10-io-and-packs.md) | [#11](https://github.com/surplus96/specton/issues/11) | TC-F03 |
 | REQ-04 | 요구사항 분석 (A01) | FR/NFR·복합 요구 분해·품질 경고·확인 질문 | 필수 | [04](04-agents.md) | [#5](https://github.com/surplus96/specton/issues/5) | TC-F04, TC-A01 |
 | REQ-05 | 요구사항 사용자 확인 | 해석·질문 답변, 수정·유지·분할. 답변 버전·재개 위치 저장 | 필수 | [03](03-architecture.md), [04](04-agents.md) | [#17](https://github.com/surplus96/specton/issues/17) | TC-F05, TC-F22 |
@@ -44,7 +44,7 @@ ID 규칙: 이 문서의 프로젝트 요구사항은 `REQ-01`~`REQ-27`. 고객 
 | REQ-22 | 출력 형식·오류 통제 | 구조화 출력 실패는 최대 2회 재요청. 거절·호출 실패·계약 실패 구분 | 필수 | [03](03-architecture.md), [04](04-agents.md) | [#3](https://github.com/surplus96/specton/issues/3) | TC-N02 |
 | REQ-23 | 문서·비밀 보호 | 입력은 비신뢰 데이터. 키·본문 로그 금지, 실행별 접근·파일·SQL 범위 제한 | 필수 | [11](11-deployment-security.md) | [#21](https://github.com/surplus96/specton/issues/21) | TC-N03 |
 | REQ-24 | 재현성·평가 기록 | 모델·팩·프롬프트·데이터 버전과 시간·토큰·지표 기록 | 필수 | [07](07-testing-eval.md) | [#11](https://github.com/surplus96/specton/issues/11), [#20](https://github.com/surplus96/specton/issues/20) | TC-N04 |
-| REQ-25 | 자원·취소 | 파일 크기·페이지·실행 시간·토큰 한도 설정, 실행 취소 | 축소 후보 | [11](11-deployment-security.md) | [#3](https://github.com/surplus96/specton/issues/3), [#17](https://github.com/surplus96/specton/issues/17), [#21](https://github.com/surplus96/specton/issues/21) | TC-N05 |
+| REQ-25 | 자원·취소 | 파일 크기·파싱 원문 수·실행 시간·토큰 한도 설정, 실행 취소(PDF 입력 페이지 수는 후속) | 축소 후보 | [11](11-deployment-security.md) | [#3](https://github.com/surplus96/specton/issues/3), [#17](https://github.com/surplus96/specton/issues/17), [#21](https://github.com/surplus96/specton/issues/21) | TC-N05 |
 | REQ-26 | 팩·공통 코드 분리 | 도메인 용어·패턴은 팩에서 공급, 두 도메인이 같은 파이프라인 사용 | 필수 | [03](03-architecture.md), [04](04-agents.md) | [#11](https://github.com/surplus96/specton/issues/11), [#12](https://github.com/surplus96/specton/issues/12) | TC-N06 |
 | REQ-27 | HWPX·HWP 입력 | 요구사항 상세표 읽기(서술형 요구사항은 구현 범위에서 제외), 원문 기호·위치 보존, 정형 흐름 완성 후 연결 | 필수 | [10](10-io-and-packs.md) | [#24](https://github.com/surplus96/specton/issues/24) | TC-F21 |
 
@@ -63,7 +63,7 @@ ID 규칙: 이 문서의 프로젝트 요구사항은 `REQ-01`~`REQ-27`. 고객 
 ## 입력·출력 제약
 
 - 비밀번호 보호·손상·추출 불가 문서는 설명과 함께 처리 실패로 표시한다.
-- 스캔 PDF/OCR 지원 여부는 미정(ADR-0004). 지원하지 않으면 그 사실을 화면에 명시한다.
+- PDF 입력(텍스트·표·스캔/OCR 포함)은 이번 인수 범위 밖이다(REQ-02, #10). API는 PDF 업로드를 415로 거절하고 화면에 지원 형식을 명시한다. PDF 출력은 REQ-18에 포함한다.
 - 미승인 파일을 내려받으면 초안 표시를 유지한다.
 - DDL 실행은 검증 DB에서만 하며 시스템 명령·확장 설치·네트워크 접근 SQL은 허용하지 않는다.
 

@@ -6,6 +6,19 @@ import pytest
 from specton.config import Settings
 
 
+@pytest.mark.parametrize("limit", [0, -1])
+def test_settings_requires_a_positive_source_block_limit(limit: int) -> None:
+    with pytest.raises(ValueError):
+        Settings(_env_file=None, max_source_blocks=limit)
+
+
+def test_source_block_limit_can_be_configured_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SPECTON_MAX_SOURCE_BLOCKS", "25")
+    assert Settings(_env_file=None).max_source_blocks == 25
+
+
 def test_settings_reads_prefixed_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SPECTON_MAX_REWORK_ITERATIONS", "1")
 
@@ -34,12 +47,12 @@ ADR_0007_DEFAULTS = {
     "review_model": "gpt-6-luna",
     "design_reasoning_effort": "medium",
     "review_reasoning_effort": "low",
-    "llm_timeout_seconds": 120,
+    "llm_timeout_seconds": 300,
     "llm_api_retries": 3,
     "llm_concurrency": 4,
-    "max_output_tokens": 8_000,
+    "max_output_tokens": 32_000,
     "max_tokens_per_run": 400_000,
-    "run_timeout_seconds": 900,
+    "run_timeout_seconds": 1800,
     "max_structured_retries": 2,
 }
 
