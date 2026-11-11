@@ -143,6 +143,26 @@ export function dotDateTime(iso: string): string {
   return `${dotDate(iso)} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+/** 설계안 차수. revision은 0부터 세므로 사람에게는 1차부터 보인다 (revision 0 → 「1차 설계안」) */
+export function revisionText(revision: number): string {
+  return `${revisionNumber(revision)}차 설계안`
+}
+
+/** 카드 배지처럼 좁은 곳에 쓰는 짧은 차수 (revision 1 → 「2차」) */
+export function revisionBadge(revision: number): string {
+  return `${revisionNumber(revision)}차`
+}
+
+function revisionNumber(revision: number): number {
+  return Number.isInteger(revision) && revision >= 0 ? revision + 1 : 1
+}
+
+/** 이 브라우저에서 올리지 않아 파일 이름을 모르는 실행의 이름. 실행 ID 대신 시작 시각으로 구분한다 */
+export function untitledRunName(createdAt?: string | null): string {
+  const at = createdAt ? dotDateTime(createdAt) : ''
+  return at ? `이름 없는 작업 · ${at}` : '이름 없는 작업'
+}
+
 /** 검색: 파일 이름·상태 이름·실행 ID·날짜에 검색어가 들어 있으면 남긴다 (대소문자 무시, 공백으로 나눈 낱말 모두) */
 export function matchesQuery(
   run: { run_id: string; status: RunState; created_at: string },

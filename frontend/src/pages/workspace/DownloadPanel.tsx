@@ -14,6 +14,7 @@ import DownloadAll from './DownloadAll.tsx'
 import DownloadButton from './DownloadButton.tsx'
 import Pipeline from './Pipeline.tsx'
 import type { WorkspaceTab } from './pipeline.ts'
+import { revisionText } from '../runMeta.ts'
 import ResultSummary from './ResultSummary.tsx'
 import { FORMAT_LABEL, KIND_LABEL, downloadRows, isApproved, toArtifacts, type DownloadRow } from './rules.ts'
 
@@ -68,7 +69,7 @@ function DownloadPanel({ run, label }: Props) {
   return (
     <div className="stack">
       <ScreenHead
-        eyebrow={`다운로드 · ${label} · revision ${run.revision}`}
+        eyebrow={`다운로드 · ${label} · ${revisionText(run.revision)}`}
         title={
           <>
             <strong>설계 초안</strong>, {approved ? '완성.' : '내려받기'}

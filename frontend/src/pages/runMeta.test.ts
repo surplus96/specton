@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fourStepStates, matchesQuery, runAction, runBadge, runMessage } from './runMeta.ts'
+import { fourStepStates, matchesQuery, revisionBadge, revisionText, runAction, runBadge, runMessage, untitledRunName } from './runMeta.ts'
 
 describe('실행 카드 상태 칩', () => {
   it('사람 확인을 기다리면 라임 점이 있는 「확인 필요」', () => {
@@ -59,5 +59,24 @@ describe('작업 검색', () => {
     expect(matchesQuery(run, '재고_요구사항.xlsx', '재고 실패')).toBe(false)
     expect(matchesQuery(run, null, 'ABC')).toBe(true)
     expect(matchesQuery(run, null, '   ')).toBe(true)
+  })
+})
+
+describe('사람에게 보이는 실행 이름·설계안 차수', () => {
+  it('revision은 1차부터 센다', () => {
+    expect(revisionText(0)).toBe('1차 설계안')
+    expect(revisionText(2)).toBe('3차 설계안')
+    expect(revisionBadge(1)).toBe('2차')
+  })
+
+  it('잘못된 revision 값은 1차로 보인다', () => {
+    expect(revisionText(-1)).toBe('1차 설계안')
+    expect(revisionBadge(Number.NaN)).toBe('1차')
+  })
+
+  it('파일 이름을 모르는 실행은 실행 ID 대신 시작 시각으로 부른다', () => {
+    expect(untitledRunName('2026-11-12T14:03:00')).toBe('이름 없는 작업 · 2026.11.12 14:03')
+    expect(untitledRunName(null)).toBe('이름 없는 작업')
+    expect(untitledRunName('not-a-date')).toBe('이름 없는 작업')
   })
 })

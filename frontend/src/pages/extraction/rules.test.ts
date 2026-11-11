@@ -67,12 +67,12 @@ describe('결정과 보내기', () => {
   })
 
   it('제외하지 않은 fail이 남으면 보낼 수 없다', () => {
-    expect(problems(blocks, initialDecisions(blocks))).toEqual(['B3: 추출에 실패한 블록은 제외해야 합니다'])
+    expect(problems(blocks, initialDecisions(blocks))).toEqual(['2행: 추출에 실패한 원문은 제외해 주세요'])
   })
 
   it('review를 제외하려면 사유가 필요하다 (공백만은 안 됨). fail은 사유 없이 제외', () => {
     const d: Decisions = { ...initialDecisions(blocks), B2: { exclude: true, reason: '   ' }, B3: { exclude: true, reason: '' } }
-    expect(problems(blocks, d)).toEqual(['B2: 제외 사유를 적어 주세요'])
+    expect(problems(blocks, d)).toEqual(['2행: 제외 사유를 적어 주세요'])
     d.B2 = { exclude: true, reason: ' 중복 ' }
     expect(problems(blocks, d)).toEqual([])
     expect(buildResponse(blocks, d)).toEqual({
@@ -136,7 +136,7 @@ describe('서버(mock)와 같은 결과', () => {
     const { run, items } = await waiting()
     expect(run.interrupt?.kind).toBe('extraction')
     expect(items.find((b) => b.source_text === null)?.extraction_status).toBe('review')
-    expect(problems(items, initialDecisions(items))).toEqual(['B5: 추출에 실패한 블록은 제외해야 합니다'])
+    expect(problems(items, initialDecisions(items))).toEqual(['요구사항 시트 9행: 추출에 실패한 원문은 제외해 주세요'])
   })
 
   it('화면이 막는 답(fail 미제외)은 서버도 422, 메시지는 같은 블록 ID로 시작', async () => {

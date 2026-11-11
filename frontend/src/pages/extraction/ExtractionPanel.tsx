@@ -18,6 +18,7 @@ import { useResume } from '../run/useResume.ts'
 import {
   STATUS_LABEL,
   STOP_RESPONSE,
+  blockLabel,
   buildResponse,
   initialDecisions,
   locationText,
@@ -82,6 +83,10 @@ function ExtractionPanel({ run, events, onChanged, label }: Props) {
   const reviewCount = toCheck.length - failCount
   const blocking = blocks ? problems(blocks, decisions) : []
   const warnings = blocks ? relatedWarnings(blocks, decisions) : []
+  const blockName = (blockId: string) => {
+    const b = blocks?.find((x) => x.block_id === blockId)
+    return b ? blockLabel(b) : blockId
+  }
   const sheets = skippedSheets(events.map((e) => e.data.payload))
   const decided = toCheck.filter((b) => touched.has(b.block_id)).length
   const allDecided = toCheck.length > 0 && decided === toCheck.length
@@ -105,10 +110,11 @@ function ExtractionPanel({ run, events, onChanged, label }: Props) {
       render: (b) => (
         <div className="stack-sm" style={{ gap: 2 }}>
           <span>{locationText(b.source_ref)}</span>
-          <span className="mono subtle" style={{ fontSize: 12 }}>
-            {b.block_id}
-            {b.source_id ? ` · ${b.source_id}` : ''}
-          </span>
+          {b.source_id && (
+            <span className="mono subtle" style={{ fontSize: 12 }}>
+              {b.source_id}
+            </span>
+          )}
         </div>
       ),
     },
@@ -133,15 +139,15 @@ function ExtractionPanel({ run, events, onChanged, label }: Props) {
         <div className="stack-sm">
           <Segmented<'exclude' | 'confirm'>
             variant="choice"
-            label={`${b.block_id} 결정`}
+            label={`${blockLabel(b)} 결정`}
             value={value}
             onChange={(v) => decide(b.block_id, { exclude: v === 'exclude' })}
             options={[
               { value: 'exclude', label: '제외' },
-              { value: 'confirm', label: '확인', disabled: !isReview, title: isReview ? undefined : '실패한 블록은 제외만 할 수 있어요' },
+              { value: 'confirm', label: '확인', disabled: !isReview, title: isReview ? undefined : '실패한 원문은 제외만 할 수 있어요' },
             ]}
           />
-          {!isReview && !d.exclude && <span className="subtle" style={{ fontSize: 13 }}>실패한 블록은 제외만 할 수 있어요</span>}
+          {!isReview && !d.exclude && <span className="subtle" style={{ fontSize: 13 }}>실패한 원문은 제외만 할 수 있어요</span>}
           {value === 'confirm' && (
             <span className="row" style={{ gap: 6, fontSize: 13, fontWeight: 600 }}>
               <Icon name="checkCircle" size={16} /> 확인함
@@ -150,7 +156,7 @@ function ExtractionPanel({ run, events, onChanged, label }: Props) {
           {d.exclude && (
             <input
               className="input"
-              aria-label={`${b.block_id} 제외 사유`}
+              aria-label={`${blockLabel(b)} 제외 사유`}
               placeholder={isReview ? '제외 사유 (필수)' : '제외 사유 (선택)'}
               value={d.reason}
               aria-invalid={reasonMissing}
@@ -208,7 +214,7 @@ function ExtractionPanel({ run, events, onChanged, label }: Props) {
               <ul>
                 {warnings.map((w) => (
                   <li key={w.block_id}>
-                    {w.block_id}({w.source_id})를 제외하면 {w.related_block_ids.join(', ')}의 관련 요구사항에 남아요. 제외는 할 수 있어요.
+                    {blockName(w.block_id)}를 제외해도 {w.related_block_ids.map(blockName).join(', ')}의 관련 요구사항에는 남아요. 제외는 할 수 있어요.
                   </li>
                 ))}
               </ul>

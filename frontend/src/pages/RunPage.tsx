@@ -53,7 +53,7 @@ function RunPage({ runId }: { runId: string }) {
     lastScreen.current = currentScreen
   }, [currentScreen])
 
-  const label = file ?? `실행 ${runId.slice(0, 8)}`
+  const label = file ?? '이름 없는 작업'
 
   if (loadError) {
     const notFound = loadError instanceof ApiError && loadError.status === 404

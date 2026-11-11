@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { runFileName, titleFromFile } from '../api/runNames.ts'
-import { runBadge } from '../pages/runMeta.ts'
+import { runBadge, untitledRunName } from '../pages/runMeta.ts'
 import { useRuns } from '../pages/useRuns.ts'
 import Icon from './Icon.tsx'
 
@@ -113,7 +113,7 @@ function AppLayout() {
                     to={`/?run=${encodeURIComponent(r.run_id)}`}
                     aria-current={currentRun === r.run_id ? 'page' : undefined}
                   >
-                    <span className="recent__name">{file ? titleFromFile(file) : `실행 ${r.run_id.slice(0, 8)}`}</span>
+                    <span className="recent__name">{file ? titleFromFile(file) : untitledRunName(r.created_at)}</span>
                     <small>{runBadge(r.status).text}</small>
                   </Link>
                 )

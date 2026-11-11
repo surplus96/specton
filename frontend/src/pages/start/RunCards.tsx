@@ -6,7 +6,7 @@ import StatusTag from '../../layout/StatusTag.tsx'
 import Button from '../../ui/Button.tsx'
 import { recentMessages } from '../run/screens.ts'
 import { useRunStatus } from '../run/useRunStatus.ts'
-import { dotDate, fourStepStates, runAction, runBadge, runMessage } from '../runMeta.ts'
+import { dotDate, fourStepStates, revisionBadge, revisionText, runAction, runBadge, runMessage, untitledRunName } from '../runMeta.ts'
 import FourSteps from './FourSteps.tsx'
 import Notice from '../../ui/Notice.tsx'
 
@@ -51,7 +51,7 @@ export function ActiveRunCard({ runId }: { runId: string }) {
             {title}
           </h3>
           <div className="muted" style={{ fontSize: 15 }}>
-            {file ?? `실행 ${runId.slice(0, 8)}`} · 확인 받기 · revision {run.revision}
+            {file ?? '이름 없는 작업'} · 확인 받기 · {revisionText(run.revision)}
           </div>
         </div>
         <Button onClick={open}>{runAction(run.status)}</Button>
@@ -81,12 +81,12 @@ export function RunCard({ run }: { run: RunSummary }) {
           <span className="subtle" style={{ fontSize: 14 }}>
             {dotDate(run.created_at)}
           </span>
-          <span className="badge">r{run.revision}</span>
+          <span className="badge">{revisionBadge(run.revision)}</span>
         </span>
       </div>
       <div className="work-card__title">{title}</div>
       <div className="muted" style={{ fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {file ?? `실행 ID ${run.run_id}`}
+        {file ?? untitledRunName(run.created_at)}
       </div>
     </button>
   )

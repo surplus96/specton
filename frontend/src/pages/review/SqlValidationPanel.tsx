@@ -17,7 +17,7 @@ export default function SqlValidationPanel({ result }: { result: SqlReview }) {
       <Notice kind={passed ? 'success' : result.status === 'failed' || result.status === 'error' ? 'error' : 'warning'} title={TITLE[result.status]}>
         <div>
           {passed
-            ? '현재 revision의 SQL 검증 결과입니다. 승인할 때 서버가 최신 결과를 다시 확인합니다.'
+            ? '이 설계안의 SQL 검증 결과예요. 승인할 때 최신 결과를 한 번 더 확인해요.'
             : 'SQL 검증 통과를 확인할 수 없습니다. 필수 검증 조건을 충족하지 못하면 승인할 수 없습니다. 수정 요청 또는 보류를 선택할 수 있습니다.'}
         </div>
         {result.validatedAt && <div>검증 시각: {new Date(result.validatedAt).toLocaleString('ko-KR')}</div>}

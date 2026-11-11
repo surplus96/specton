@@ -99,14 +99,14 @@ describe('지적 표시', () => {
 
   it('출처: 규칙 검사는 코드, LLM은 검토 관점 이름', () => {
     expect(sourceText(finding('F', 'critical'))).toBe('규칙 검사 RULE-03')
-    expect(sourceText(finding('F', 'major'))).toBe('A06 데이터 누락 검토')
+    expect(sourceText(finding('F', 'major'))).toBe('데이터 누락 검토')
   })
 
-  it('대상 ID에 설계 이름을 붙인다 (속성은 엔티티.속성, 관계는 부모 → 자식)', () => {
+  it('대상은 설계 이름을 먼저, ID는 괄호에 (속성은 엔티티.속성, 관계는 부모 → 자식)', () => {
     const names = nameIndex(design)
-    expect(targetText({ kind: 'entity', id: 'ENT-01' }, names)).toBe('ENT-01 창고')
-    expect(targetText({ kind: 'attribute', id: 'ATTR-01' }, names)).toBe('ATTR-01 창고.창고코드')
-    expect(targetText({ kind: 'relationship', id: 'REL-01' }, names)).toBe('REL-01 창고 → 입고')
+    expect(targetText({ kind: 'entity', id: 'ENT-01' }, names)).toBe('창고 (ENT-01)')
+    expect(targetText({ kind: 'attribute', id: 'ATTR-01' }, names)).toBe('창고.창고코드 (ATTR-01)')
+    expect(targetText({ kind: 'relationship', id: 'REL-01' }, names)).toBe('창고 → 입고 (REL-01)')
     expect(targetText({ kind: 'function', id: 'FN-99' }, names)).toBe('FN-99')
   })
 

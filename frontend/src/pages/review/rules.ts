@@ -61,7 +61,7 @@ export const REVIEWER_LABEL: Record<string, string> = {
 export function sourceText(f: Pick<Finding, 'source' | 'rule_code' | 'reviewer_id'>): string {
   if (f.source === 'rule') return `규칙 검사 ${f.rule_code ?? ''}`.trim()
   const id = f.reviewer_id ?? ''
-  return REVIEWER_LABEL[id] ? `${id} ${REVIEWER_LABEL[id]} 검토` : `${id} 검토`.trim()
+  return REVIEWER_LABEL[id] ? `${REVIEWER_LABEL[id]} 검토` : `${id} 검토`.trim()
 }
 
 export const STAGE_LABEL: Record<NonNullable<Finding['target_stage']>, string> = {
@@ -90,7 +90,7 @@ export function nameIndex(design: readonly DesignItem[]): Map<string, string> {
 
 export function targetText(target: Finding['targets'][number], names: Map<string, string>): string {
   const name = names.get(target.id)
-  return name ? `${target.id} ${name}` : target.id
+  return name ? `${name} (${target.id})` : target.id
 }
 
 /** 자동 재작업을 멈추고 사람에게 넘긴 이유 (review/rework.py HitlReason) */
@@ -119,7 +119,7 @@ export function reviewNotices(
 }
 
 export function branchText(branch: string): string {
-  return REVIEWER_LABEL[branch] ? `${branch} ${REVIEWER_LABEL[branch]}` : branch
+  return REVIEWER_LABEL[branch] ?? branch
 }
 
 export type Decision = ReviewResponse['decision']

@@ -59,8 +59,17 @@ function DesignTables({ items, names }: Props) {
           minWidth={900}
           empty="기능이 없어요."
           columns={[
-            { key: 'id', title: 'ID', width: 90, render: (f) => <span className="mono">{f.id}</span> },
-            { key: 'name', title: '기능', width: 160, render: (f) => <strong>{f.name}</strong> },
+            {
+              key: 'name',
+              title: '기능',
+              width: 170,
+              render: (f) => (
+                <div className="stack-sm" style={{ gap: 2 }}>
+                  <strong>{f.name}</strong>
+                  <span className="subtle mono" style={{ fontSize: 12 }}>{f.id}</span>
+                </div>
+              ),
+            },
             { key: 'desc', title: '설명', render: (f) => f.description },
             { key: 'priority', title: '우선순위', width: 110, render: (f) => priorityText(f) },
             { key: 'crud', title: '엔티티 CRUD', width: 190, render: (f) => crudText(f, names) },
@@ -78,8 +87,17 @@ function DesignTables({ items, names }: Props) {
           expand={(e) => <AttributeTable entity={e} />}
           expandLabel={(e, open) => `${e.name} 속성 ${open ? '접기' : '펼치기'}`}
           columns={[
-            { key: 'id', title: 'ID', width: 90, render: (e) => <span className="mono">{e.id}</span> },
-            { key: 'name', title: '엔티티', width: 160, render: (e) => <strong>{e.name}</strong> },
+            {
+              key: 'name',
+              title: '엔티티',
+              width: 170,
+              render: (e) => (
+                <div className="stack-sm" style={{ gap: 2 }}>
+                  <strong>{e.name}</strong>
+                  <span className="subtle mono" style={{ fontSize: 12 }}>{e.id}</span>
+                </div>
+              ),
+            },
             { key: 'desc', title: '설명', render: (e) => e.description },
             { key: 'count', title: '속성', width: 80, render: (e) => `${e.attributes.length}개` },
             { key: 'req', title: '근거 요구사항', width: 140, render: (e) => <span className="mono">{reqText(e.req_ids)}</span> },
@@ -94,8 +112,17 @@ function DesignTables({ items, names }: Props) {
           minWidth={900}
           empty="관계가 없어요."
           columns={[
-            { key: 'id', title: 'ID', width: 90, render: (r) => <span className="mono">{r.id}</span> },
-            { key: 'pair', title: '관계', width: 200, render: (r) => `${names.get(r.parent) ?? r.parent} → ${names.get(r.child) ?? r.child}` },
+            {
+              key: 'pair',
+              title: '관계',
+              width: 210,
+              render: (r) => (
+                <div className="stack-sm" style={{ gap: 2 }}>
+                  <strong>{names.get(r.parent) ?? r.parent} → {names.get(r.child) ?? r.child}</strong>
+                  <span className="subtle mono" style={{ fontSize: 12 }}>{r.id}</span>
+                </div>
+              ),
+            },
             { key: 'kind', title: '성격', width: 170, render: (r) => relationText(r) },
             { key: 'why', title: '근거', render: (r) => r.rationale },
             { key: 'req', title: '근거 요구사항', width: 140, render: (r) => <span className="mono">{reqText(r.req_ids)}</span> },
