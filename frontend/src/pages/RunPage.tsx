@@ -13,11 +13,11 @@ import RequirementsPanel from './requirements/RequirementsPanel.tsx'
 import ReviewPanel from './review/ReviewPanel.tsx'
 import ActivityPanel from './run/ActivityPanel.tsx'
 import ProgressPanel from './run/ProgressPanel.tsx'
-import { displayStage, screenFor, unreachedScreens } from './run/screens.ts'
+import { screenFor, screenSteps } from './run/screens.ts'
 import { useRunStatus } from './run/useRunStatus.ts'
 import DownloadPanel from './workspace/DownloadPanel.tsx'
 import WorkspacePanel from './workspace/WorkspacePanel.tsx'
-import { VIEW_LABEL, chosenView, resultViews, type ResultView } from './workspace/rules.ts'
+import { VIEW_LABEL, chosenView, staleView, resultViews, type ResultView } from './workspace/rules.ts'
 
 // 실행 하나의 화면 (/?run=<runId>).
 // 상태를 조회하고 이벤트(SSE)로 따라가며, 상태에 맞는 화면(UI-02~07)을 고른다 (run/screens.ts).
@@ -54,6 +54,16 @@ function RunPage({ runId }: { runId: string }) {
   }, [currentScreen])
 
   const label = file ?? `실행 ${runId.slice(0, 8)}`
+
+  useEffect(() => {
+    if (!run || !staleView(run.status, params.get('view'))) return
+    setParams((previous) => {
+      const next = new URLSearchParams(previous)
+      next.delete('view')
+      next.delete('tab')
+      return next
+    }, { replace: true })
+  }, [run, params, setParams])
 
   if (loadError) {
     const notFound = loadError instanceof ApiError && loadError.status === 404
@@ -97,7 +107,7 @@ function RunPage({ runId }: { runId: string }) {
 
   const view = chosenView(run.status, params.get('view'))
   const screen = view ? SCREEN_OF_VIEW[view] : screenFor(run.status, run.interrupt?.kind)
-  const unreached = unreachedScreens(run.status, displayStage(run.stage, events))
+  const steps = screenSteps(run.status, screen, events)
 
   function chooseView(next: ResultView) {
     setParams((p) => {
@@ -109,7 +119,7 @@ function RunPage({ runId }: { runId: string }) {
 
   return (
     <div>
-      <StageSteps current={screen} unreached={unreached} />
+      <StageSteps steps={steps} />
       <div className="row row--between" style={{ marginBottom: 20 }}>
         {view ? (
           <Segmented<ResultView>

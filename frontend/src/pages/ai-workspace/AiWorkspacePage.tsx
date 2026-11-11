@@ -147,6 +147,7 @@ function Workspace({ runId }: { runId: string }) {
   if (loadError) {
     return (
       <div className="aiws" style={{ ...cssVars, padding: 32 }}>
+        <h1>AI Workspace</h1>
         <p role="alert">{errorMessage(loadError)}</p>
         <Link to="/">처음으로</Link>
       </div>
@@ -197,7 +198,7 @@ function Workspace({ runId }: { runId: string }) {
         <Link to={`/?run=${encodeURIComponent(runId)}`} style={{ color: dark.accent }}>
           ← 실행 화면
         </Link>
-        <strong style={{ fontSize: 18 }}>AI Workspace</strong>
+        <h1 style={{ fontSize: 18, margin: 0 }}>AI Workspace</h1>
         <span className="aiws-chip" title={runId}>
           실행 {runId.slice(0, 8)}
         </span>
@@ -222,7 +223,7 @@ function Workspace({ runId }: { runId: string }) {
           </select>
         </label>
         {artifacts.length > 0 && (
-          <span className="aiws-chip" style={{ borderColor: approved ? '#4ade80' : '#fbbf24', color: approved ? '#4ade80' : '#fbbf24' }}>
+          <span className="aiws-chip" style={{ borderColor: approved ? 'var(--darktones-done-fg)' : 'var(--darktones-awaiting-fg)', color: approved ? 'var(--darktones-done-fg)' : 'var(--darktones-awaiting-fg)' }}>
             {approved ? '승인본' : '초안'}
           </span>
         )}

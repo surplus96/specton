@@ -4,7 +4,7 @@ import type { ArtifactRef, DesignItem } from '../../api/viewItems.ts'
 import { splitDesign } from './design.ts'
 import type { SqlReview } from './sqlValidation.ts'
 
-export type CheckRow = { key: 'functions' | 'erd' | 'ddl' | 'rtm'; title: string; detail: string; ok: boolean }
+export type CheckRow = { key: 'functions' | 'erd' | 'ddl' | 'rtm'; title: string; detail: string; ok: boolean; state: string }
 
 const SQL_TEXT: Record<SqlReview['status'], string> = {
   passed: 'SQL 검증 통과',
@@ -13,6 +13,8 @@ const SQL_TEXT: Record<SqlReview['status'], string> = {
   unverified: 'SQL 미검증',
   missing: 'SQL 산출물 없음',
 }
+
+const SQL_STATE = { passed: '검증 통과', failed: '검증 실패', error: '검증 오류', unverified: '미검증', missing: '없음' } as const
 
 export function reviewChecklist(
   design: readonly DesignItem[],
@@ -28,15 +30,17 @@ export function reviewChecklist(
       key: 'functions',
       title: '기능 명세',
       detail: `기능 ${functions.length}개 · 근거 요구사항 ${reqs}개`,
-      ok: functions.length > 0,
+      ok: has('functions'),
+      state: has('functions') ? '있음' : '없음',
     },
     {
       key: 'erd',
       title: 'ERD',
       detail: `엔티티 ${entities.length}개 · 관계 ${relationships.length}개${has('erd') ? '' : ' · 그림 없음'}`,
       ok: has('erd'),
+      state: has('erd') ? '있음' : '그림 없음',
     },
-    { key: 'ddl', title: 'DDL', detail: SQL_TEXT[sql.status], ok: sql.status === 'passed' },
-    { key: 'rtm', title: 'RTM', detail: has('rtm') ? '요구사항 · 기능 · 엔티티 연결' : '아직 없음', ok: has('rtm') },
+    { key: 'ddl', title: 'DDL', detail: SQL_TEXT[sql.status], ok: sql.status === 'passed', state: SQL_STATE[sql.status] },
+    { key: 'rtm', title: 'RTM', detail: has('rtm') ? '요구사항 · 기능 · 엔티티 연결' : '아직 없음', ok: has('rtm'), state: has('rtm') ? '있음' : '없음' },
   ]
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { runFileName, titleFromFile } from '../api/runNames.ts'
 import { runBadge } from '../pages/runMeta.ts'
@@ -30,6 +30,9 @@ export function Logo() {
 
 function AppLayout() {
   const [collapsed, setCollapsed] = useState(readCollapsed)
+  const sidebar = useRef<HTMLElement>(null)
+  const menuButton = useRef<HTMLButtonElement>(null)
+  const wasOpen = useRef(false)
   const [drawer, setDrawer] = useState(false)
   const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 960px)').matches)
   useEffect(() => {
@@ -48,6 +51,27 @@ function AppLayout() {
   // 화면을 옮기면 좁은 화면의 덮개를 닫는다
   useEffect(() => setDrawer(false), [location.pathname, location.search])
 
+  useEffect(() => {
+    const opened = narrow && drawer
+    if (opened) {
+      sidebar.current?.querySelector<HTMLButtonElement>('button[aria-label="메뉴 닫기"]')?.focus()
+      const onKey = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') { event.preventDefault(); setDrawer(false) }
+        if (event.key === 'Tab') {
+          const controls = sidebar.current?.querySelectorAll<HTMLElement>('a[href], button:not(:disabled)')
+          if (!controls?.length) return
+          const first = controls[0], last = controls[controls.length - 1]
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+        }
+      }
+      document.addEventListener('keydown', onKey)
+      wasOpen.current = true
+      return () => document.removeEventListener('keydown', onKey)
+    }
+    if (wasOpen.current) { menuButton.current?.focus(); wasOpen.current = false }
+  }, [drawer, narrow])
+
   function toggleCollapse() {
     setCollapsed((c) => {
       try {
@@ -64,8 +88,9 @@ function AppLayout() {
   const searching = isRuns && params.get('search') === '1'
 
   return (
+    <><a className="skip-link" href="#main">본문으로 건너뛰기</a>
     <div className={`shell${collapsed ? ' shell--collapsed' : ''}${drawer ? ' shell--drawer' : ''}`}>
-      <aside className="sidebar" aria-label="메뉴" inert={narrow && !drawer}>
+      <aside ref={sidebar} id="app-menu" className="sidebar" aria-label="메뉴" inert={narrow && !drawer}>
         <div className="sidebar__top">
           <Link to="/" style={{ textDecoration: 'none' }} aria-label="SPECTON 처음 화면">
             <Logo />
@@ -127,9 +152,9 @@ function AppLayout() {
 
       {drawer && <div className="scrim" onClick={() => setDrawer(false)} aria-hidden="true" />}
 
-      <div className="main">
+      <div className="main" inert={narrow && drawer}>
         <header className="topbar">
-          <button type="button" className="icon-btn topbar__menu" onClick={() => setDrawer(true)} aria-label="메뉴 열기">
+          <button ref={menuButton} type="button" aria-controls="app-menu" aria-expanded={drawer} className="icon-btn topbar__menu" onClick={() => setDrawer(true)} aria-label="메뉴 열기">
             <Icon name="menu" />
           </button>
           <Link className="topbar__link" to="/about">
@@ -141,11 +166,11 @@ function AppLayout() {
             <Icon name="arrowRight" size={18} />
           </button>
         </header>
-        <main className="content" id="main">
+        <main className="content" id="main" tabIndex={-1}>
           <Outlet />
         </main>
       </div>
-    </div>
+    </div></>
   )
 }
 

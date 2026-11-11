@@ -1,7 +1,7 @@
 // 실행 상태 → 화면 규칙. 화면 코드(RunPage)와 분리해 테스트한다.
 // 상태 목록은 계약(RunState), 화면 대응은 docs/09-ui-flow.md 화면 목록·흐름도를 따른다.
 import type { ApiErrorBody, InterruptKind, RunState, SseEvent } from '../../api/types.ts'
-import type { ScreenId } from '../../layout/StageSteps.tsx'
+import { SCREENS, type StepState, type ScreenId } from '../../layout/StageSteps.tsx'
 
 /** 상태마다 보일 화면. Record라서 계약에 상태가 늘면 여기서 타입 오류가 난다. */
 const SCREEN_OF: Record<RunState, ScreenId> = {
@@ -77,16 +77,23 @@ export function displayStage(stage: string | null | undefined, events: readonly 
   return last?.data.stage ?? stage ?? null
 }
 
-/**
- * 실패·취소한 실행에서 실제로 거치지 않은 확인 화면. 위쪽 단계 표시에서 완료(✓)로 보이지 않게 한다.
- * 문서 읽기에서 멈췄으면 추출 확인·분석 확인, 분석에서 멈췄으면 분석 확인을 거치지 않았다.
- */
-export function unreachedScreens(status: RunState, stage: string | null): ScreenId[] {
-  if (status !== 'failed' && status !== 'cancelled') return []
-  const at = progressIndex(stage)
-  if (at <= 0) return ['UI-02', 'UI-03']
-  if (at === 1) return ['UI-03']
-  return []
+/** 확인 이력이 없으면 방문·생략을 추정하지 않는다. 결과 작업공간은 별도 보기다. */
+export function screenSteps(status: RunState, current: ScreenId, events: readonly SseEvent[]): Record<ScreenId, StepState> {
+  const steps = Object.fromEntries(SCREENS.map((s) => [s.id, 'todo'])) as Record<ScreenId, StepState>
+  const seen = (kind: string) => events.some((e) => e.event === 'interrupt' && e.data.payload?.kind === kind)
+  steps['UI-01'] = 'done'
+  const at = SCREENS.findIndex((s) => s.id === current)
+  if (at > 1) steps['UI-02'] = seen('extraction') ? 'done'
+    : events.some((e) => progressIndex(e.data.stage) >= 1) ? 'skipped' : 'todo'
+  if (at > 2) steps['UI-03'] = seen('requirements') ? 'done' : requirementsCheckSkipped(events) ? 'skipped' : 'todo'
+  const resultsReady = ['awaiting_review', 'exporting', 'completed'].includes(status)
+  if (resultsReady) {
+    steps['UI-04'] = 'done'
+    steps['UI-05'] = 'available'
+  }
+  if (['exporting', 'completed'].includes(status)) steps['UI-06'] = 'done'
+  steps[current] = 'now'
+  return steps
 }
 
 /** 분석 확인을 건너뛰었을 때 서버가 남기는 문구 (docs/06 「SSE」, ADR-0015) */

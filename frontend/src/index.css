@@ -1,4 +1,12 @@
-/* Specton 화면 스타일. 값은 src/theme.ts와 같다 (SPECTON 디자인 시스템 v0.2 + F안 시안). */
+@font-face {
+  font-family: 'Pretendard Variable';
+  font-style: normal;
+  font-weight: 45 920;
+  font-display: swap;
+  src: url('/fonts/PretendardVariable.woff2') format('woff2');
+}
+
+/* Specton 화면 스타일. 값은 이 파일 :root에서 관리한다 (SPECTON 디자인 시스템 v0.2 + F안 시안). */
 
 :root {
   --forest: #18211a;
@@ -23,12 +31,55 @@
   --ok-soft: #e6f1e9;
   --info: #3e5a78;
   --info-soft: #e9eef3;
-  --mono: 'DM Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   --font: 'Pretendard Variable', Pretendard, system-ui, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif;
   --radius: 10px;
   --radius-lg: 16px;
   --sidebar: 288px;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --tones-danger-bg: #A8453B;
+  --tones-danger-fg: #FFFFFF;
+  --tones-warning-bg: var(--warn-soft);
+  --tones-warning-fg: var(--warn);
+  --tones-success-bg: #2F6B43;
+  --tones-success-fg: #FFFFFF;
+  --tones-info-bg: #18211A;
+  --tones-info-fg: #F3F2E9;
+  --tones-neutral-bg: #ECEEEA;
+  --tones-neutral-fg: #18211A;
+  --dark-page: #111812;
+  --dark-panel: #18211A;
+  --dark-canvas: #141C16;
+  --dark-card: #1F2A22;
+  --dark-card-hover: #27332A;
+  --dark-border: #33413A;
+  --dark-line: #56645A;
+  --dark-ink: #F3F2E9;
+  --dark-ink-muted: #B7BCB0;
+  --dark-accent: #D7FF4F;
+  --dark-focus: #D7FF4F;
+  --darktones-waiting-fg: #B7BCB0;
+  --darktones-waiting-border: #56645A;
+  --darktones-running-fg: #D7FF4F;
+  --darktones-running-border: #D7FF4F;
+  --darktones-awaiting-fg: #F2C14E;
+  --darktones-awaiting-border: #F2C14E;
+  --darktones-done-fg: #8FD19E;
+  --darktones-done-border: #8FD19E;
+  --darktones-failed-fg: #F08A7E;
+  --darktones-failed-border: #F08A7E;
+  --darktones-skipped-fg: #B7BCB0;
+  --darktones-skipped-border: #56645A;
+  --darktones-cancelled-fg: #D5D8CF;
+  --darktones-cancelled-border: #6B756C;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --dark-mask: rgba(2, 6, 23, 0.35);
   color-scheme: light;
 }
 
@@ -61,9 +112,9 @@ a {
 }
 
 :focus-visible {
-  outline: 2px solid var(--lime);
+  outline: 2px solid var(--forest);
   outline-offset: 2px;
-  box-shadow: 0 0 0 4px var(--forest);
+  box-shadow: 0 0 0 4px var(--lime);
   border-radius: 6px;
 }
 
@@ -488,7 +539,7 @@ a {
 }
 
 .btn:hover:not(:disabled) {
-  background: #253127;
+  background: var(--forest-3);
 }
 
 .btn:active:not(:disabled) {
@@ -1002,9 +1053,10 @@ details.more[open] summary {
 .input:focus,
 .select:focus,
 .textarea:focus {
-  outline: none;
+  outline: 2px solid var(--forest);
+  outline-offset: 2px;
   border-color: var(--forest);
-  box-shadow: 0 0 0 3px rgba(215, 255, 79, 0.7);
+  box-shadow: 0 0 0 4px var(--lime);
 }
 
 .input[aria-invalid='true'],
@@ -1650,7 +1702,7 @@ dialog.confirm p {
   align-items: stretch;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 960px) {
   .decide {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2048,7 +2100,7 @@ dialog.confirm p {
   }
 }
 
-@media (max-width: 860px) {
+@media (max-width: 960px) {
   .demo__steps,
   .steps4 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2058,3 +2110,11 @@ dialog.confirm p {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.stage-strip__item--skipped { color: var(--ink-muted); }
+.stage-strip__item--skipped .stage-strip__bar { background: repeating-linear-gradient(90deg, var(--ink-subtle) 0 4px, transparent 4px 8px); }
+.stage-strip__item--available .stage-strip__bar { background: var(--ok); }
+.stage-strip__state { font-size: 12px; }
+.check-list__state { font-weight: 600; color: var(--ink); }
+.skip-link { position: fixed; top: -100px; left: 12px; z-index: 1000; padding: 12px 16px; background: var(--page); color: var(--ink); }
+.skip-link:focus { top: 12px; }

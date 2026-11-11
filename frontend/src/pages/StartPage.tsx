@@ -9,7 +9,7 @@ import { useRuns } from './useRuns.ts'
 
 // 새 작업 (/) — F안 시안
 // - 첫 방문(실행 없음): 큰 제목 + 업로드 + 진행 방식 + 작동 과정 샘플(가상 데이터)
-// - 작업 있음: 지금 진행 중(끝나지 않은 가장 최근 실행, 실시간) → 이어서 할 작업 → 새 작업
+// - 작업 있음: 지금 진행 중(끝나지 않은 가장 최근 실행, 실시간) → 최근 작업 → 새 작업
 // 목록을 불러오지 못해도 업로드는 그대로 쓸 수 있고, 실패는 「없음」과 따로 알린다.
 function StartPage() {
   const { runs, failed, reload } = useRuns(20)
@@ -29,7 +29,7 @@ function StartPage() {
     <div className="stack-lg screen">
       {loadFailed}
       {loading && <p role="status">지난 작업을 불러오는 중이에요.</p>}
-      {firstVisit && <h1 className="hero">어떤 <strong>요구사항</strong>을 설계할까요?</h1>}
+      <h1 className="hero">{firstVisit ? <>어떤 <strong>요구사항</strong>을 설계할까요?</> : <>새로운 <strong>설계 작업</strong></>}</h1>
       {active && (
         <section aria-labelledby="now-title">
           <h2 className="section-title" id="now-title">
@@ -42,7 +42,7 @@ function StartPage() {
         <section aria-labelledby="next-title">
           <div className="row row--between" style={{ marginBottom: 16 }}>
             <h2 className="section-title" id="next-title" style={{ margin: 0 }}>
-              이어서 할 작업
+              최근 작업
             </h2>
             <Link to="/history" className="topbar__link" style={{ padding: '4px 8px' }}>
               전체 보기 →

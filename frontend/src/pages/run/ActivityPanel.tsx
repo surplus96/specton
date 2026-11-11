@@ -48,12 +48,13 @@ function ActivityPanel({ events = [], receivedAt = {}, connection, status, idleT
           경과 <strong style={{ color: 'var(--ink)', fontSize: 18 }}>{formatElapsed(end - start)}</strong>
         </div>
       )}
+      <p className="sr-only" role="status" aria-atomic="true">{items[0]?.message ?? idleText}</p>
       {items.length === 0 ? (
         <p className="muted" style={{ margin: '14px 0 0', fontSize: 14 }}>
           {idleText ?? '서버 소식을 기다리고 있어요…'}
         </p>
       ) : (
-        <ol aria-live="polite">
+        <ol>
           {items.map((item, i) => (
             <li key={item.id} className={i === 0 ? 'is-new' : undefined}>
               <div className="activity__meta">

@@ -19,6 +19,8 @@
 //   erd-attack   (다른 낱말과 함께) ERD 원문에 지시문을 넣어 돌려줌. 웹이 그리지 않는지 보는 보안 시험 (#190)
 //   large        (다른 낱말과 함께) 설계를 엔티티 50개·관계 60개로 돌려줌. AI Workspace 성능 확인 (#281)
 import { delay, http, HttpResponse } from 'msw'
+import { mockRtmCsv } from './rtm.ts'
+import type { AnalysedRequirement, DesignItem, ExtractionBlock } from '../api/viewItems.ts'
 import type {
   ApiErrorBody,
   ErrorCode,
@@ -388,7 +390,7 @@ export function createMockBackend(options: MockOptions = {}) {
     }
     const items = run.sections.has(section) ? source[section] : []
     const artifacts = run.artifactRevisions.has(revision)
-      ? Object.entries(ARTIFACT_FORMATS).filter(([kind]) => kind !== 'review').flatMap(([kind, formats]) =>
+      ? Object.entries(ARTIFACT_FORMATS).filter(([kind]) => kind !== 'review' && (kind !== 'manifest' || run.approvedRevisions.has(revision))).flatMap(([kind, formats]) =>
           formats
             // 서버처럼 ERD PDF는 승인 전에도 비공개 후보(approved=false)로 목록에 있다. 받으면 409 (docs/06, #217).
             // 기능 명세 PDF 연결은 후속 범위라 승인 뒤에만 넣는다.
@@ -524,7 +526,7 @@ export function createMockBackend(options: MockOptions = {}) {
       throw new Reject(422, 'ARTIFACT_FORMAT_UNSUPPORTED', '이 산출물은 그 형식으로 받을 수 없습니다.', run.run_id)
     }
     const approved = run.approvedRevisions.has(revision)
-    if (kind === 'review' || !run.artifactRevisions.has(revision) || (fileFormat === 'pdf' && !approved)) {
+    if (kind === 'review' || !run.artifactRevisions.has(revision) || ((fileFormat === 'pdf' || kind === 'manifest') && !approved)) {
       throw new Reject(
         409,
         'ARTIFACT_NOT_READY',
@@ -540,7 +542,11 @@ export function createMockBackend(options: MockOptions = {}) {
           : ERD_SAMPLE
         : kind === 'ddl'
           ? DDL_SAMPLE
-          : `mock ${kind} r${revision} (${fileFormat})\n`
+           : kind === 'rtm' && fileFormat === 'csv'
+            ? mockRtmCsv(run.requirements as AnalysedRequirement[], (run.large ? LARGE_DESIGN_ITEMS : designItems) as DesignItem[], run.extraction as ExtractionBlock[])
+            : kind === 'manifest'
+              ? JSON.stringify({ mock: true, run_id: run.run_id, revision, approved })
+              : `mock ${kind} r${revision} (${fileFormat})\n`
     return new HttpResponse(text, {
       headers: {
         'Content-Type': 'application/octet-stream',

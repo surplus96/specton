@@ -32,7 +32,7 @@ function EntityNode({ data }: NodeProps<CardNode>) {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '8px 10px', borderBottom: `1px solid ${dark.border}` }}>
         <strong style={{ fontSize: 14 }}>{card.name}</strong>
         {card.findingCount > 0 && (
-          <span className="aiws-chip" style={{ borderColor: '#fbbf24', color: '#fbbf24' }} title="이 엔티티를 가리키는 지적">
+          <span className="aiws-chip" style={{ borderColor: 'var(--darktones-awaiting-fg)', color: 'var(--darktones-awaiting-fg)' }} title="이 엔티티를 가리키는 지적">
             ⚠ {card.findingCount}
           </span>
         )}
@@ -41,7 +41,7 @@ function EntityNode({ data }: NodeProps<CardNode>) {
         {card.attributes.length === 0 && <div style={{ padding: '2px 10px', fontSize: 12, color: dark.inkMuted }}>속성 없음</div>}
         {card.attributes.map((a) => (
           <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '1px 10px', fontSize: 12, lineHeight: '20px' }}>
-            <span style={{ width: 22, color: a.pk ? '#fbbf24' : dark.inkMuted, fontWeight: 700 }} aria-label={a.pk ? '기본 키' : undefined}>
+            <span style={{ width: 22, color: a.pk ? 'var(--darktones-awaiting-fg)' : dark.inkMuted, fontWeight: 700 }} aria-label={a.pk ? '기본 키' : undefined}>
               {a.pk ? 'PK' : a.uq ? 'UQ' : ''}
             </span>
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
@@ -198,7 +198,7 @@ function Canvas({ cards, lines, selected, focus, onSelect }: Props) {
       aria-label="ERD 캔버스. Tab으로 엔티티 이동, Enter로 선택, 방향키로 고른 엔티티 옮기기, + - 0 으로 확대·축소·맞춤, Esc 선택 해제"
     >
       {layoutError && (
-        <div role="status" style={{ position: 'absolute', zIndex: 5, margin: 12, color: '#fbbf24', fontSize: 13 }}>
+        <div role="status" style={{ position: 'absolute', zIndex: 5, margin: 12, color: 'var(--darktones-awaiting-fg)', fontSize: 13 }}>
           자동 배치를 하지 못해 격자로 놓았습니다.
         </div>
       )}
@@ -219,7 +219,7 @@ function Canvas({ cards, lines, selected, focus, onSelect }: Props) {
       >
         <Background color={dark.border} gap={24} />
         <Controls showInteractive={false} />
-        <MiniMap pannable zoomable nodeColor={dark.card} nodeStrokeColor={dark.line} maskColor="rgba(2,6,23,0.35)" style={MINIMAP_STYLE} />
+        <MiniMap pannable zoomable nodeColor={dark.card} nodeStrokeColor={dark.line} maskColor="var(--dark-mask)" style={MINIMAP_STYLE} />
       </ReactFlow>
     </div>
   )

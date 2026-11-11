@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router'
 import './index.css'
 import App from './App.tsx'
+import { RunsProvider } from './pages/useRuns.ts'
 import { setApiBaseUrl } from './api/client.ts'
 
 // API 주소: 비우면 화면과 같은 주소(개발은 Vite 프록시, 배포는 Caddy)로 부른다.
@@ -25,7 +26,7 @@ startMock().then(() => {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <BrowserRouter>
-        <App />
+        <RunsProvider><App /></RunsProvider>
       </BrowserRouter>
     </StrictMode>,
   )

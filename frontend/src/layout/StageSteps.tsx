@@ -12,24 +12,18 @@ export const SCREENS = [
 
 export type ScreenId = (typeof SCREENS)[number]['id']
 
-type Props = {
-  current: ScreenId
-  unreached?: readonly ScreenId[]
-}
-
-function StageSteps({ current, unreached = [] }: Props) {
-  const index = SCREENS.findIndex((s) => s.id === current)
+export type StepState = 'done' | 'now' | 'skipped' | 'available' | 'todo'
+const STATE_TEXT: Record<StepState, string> = { done: '지남', now: '지금', skipped: '생략', available: '결과 있음', todo: '' }
+function StageSteps({ steps }: { steps: Record<ScreenId, StepState> }) {
   return (
     <ol className="stage-strip" aria-label="화면 단계" style={{ listStyle: 'none', padding: 0 }}>
       {SCREENS.map((s, i) => {
-        const state = i === index ? 'now' : i < index && !unreached.includes(s.id) ? 'done' : 'todo'
+        const state = steps[s.id]
         return (
           <li key={s.id} className={`stage-strip__item stage-strip__item--${state}`} aria-current={state === 'now' ? 'step' : undefined}>
             <div className="stage-strip__bar" />
-            <span>
-              <b>{String(i + 1).padStart(2, '0')}</b>
-              {s.title}
-              <span className="sr-only">{state === 'done' ? ' · 지남' : state === 'now' ? ' · 지금' : ''}</span>
+            <span><b>{String(i + 1).padStart(2, '0')}</b>{s.title}
+              <small className="stage-strip__state">{STATE_TEXT[state] && ` · ${STATE_TEXT[state]}`}</small>
             </span>
           </li>
         )
@@ -37,5 +31,4 @@ function StageSteps({ current, unreached = [] }: Props) {
     </ol>
   )
 }
-
 export default StageSteps

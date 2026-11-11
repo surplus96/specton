@@ -321,6 +321,7 @@ export const ARTIFACT_FORMATS = {
   ddl: ['sql'],
   rtm: ['xlsx', 'csv'],
   review: ['md'],
+  manifest: ['json'],
 } as const
 
 /** ERD 원문 예시: 실제 ERD 생성 코드(specton/codegen/erd.py, #177)가 시험 모델로 낸 그대로 (A안 표기) */

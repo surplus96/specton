@@ -6,9 +6,9 @@ import { ApiError } from '../../api/errors.ts'
 import type { ArtifactRef } from '../../api/viewItems.ts'
 import { createMockBackend } from '../../mocks/backend.ts'
 import { DDL_SAMPLE, ERD_ATTACK_SAMPLE, ERD_SAMPLE } from '../../mocks/data.ts'
-import { unreachedScreens } from '../run/screens.ts'
 import {
   chosenView,
+  staleView,
   downloadErrorText,
   downloadRows,
   fileNameOf,
@@ -135,13 +135,7 @@ describe('화면 고르기', () => {
     expect(revisionOptions(0)).toEqual([0])
   })
 
-  it('실패한 실행은 거치지 않은 확인 화면을 완료로 보이지 않는다', () => {
-    expect(unreachedScreens('failed', 'analysing')).toEqual(['UI-03'])
-    expect(unreachedScreens('failed', 'parsing')).toEqual(['UI-02', 'UI-03'])
-    expect(unreachedScreens('failed', null)).toEqual(['UI-02', 'UI-03'])
-    expect(unreachedScreens('cancelled', 'designing')).toEqual([])
-    expect(unreachedScreens('completed', 'parsing')).toEqual([])
-  })
+
 })
 
 describe('ERD 보기', () => {
@@ -275,4 +269,12 @@ describe('웹 ERD 보안 (#190 R1 리뷰, ADR-0004 「Mermaid 설정 보안」)'
     expect(uri).not.toContain('<')
     expect(decodeURIComponent(uri.slice(uri.indexOf(',') + 1))).toBe(svg)
   })
+})
+
+it('과거 view 주소는 상태와 다르면 정리한다', () => {
+  expect(staleView('completed','review')).toBe(true)
+  expect(staleView('completed','workspace')).toBe(false)
+  expect(staleView('awaiting_review','review')).toBe(false)
+  expect(staleView('designing',null)).toBe(false)
+  expect(staleView('designing','review')).toBe(true)
 })

@@ -23,3 +23,9 @@ describe('최종 검토 산출물 확인 목록', () => {
     expect(rows.filter((r) => r.ok).map((r) => r.key)).toEqual(['erd', 'ddl', 'rtm'])
   })
 })
+
+it('산출물 존재와 SQL 검사 사실을 사람이 확인한 것으로 표시하지 않는다', () => {
+  const rows=reviewChecklist([], [art('erd','mmd'),art('rtm','csv')],1,{status:'unverified',validatedAt:null})
+  expect(rows.map(r=>r.state)).toEqual(['없음','있음','미검증','있음'])
+  expect(rows.some(r=>r.state.includes('확인'))).toBe(false)
+})
