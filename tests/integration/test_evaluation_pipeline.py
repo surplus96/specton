@@ -265,8 +265,13 @@ def test_other_input_fails_before_a_design_node(
 def test_condition_and_model_tampering_are_rejected(condition_file: Path) -> None:
     condition = load_condition(condition_file)
     model = condition.resolve(condition.spec.inputs[0].approved_model or "")
-    model.write_text(model.read_text() + " ")
+    original = model.read_bytes()
+    model.write_bytes(original + b" ")
     with pytest.raises(ValueError, match="승인 모델"):
+        condition.assert_current()
+    model.write_bytes(original)
+    condition_file.write_bytes(condition_file.read_bytes() + b" ")
+    with pytest.raises(ValueError, match="조건 파일"):
         condition.assert_current()
 
 
