@@ -131,7 +131,12 @@ def review_perspective(
         stage=perspective.reviewer_id,
         prompt_version=perspective.prompt_version,
         system=f"{REVIEW_RULES}\n\n{_perspective_block(perspective)}",
-        data=_review_data(state, perspective.inputs, opaque_source_ids=opaque_source_ids),
+        data=_review_data(
+            state,
+            perspective.inputs,
+            opaque_source_ids=opaque_source_ids,
+            include_fk_names=perspective.reviewer_id == "A06",
+        ),
         examples=_examples(pack, perspective, root=settings.pack_root),
     )
 
@@ -174,7 +179,9 @@ def review_combined(
                 ),
             ]
         ),
-        data=_review_data(state, tuple(s for p in perspectives for s in p.inputs)),
+        data=_review_data(
+            state, tuple(s for p in perspectives for s in p.inputs), include_fk_names="A06" in ids
+        ),
     )
     try:
         result = client.complete(request, CombinedReviewOutput, token_budget=token_budget)
@@ -231,7 +238,11 @@ def _perspective_block(
 
 
 def _review_data(
-    state: DesignState, sections: Sequence[InputSection], *, opaque_source_ids: bool = False
+    state: DesignState,
+    sections: Sequence[InputSection],
+    *,
+    opaque_source_ids: bool = False,
+    include_fk_names: bool = False,
 ) -> dict[str, Any]:
     """선택한 입력만 담는다. 순서는 관점 설정과 무관하게 고정한다.
 
@@ -247,7 +258,7 @@ def _review_data(
         if section == "normalized":
             if state.normalized is None:
                 raise MissingReviewInput("정리 결과(normalized)가 없어 검토할 수 없습니다")
-            data[section] = normalized_view(state.normalized)
+            data[section] = normalized_view(state.normalized, include_fk_names=include_fk_names)
         else:
             data[section] = [item.model_dump(mode="json") for item in getattr(state, section)]
             if section == "requirements" and opaque_source_ids:
