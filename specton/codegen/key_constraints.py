@@ -1,8 +1,18 @@
 """명시적 FK 재사용의 키·타입·NULL 검증. 의미는 관계 선언으로 받고 이름으로 추론하지 않는다."""
 
+from collections.abc import Iterable
+
 from specton.contracts import Column, Relationship, Table
 
 SQL_TYPE_FIELDS = ("data_type", "length", "precision", "scale", "time_precision")
+
+
+def fk_nullability_matches(
+    nullabilities: Iterable[bool], *, optional: bool, identifying: bool
+) -> bool:
+    """MATCH SIMPLE: 선택 FK는 한 칸 이상 NULL 가능, 필수·식별 FK는 모두 NOT NULL."""
+    values = tuple(nullabilities)
+    return bool(values) and (any(values) if optional and not identifying else not any(values))
 
 
 def same_key_type(parent: Column, child: Column) -> bool:
@@ -30,21 +40,24 @@ def binding_columns(rel: Relationship, parent: Table, child: Table) -> dict[str,
             )
         if not same_key_type(key, column):
             raise ValueError(f"FK 재사용 타입·도메인 불일치: {key.name} → {column.name}")
-        nullable = rel.optional and not rel.identifying
-        if column.nullable != nullable:
-            raise ValueError(f"FK 재사용 NULL 조건 불일치: {column.name}")
         result[key.id] = column
+    if result and not fk_nullability_matches(
+        (
+            result[key].nullable if key in result else rel.optional and not rel.identifying
+            for key in parent.primary_key
+        ),
+        optional=rel.optional,
+        identifying=rel.identifying,
+    ):
+        raise ValueError(
+            "FK 재사용 NULL 조건 불일치: 필수 FK는 모두 NOT NULL, 선택 FK는 NULL 가능 칸이 필요"
+        )
     return result
 
 
 def declared_reuse(rel: Relationship, parent: Column, child: Column) -> bool:
-    """출력 검사: 속성 출처 컬럼을 FK로 썼다면 원래 관계의 명시적 쌍과 맞아야 한다."""
-    return (
-        same_key_type(parent, child)
-        and child.nullable == (rel.optional and not rel.identifying)
-        and any(
-            b.parent_attribute_id == parent.attribute_id
-            and b.child_attribute_id == child.attribute_id
-            for b in rel.fk_bindings or ()
-        )
+    """출처·타입이 명시적 쌍과 맞는지 확인한다. NULL은 FK 묶음 전체로 검사한다."""
+    return same_key_type(parent, child) and any(
+        b.parent_attribute_id == parent.attribute_id and b.child_attribute_id == child.attribute_id
+        for b in rel.fk_bindings or ()
     )
