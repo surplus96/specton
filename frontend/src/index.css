@@ -5,6 +5,31 @@ body {
   word-break: keep-all; /* 한글을 단어 중간에서 끊지 않는다 */
 }
 
+/* 첫 화면 시작 버튼 (pages/HomePage.tsx): 알약 모양 긴 버튼 */
+.home-start {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: min(100%, 560px);
+  min-height: 64px;
+  padding: 0 28px;
+  border: 1.5px solid #64748b;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0f172a;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.home-start:hover,
+.home-start:focus-visible {
+  border-color: #1d4ed8;
+  box-shadow: 0 0 0 3px #dbeafe;
+  outline: none;
+}
+
 /* 본문 + 서버 작업 패널 (layout/WithActivity.tsx). 좁은 화면은 패널이 본문 아래로 */
 .with-activity {
   display: grid;

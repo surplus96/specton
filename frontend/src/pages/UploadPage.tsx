@@ -7,6 +7,7 @@ import type { Pack } from '../api/types.ts'
 import StageSteps from '../layout/StageSteps.tsx'
 import PageCard from '../layout/PageCard.tsx'
 import WithActivity from '../layout/WithActivity.tsx'
+import RecentRuns from './RecentRuns.tsx'
 import ActivityPanel from './run/ActivityPanel.tsx'
 import {
   ACCEPT_ATTR,
@@ -146,6 +147,8 @@ function UploadPage() {
               </Button>
             </Form.Item>
           </Form>
+          {/* 전에 돌린 실행을 다시 열 수 있게 「설계 시작」 아래에 둔다 */}
+          <RecentRuns />
         </PageCard>
       </WithActivity>
     </Flex>

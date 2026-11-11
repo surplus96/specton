@@ -3,15 +3,17 @@ import { Alert, Button, Flex, Input, Popconfirm, Radio, Spin, Typography } from 
 import { getView } from '../../api/client.ts'
 import { errorMessage } from '../../api/errors.ts'
 import type { RunStatus, SseEvent } from '../../api/types.ts'
-import type { DesignItem, Finding } from '../../api/viewItems.ts'
+import type { DesignItem, Finding, Severity } from '../../api/viewItems.ts'
 import PageCard from '../../layout/PageCard.tsx'
 import { useResume } from '../run/useResume.ts'
 import DesignTables from './DesignTables.tsx'
 import FindingsTable from './FindingsTable.tsx'
+import ReviewSummary from './ReviewSummary.tsx'
 import SqlValidationPanel from './SqlValidationPanel.tsx'
 import { sqlReview, type SqlReview } from './sqlValidation.ts'
 import {
   HITL_REASON_TEXT,
+  SEVERITY_LABEL,
   branchText,
   buildResponse,
   canApprove,
@@ -45,6 +47,7 @@ function ReviewPanel({ run, events, onChanged }: Props) {
   const [decision, setDecision] = useState<Decision | null>(null)
   const [feedback, setFeedback] = useState('')
   const [held, setHeld] = useState(false)
+  const [severity, setSeverity] = useState<Severity | null>(null) // 「검토가 필요한 항목」에서 고른 심각도
   const { send, sending, error, notice, reloadKey, reload, canAnswer } = useResume(run, onChanged)
 
   useEffect(() => {
@@ -54,6 +57,7 @@ function ReviewPanel({ run, events, onChanged }: Props) {
     setLoadError(null)
     setDecision(null)
     setFeedback('')
+    setSeverity(null)
     Promise.all([getView(run.run_id, 'review', run.revision), getView(run.run_id, 'design', run.revision)])
       .then(([review, designView]) => {
         if (!alive) return
@@ -115,9 +119,18 @@ function ReviewPanel({ run, events, onChanged }: Props) {
             />
           )}
 
+          <ReviewSummary findings={findings} names={names} selected={severity} onSelect={setSeverity} />
+
           <section aria-label="검토 지적">
-            <Typography.Title level={5}>검토 지적 {findings.length}건</Typography.Title>
-            <FindingsTable findings={findings} names={names} />
+            <Flex gap={8} align="center" wrap>
+              <Typography.Title level={5} style={{ margin: 0 }}>
+                검토 지적 {severity ? `${SEVERITY_LABEL[severity]} ${counts[severity]}건` : `${findings.length}건`}
+              </Typography.Title>
+              {severity && <Button onClick={() => setSeverity(null)}>전체 보기</Button>}
+            </Flex>
+            <div style={{ marginTop: 8 }}>
+              <FindingsTable findings={severity ? findings.filter((f) => f.severity === severity) : findings} names={names} />
+            </div>
           </section>
 
           <section aria-label="설계 결과">

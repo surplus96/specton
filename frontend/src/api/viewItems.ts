@@ -146,4 +146,6 @@ export type ArtifactRef = {
   revision: number
   hash: string
   approved: boolean
+  /** DDL/SQL에만 붙는 지금 기준 검증 상태 (docs/06 `/view`, #195). 기록이 없으면 unverified */
+  validation?: { status: 'passed' | 'failed' | 'error' | 'unverified'; validated_at: string | null }
 }

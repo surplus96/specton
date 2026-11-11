@@ -52,7 +52,7 @@ export function createRun(file: File, pack: Pack): Promise<RunStatus> {
   return sendJson<RunStatus>('/runs', { method: 'POST', body: form })
 }
 
-/** GET /runs — 내 실행 목록 (UI-07 이력) */
+/** GET /runs — 내 실행 목록 (UI-01 「이전 실행」) */
 export function listRuns(options: { status?: RunState; limit?: number } = {}): Promise<RunSummary[]> {
   const query = new URLSearchParams()
   if (options.status) query.set('status', options.status)

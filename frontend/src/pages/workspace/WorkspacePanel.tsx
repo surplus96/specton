@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { useSearchParams } from 'react-router'
+import { workspaceTab, type WorkspaceTab } from './pipeline.ts'
 import ResultSummary from './ResultSummary.tsx'
 import StatusTag from '../../layout/StatusTag.tsx'
 import { Alert, Button, Flex, Select, Spin, Tabs, Typography } from 'antd'
@@ -61,6 +63,21 @@ function WorkspacePanel({ run }: Props) {
     }
   }, [run.run_id, revision, reloadKey])
 
+  // 고른 탭은 주소(&tab=)에 둔다. 완료 화면의 파이프라인 카드가 이 탭으로 바로 연다.
+  const [params, setParams] = useSearchParams()
+  const tab = workspaceTab(params.get('tab'))
+  // 탭 바꾸기는 기록을 쌓지 않는다(replace). 뒤로가기가 탭을 하나씩 거슬러 가지 않게
+  function openTab(next: WorkspaceTab) {
+    setParams(
+      (p) => {
+        const q = new URLSearchParams(p)
+        q.set('tab', next)
+        return q
+      },
+      { replace: true },
+    )
+  }
+
   const names = useMemo(() => nameIndex(data?.design ?? []), [data])
   const missing = data ? missingKinds(data.artifacts) : []
   const find = (kind: ArtifactKind, format: ArtifactRef['file_format']) =>
@@ -111,6 +128,8 @@ function WorkspacePanel({ run }: Props) {
             )}
             <ResultSummary design={data.design} findings={data.findings} />
             <Tabs
+              activeKey={tab}
+              onChange={(key) => openTab(key as WorkspaceTab)}
               items={[
                 {
                   key: 'design',

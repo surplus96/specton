@@ -15,6 +15,8 @@ import {
   isAllowedErdSource,
   isApproved,
   isDownloadable,
+  downloadAllList,
+  artifactLabel,
   mermaidConfig,
   missingKinds,
   resultViews,
@@ -54,6 +56,26 @@ describe('산출물 목록 읽기', () => {
 })
 
 describe('UI-07 다운로드 표', () => {
+  it('전체 내려받기: 표 순서대로, 받을 수 있는 파일만 (승인 전 PDF·없는 파일은 뺀다)', () => {
+    const before = [ref('rtm', 'csv'), ref('erd', 'pdf'), ref('erd', 'mmd'), ref('functions', 'md'), ref('ddl', 'sql')]
+    expect(downloadAllList(before).map((a) => `${a.kind}.${a.file_format}`)).toEqual([
+      'functions.md',
+      'erd.mmd',
+      'ddl.sql',
+      'rtm.csv',
+    ])
+    const after = before.map((a) => ({ ...a, approved: true }))
+    expect(downloadAllList(after).map((a) => `${a.kind}.${a.file_format}`)).toEqual([
+      'functions.md',
+      'erd.mmd',
+      'erd.pdf',
+      'ddl.sql',
+      'rtm.csv',
+    ])
+    expect(downloadAllList([])).toEqual([])
+    expect(artifactLabel(ref('erd', 'mmd'))).toBe('ERD Mermaid')
+  })
+
   it('새로 생성하지 않는 검토 보고서는 빈 다운로드 행을 만들지 않고 기존 파일만 보존한다', () => {
     expect(downloadRows([ref('ddl', 'sql')], false).some((r) => r.kind === 'review')).toBe(false)
     expect(downloadRows([ref('ddl', 'sql', true)], true).some((r) => r.kind === 'review')).toBe(false)
