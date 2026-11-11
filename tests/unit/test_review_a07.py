@@ -88,7 +88,7 @@ def _settings() -> Settings:
 
 def test_a07_reads_requirements_functions_and_entities() -> None:
     assert set(A07.inputs) == {"requirements", "functions", "entities", "relationships"}
-    assert A07.prompt_version == "a07-v2"
+    assert A07.prompt_version == "a07-v5"
 
 
 def test_a07_is_loaded_with_the_other_perspectives() -> None:
@@ -123,7 +123,7 @@ def test_a07_prompt_and_data_reach_the_review_model() -> None:
 
     (request,) = transport.sent
     system, user = request.messages
-    assert (request.stage, request.prompt_version) == ("A07", "a07-v2")
+    assert (request.stage, request.prompt_version) == ("A07", "a07-v5")
     assert "속성이 있다는 사실만으로" in system.content
     assert "사내 체계에 맡긴 것은 지적하지 않는다" in system.content
     sent = json.loads(unwrap_data(user.content))
@@ -134,7 +134,7 @@ def test_a07_prompt_and_data_reach_the_review_model() -> None:
 
 
 def test_a07_reports_access_rule_without_responsible_function() -> None:
-    client, _ = stub_client(reply(ReviewOutput(findings=(_access_finding(),))))
+    client, _ = stub_client(reply(ReviewOutput(findings=(_access_finding(),))), _confirm("missing"))
 
     run = review_perspective(client, A07, _state(), _settings())
 
@@ -184,3 +184,52 @@ def test_a07_rejects_a_standalone_relationship_stage() -> None:
     review_perspective(client, A07, _state(), _settings())
 
     assert len(transport.sent) == 2
+
+
+def _confirm(verdict):
+    return reply(
+        json.dumps(
+            {
+                "decisions": [
+                    {
+                        "candidate_id": "A07-0-1",
+                        "verdict": verdict,
+                        "required_behavior": "원문이 요구한 기록·권한",
+                        "checked_design_ids": ["REQ-01", "FUNC-01"],
+                        "remaining_gap": "요구와 설계 대조",
+                        "rationale": "추가 권장 사항과 명시된 요구를 구분",
+                    }
+                ]
+            }
+        )
+    )
+
+
+def test_a07_unrequired_audit_details_do_not_force_rework():
+    from specton.review.rework import decide_rework
+
+    client, transport = stub_client(
+        reply(ReviewOutput(findings=(_access_finding(),))), _confirm("uncertain")
+    )
+    result = review_perspective(client, A07, _state(), _settings())
+    finding = result.results[0].findings[0]
+    assert finding.severity == "minor" and finding.target_stage is None
+    assert "A07 재확인" in finding.suggestion and "최초 의견" in finding.suggestion
+    assert (
+        decide_rework(
+            (finding,), rework_count=0, max_rework=3, previous_fingerprints=frozenset()
+        ).action
+        == "none"
+    )
+    assert transport.sent[1].stage == "A07_CONFIRM"
+    assert "추가 일시 속성" in transport.sent[1].messages[0].content
+
+
+def test_a07_confirmation_failure_keeps_original_and_stops_rework():
+    from specton.graph import _route
+    from specton.llm.stub import refusal
+
+    client, _ = stub_client(reply(ReviewOutput(findings=(_access_finding(),))), refusal())
+    result = review_perspective(client, A07, _state(), _settings())
+    assert not result.complete and result.results[0].findings[0].severity == "major"
+    assert _route(3)({"design": _state(), "failed_branches": ("A07",)})["action"] == "hitl"

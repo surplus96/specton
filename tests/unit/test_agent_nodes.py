@@ -224,7 +224,8 @@ def test_model_rework_sends_previous_design_and_findings_to_both_design_nodes() 
         assert context["findings"][0]["kind"] == "fk_column_conflict:D13"
         assert context["findings"][0]["targets"] == [{"kind": "relationship", "id": "REL-01"}]
         assert context["findings"][0]["target_stage"] == "data_model"
-        assert context["entities"] and context["relationships"]
+        assert context.get("entities") or context.get("entities_source")
+        assert context.get("relationships") or context.get("relationships_source")
         assert context["findings"][0]["evidence"][0]["quote"] == "기존 키와 FK 충돌"
     assert previous.iteration == 0 and previous.findings == ()
 
@@ -275,3 +276,32 @@ def test_design_nodes_get_no_user_request_outside_a_revision(extra: dict[str, An
         state = {**state, **nodes[name](state)}
 
     assert all('"user_request"' not in r.messages[-1].content for r in transport.sent)
+
+
+def test_rework_excludes_minor_and_reuses_current_entities_without_mutating_state():
+    from specton.contracts import DesignState, Finding
+    from specton.contracts.findings import Severity
+    from specton.nodes.common import with_design_rework
+
+    minor = Finding.model_validate(
+        {
+            "id": "NAME-0-1",
+            "kind": "technical_identifier",
+            "severity": "minor",
+            "source": "rule",
+            "rule_code": "RULE-05",
+            "targets": [{"kind": "entity", "id": "ENT-01"}],
+            "evidence": [{"quote": "논리명 보존"}],
+            "suggestion": "확인",
+            "fingerprint": "fp",
+            "iteration": 0,
+        }
+    )
+    major = minor.model_copy(update={"id": "RULE-1", "severity": Severity.MAJOR})
+    state = DesignState(run_id="test", iteration=1, findings=(minor, major))
+    data = {"entities": [{"id": "ENT-01", "name": "창고"}]}
+    result = with_design_rework(data, state)
+    assert "entities" not in result["rework_context"]
+    assert result["entities"] == data["entities"]
+    assert [f["id"] for f in result["rework_context"]["findings"]] == ["RULE-1"]
+    assert len(state.findings) == 2

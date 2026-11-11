@@ -52,7 +52,7 @@ from specton.type_limits import type_limit_problems
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "a03-v8"
+PROMPT_VERSION = "a03-v9"
 SYSTEM_PROMPT = """\
 너는 업무 시스템의 데이터 모델 설계자다.
 요구사항과 기능으로 저장할 엔티티·속성과 기능별 CRUD를 정한다.
@@ -67,7 +67,14 @@ SYSTEM_PROMPT = """\
   data_type·length·precision·scale을 그대로 쓴다.
   맞는 용어가 없으면 요구사항에 근거해 직접 정하되, 없는 타입을 만들지 않는다.
 - 업무 키는 is_key=true이고 nullable=false다. 키가 아닌 값의 중복을 막아야 하면 is_unique=true다.
-- 필수 입력이라고 요구사항에 있는 속성만 nullable=false로 한다.
+- nullable은 필수라는 단어 유무만으로 정하지 않는다. 해당 행이 유효하려면 항상 필요한 값
+  (요구된 계산의 수량, 소유 범위 식별값, 적용할 상태 등)은 요구사항·기능 근거를 확인해 false로 한다.
+- 승인자·승인일처럼 승인 전에는 없을 수 있는 값, 특정 품목에만 필요한 유효기한 등 조건부 필수값은
+  무조건 NOT NULL로 만들지 않는다. description에 어떤 상태에서 필수인지와 검사 책임을 남긴다.
+- 값 범위·허용 상태를 저장 속성의 존재만으로 충족했다고 보지 않는다. 이 계약에는 CHECK가 없으므로
+  관련 속성 description에 원문 조건과 서비스 검증 필요를 적는다. 임의 SQL을 출력하지 않는다.
+- 위치·소유자 등으로 세분된 잔액을 변경하는 거래는 어느 잔액을 변경했는지 식별할 업무 근거를
+  보존한다. 원문에 없는 배정 정책이나 시간·보존 기준을 임의로 추가하지 않는다.
 - 값의 범위·형식 제약은 쓰지 않는다. 속성마다 req_ids를 적는다.
 - unique_keys에는 함께 중복을 막을 속성 name의 목록을 묶음별로 쓴다. 각 속성의 is_unique와
   다르다. 대리키를 도입해도 기존 업무 조합의 유일성을 잃지 않는다.

@@ -72,15 +72,19 @@ def with_design_rework(data: dict[str, Any], state: DesignState) -> dict[str, An
     """
     if state.iteration <= 0 or not state.findings:
         return data
-    return {
-        **data,
-        "rework_context": {
-            "iteration": state.iteration,
-            "entities": [e.model_dump(mode="json") for e in state.entities],
-            "relationships": [r.model_dump(mode="json") for r in state.relationships],
-            "findings": [f.model_dump(mode="json") for f in state.findings],
-        },
+    # minor 안내는 자동 수정 지시가 아니다. 원본 지적은 state/HITL에 보존한다.
+    findings = [f for f in state.findings if f.severity.value in {"critical", "major"}]
+    context: dict[str, Any] = {
+        "iteration": state.iteration,
+        "findings": [f.model_dump(mode="json", exclude_none=True) for f in findings],
     }
+    for section in ("entities", "relationships"):
+        previous = [x.model_dump(mode="json", exclude_none=True) for x in getattr(state, section)]
+        if section not in data:
+            context[section] = previous
+        else:
+            context[section + "_source"] = "현재 입력의 " + section
+    return {**data, "rework_context": context}
 
 
 def build_request(

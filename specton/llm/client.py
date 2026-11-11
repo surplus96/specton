@@ -4,6 +4,7 @@
 출력 검증·재요청·호출 기록은 여기서 한 번만 구현한다.
 """
 
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -19,6 +20,8 @@ from specton.llm.errors import (
     LLMTimeoutError,
 )
 from specton.llm.types import CallOutcome, CallRecord, LLMRequest, LLMResult, Message
+
+logger = logging.getLogger(__name__)
 
 Clock = Callable[[], float]
 
@@ -75,6 +78,16 @@ class LLMClient:
             try:
                 output = output_model.model_validate_json(reply.text or "")
             except ValidationError as exc:
+                # 원문·응답·커스텀 오류 메시지는 로그에 남기지 않는다.
+                logger.warning(
+                    "LLM validation retry stage=%s attempt=%s errors=%s",
+                    request.stage,
+                    attempt,
+                    [
+                        (e["loc"], e["type"])
+                        for e in exc.errors(include_input=False, include_url=False)
+                    ],
+                )
                 calls = (*calls, _record(current, attempt, "invalid_output", reply, duration_ms))
                 if reply.truncated:  # 같은 한도로 다시 물어도 또 잘린다
                     raise LLMContractError(
@@ -83,7 +96,7 @@ class LLMClient:
                         calls,
                     ) from exc
                 problems = _summarize(exc)
-                current = _with_retry_prompt(current, reply.text or "", problems)
+                current = _with_retry_prompt(request, reply.text or "", problems)
                 continue
             calls = (*calls, _record(current, attempt, "ok", reply, duration_ms))
             return LLMResult[OutputT](output=output, calls=calls)

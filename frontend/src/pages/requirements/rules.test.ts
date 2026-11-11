@@ -171,3 +171,16 @@ describe('서버(mock)와 같은 결과', () => {
     expect(next.interrupt?.kind).toBe('review') // stepMs 0이라 바로 최종 검토까지
   })
 })
+
+
+it('동일 원문 ID라도 다른 행이면 분할로 오인하지 않는다', () => {
+  const rows = [req('REQ-01', { source_id: 'DUP', source_ref: { file_format: 'csv', row: 2 } }),
+    req('REQ-02', { source_id: 'DUP', source_ref: { file_format: 'csv', row: 3 } })]
+  expect([...splitFromSameSource(rows)]).toEqual([])
+})
+it('정상 자동 분할은 유지 상태에서 제출을 막지 않는다', () => {
+  const rows = [req('REQ-01', { source_id: 'ONE' }), req('REQ-02', { source_id: 'ONE' })]
+  const answers = initialAnswers(rows)
+  expect(problems(answers)).toEqual([])
+  expect(buildResponse(answers)).toEqual({ kind: 'requirements', answers: [] })
+})

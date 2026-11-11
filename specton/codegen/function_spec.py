@@ -78,8 +78,35 @@ def render_function_spec(design: DesignState) -> str:
     ]
     for function in design.functions:
         lines += ["", *_detail(function, entities)]
-    lines += ["", *_crud_matrix(design)]
+    lines += ["", *_handoff(design), "", *_crud_matrix(design)]
     return "\n".join(lines) + "\n"
+
+
+def _handoff(design: DesignState) -> list[str]:
+    """해시에 포함된 요구·질문을 인계한다. 문장 연결을 구현·검증 완료로 표시하지 않는다."""
+    if not design.requirements:
+        return []
+    lines = [
+        "## 구현·검증 인계",
+        "",
+        "요구사항 연결과 SQL 실행 검증은 업무 조건의 구현·시험 완료를 뜻하지 않습니다. "
+        "아래 조건의 처리 책임과 인수 시험을 확인해야 합니다. "
+        "현재 DDL 생성 범위에는 값 범위 CHECK·권한·트랜잭션 로직이 포함되지 않습니다.",
+        "",
+    ]
+    for req in design.requirements:
+        functions = ", ".join(f.id for f in design.functions if req.id in f.req_ids)
+        lines += [
+            f"### {req.id} 구현 조건",
+            "",
+            f"- **요구 조건:** {_text(req.text)}",
+            f"- **연결 기능:** {functions or '없음 — 시스템 적용 위치·검증 근거 확인 필요'}",
+        ]
+        for issue in req.quality_issues:
+            lines.append(f"- **분석 시 확인사항 (해결 여부 확인 필요):** {_text(issue.message)}")
+            if issue.question:
+                lines.append(f"- **확인 질문:** {_text(issue.question)}")
+    return lines
 
 
 def _detail(function: Function, entities: dict[str, str]) -> list[str]:

@@ -549,7 +549,9 @@ def _route(max_rework: int) -> Callable[[GraphState], dict[str, Any]]:
     def route(state: GraphState) -> dict[str, Any]:
         findings = state["design"].findings
         previous = state.get("fingerprints", ())
-        if state.get("requires_manual_review"):
+        if state.get("requires_manual_review") or {"A06", "A07"}.intersection(
+            state.get("failed_branches", ())
+        ):
             decision = ReworkDecision(ReworkAction.HITL, hitl_reason=HitlReason.MANUAL)
         else:
             decision = decide_rework(

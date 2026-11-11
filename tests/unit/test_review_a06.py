@@ -131,7 +131,7 @@ def _settings() -> Settings:
 
 def test_a06_reads_requirements_functions_entities_and_relationships() -> None:
     assert set(A06.inputs) == {"requirements", "functions", "entities", "relationships"}
-    assert A06.prompt_version == "a06-v6"
+    assert A06.prompt_version == "a06-v8"
 
 
 def test_a06_is_loaded_with_the_other_perspectives() -> None:
@@ -209,7 +209,9 @@ def test_a06_accepts_no_finding_when_another_entity_satisfies_the_requirement() 
 
 
 def test_a06_reports_a_missing_attribute() -> None:
-    client, _ = stub_client(reply(ReviewOutput(findings=(_missing_attribute_finding(),))))
+    client, _ = stub_client(
+        reply(ReviewOutput(findings=(_missing_attribute_finding(),))), _confirmation()
+    )
 
     run = review_perspective(client, A06, _missing_state(), _settings())
 
@@ -250,3 +252,72 @@ def test_a06_sees_existing_relationship_without_requiring_an_explicit_fk_attribu
     assert data["relationships"][0]["parent"] == "ENT-01"
     assert data["relationships"][0]["child"] == "ENT-02"
     assert [a["name"] for a in data["entities"][1]["attributes"]] == ["입고코드"]
+
+
+def _confirmation(verdict="missing", candidate_id="A06-0-1", design_id="ENT-01"):
+    return reply(
+        json.dumps(
+            {
+                "decisions": [
+                    {
+                        "candidate_id": candidate_id,
+                        "verdict": verdict,
+                        "required_behavior": "요구된 동작",
+                        "checked_design_ids": [design_id],
+                        "remaining_gap": "단가 누락"
+                        if verdict == "missing"
+                        else "없음 또는 기준 확인 필요",
+                        "rationale": "전체 설계를 대조한 결과",
+                    }
+                ]
+            }
+        )
+    )
+
+
+def test_confirmed_covered_and_uncertain_do_not_trigger_rework():
+    from specton.review.rework import decide_rework
+
+    for verdict in ("covered", "uncertain"):
+        client, transport = stub_client(
+            reply(ReviewOutput(findings=(_missing_attribute_finding(),))), _confirmation(verdict)
+        )
+        run = review_perspective(client, A06, _missing_state(), _settings())
+        f = run.results[0].findings[0]
+        assert f.severity == "minor" and f.target_stage is None
+        assert "최초 의견" in f.suggestion and verdict in f.suggestion
+        assert (
+            decide_rework(
+                (f,), rework_count=0, max_rework=3, previous_fingerprints=frozenset()
+            ).action
+            == "none"
+        )
+        assert transport.sent[1].stage == "A06_CONFIRM"
+
+
+def test_confirmation_failure_preserves_candidate_and_marks_incomplete():
+    from specton.llm.stub import refusal
+
+    client, _ = stub_client(
+        reply(ReviewOutput(findings=(_missing_attribute_finding(),))), refusal()
+    )
+    run = review_perspective(client, A06, _missing_state(), _settings())
+    assert not run.complete
+    assert run.results[0].findings[0].severity == "major"
+    assert run.results[0].error_code == "LLM_REFUSED"
+
+
+def test_confirmation_rejects_wrong_candidate_and_unknown_design():
+    bad = _confirmation(candidate_id="other", design_id="unknown")
+    client, _ = stub_client(
+        reply(ReviewOutput(findings=(_missing_attribute_finding(),))), bad, bad, bad
+    )
+    run = review_perspective(client, A06, _missing_state(), _settings())
+    assert not run.complete and run.results[0].error_code == "LLM_OUTPUT_INVALID"
+
+
+def test_failed_confirmation_stops_automatic_rework():
+    from specton.graph import _route
+
+    result = _route(3)({"design": _missing_state(), "failed_branches": ("A06",)})
+    assert result["action"] == "hitl"

@@ -58,7 +58,8 @@ function RequirementsPanel({ run, onChanged }: Props) {
 
   const split = useMemo(() => splitFromSameSource(reqs ?? []), [reqs])
   const sorted = useMemo(() => sortRequirements(reqs ?? []), [reqs])
-  const toCheck = sorted.filter((r) => needsAttention(r, split))
+  const toCheck = sorted.filter((r) => r.quality_issues.length > 0)
+  const splitOnly = sorted.filter((r) => r.quality_issues.length === 0 && split.has(r.id))
   const others = sorted.filter((r) => !needsAttention(r, split))
   const blocking = problems(answers)
   const changed = changedCount(answers)
@@ -75,7 +76,7 @@ function RequirementsPanel({ run, onChanged }: Props) {
         <Flex vertical gap={4}>
           <span>{r.text}</span>
           {split.has(r.id) && (
-            <Typography.Text type="secondary">같은 원문에서 나뉜 요구사항입니다</Typography.Text>
+            <Typography.Text type="secondary">같은 원문에서 자동 분할됐습니다. 의미가 유지됐으면 그대로 진행하세요.</Typography.Text>
           )}
           {r.source_text && r.source_text !== r.text && (
             <Typography.Text type="secondary">원문: {r.source_text}</Typography.Text>
@@ -90,7 +91,7 @@ function RequirementsPanel({ run, onChanged }: Props) {
       width: 220,
       render: (_, r) =>
         r.quality_issues.length === 0 ? (
-          split.has(r.id) ? '경고 없음 · 원문 분할 확인' : '경고 없음'
+          split.has(r.id) ? '자동 분할됨 · 진행 가능' : '경고 없음'
         ) : (
           <Flex vertical gap={6}>
             {r.quality_issues.map((issue, i) => (
@@ -172,7 +173,7 @@ function RequirementsPanel({ run, onChanged }: Props) {
           {notice && <Alert type="warning" showIcon title={notice} />}
 
           <section aria-label="확인할 요구사항">
-            <Typography.Title level={5}>확인할 요구사항 {toCheck.length}건</Typography.Title>
+            <Typography.Title level={5}>품질 경고·질문 {toCheck.length}건</Typography.Title>
             <Table
               rowKey="id"
               size="small"
@@ -183,6 +184,14 @@ function RequirementsPanel({ run, onChanged }: Props) {
             />
           </section>
 
+          {splitOnly.length > 0 && (
+            <section aria-label="자동 분할 결과">
+              <Typography.Title level={5}>자동 분할 결과 {splitOnly.length}건 · 진행 가능</Typography.Title>
+              <Typography.Paragraph>분할 자체는 오류가 아닙니다. 원문의 조건·대상이 유지됐으면 ‘유지’로 진행하세요.</Typography.Paragraph>
+              <Table rowKey="id" size="small" pagination={false}
+                columns={[...columns, answerColumn]} dataSource={splitOnly} scroll={{ x: 960 }} />
+            </section>
+          )}
           {others.length > 0 && (
             <Collapse
               items={[

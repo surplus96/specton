@@ -1126,3 +1126,28 @@ def test_technical_identifier_still_respects_maximum_identifier_length():
     )
     assert isinstance(result, NormalizeFailed)
     assert all(p.code is ProblemCode.NAME_TOO_LONG for p in result.problems)
+
+
+@pytest.mark.parametrize("word", ["user", "USER", "order"])
+def test_reserved_dictionary_names_use_technical_ids_only_in_permissive_policy(word):
+    from pglast import parse_sql
+
+    from specton.codegen.ddl import generate_ddl
+    from specton.review.normalization_findings import technical_name_findings
+
+    lexicon = FixtureLexicon(words={"입고": word, "입고번호": word})
+    strict = normalize(BASE, pack=PACK, lexicon=lexicon, rules=RULES)
+    assert isinstance(strict, NormalizeFailed)
+    assert any(p.code is ProblemCode.RESERVED_WORD for p in strict.problems)
+    rules = replace(RULES, unresolved="technical_id")
+    result = normalize(BASE, pack=PACK, lexicon=lexicon, rules=rules)
+    assert isinstance(result, Normalized)
+    assert result == normalize(BASE, pack=PACK, lexicon=lexicon, rules=rules)
+    assert not list(check_output(result.model, BASE))
+    physical = [t.physical_name for t in result.model.tables]
+    physical += [c.physical_name for t in result.model.tables for c in t.columns]
+    assert not set(physical).intersection(RULES.reserved_words)
+    assert {"입고", "입고번호"} <= set(result.model.technical_names.values())
+    findings = technical_name_findings(BASE.evolve(normalized=result.model))
+    assert all(f.severity.value == "minor" for f in findings)
+    assert parse_sql(generate_ddl(result.model, max_bytes=63).sql)
