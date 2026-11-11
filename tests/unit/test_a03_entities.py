@@ -576,6 +576,55 @@ def test_name_review_is_skipped_when_the_token_budget_is_spent() -> None:
     assert "가나다라" in [a.name for a in result.output.entities[0].attributes]
 
 
+@pytest.mark.parametrize(
+    "change", ["nullable", "type", "length", "key", "unique", "trace", "description", "crud"]
+)
+def test_name_review_cannot_change_non_name_design_fields(change: str) -> None:
+    first, second = _named_attribute("가나다라"), _named_attribute("창고위치")
+    attribute = second["entities"][0]["attributes"][-1]
+    if change == "nullable":
+        attribute["nullable"] = False
+    elif change == "type":
+        attribute.update(data_type="integer", length=None)
+    elif change == "length":
+        attribute["length"] = 20
+    elif change == "key":
+        attribute.update(is_key=True, nullable=False)
+    elif change == "unique":
+        second["entities"][0]["unique_keys"] = [["창고위치"]]
+    elif change == "trace":
+        attribute["req_ids"] = ["REQ-02"]
+    elif change == "description":
+        second["entities"][0]["description"] = "이름 재검토가 새로 해석한 업무"
+    else:
+        second["entity_ops"][0]["operations"] = ["R"]
+    client, _ = stub_client(reply(_raw(first)), reply(_raw(second)))
+
+    result = run(client, _a02_state(), _settings(), pack="inventory")
+
+    assert result.output.entities[0].attributes[-1].name == "가나다라"
+    assert len(result.calls) == 2
+
+
+def test_name_only_changes_preserve_unique_key_and_crud_references() -> None:
+    first, second = _named_attribute("가나다라"), _named_attribute("창고위치")
+    first["entities"][0]["unique_keys"] = [["가나다라"]]
+    second["entities"][0]["unique_keys"] = [["창고위치"]]
+    second["entities"][0]["name"] = "보관창고"
+    for operation in second["entity_ops"]:
+        if operation["entity_name"] == "창고":
+            operation["entity_name"] = "보관창고"
+    client, _ = stub_client(reply(_raw(first)), reply(_raw(second)))
+
+    result = run(client, _a02_state(), _settings(), pack="inventory")
+
+    entity = result.output.entities[0]
+    assert entity.name == "보관창고"
+    assert entity.attributes[-1].name == "창고위치"
+    assert entity.unique_keys == ((entity.attributes[-1].id,),)
+    assert result.output.functions[0].entity_ops[0].entity_id == entity.id
+
+
 def test_function_fields_other_than_entity_ops_are_kept() -> None:
     state = _a02_state()
     client, _ = stub_client(reply(_example_output()))
