@@ -238,10 +238,10 @@ function DetailPanel(props: Props) {
                 <div style={{ fontSize: 12, marginTop: 6, color: dark.inkMuted, display: 'grid', gap: 4 }}>
                   {f.evidence.map((e, i) => (
                     <div key={i}>
-                      {e.req_id && <strong>{e.req_id} </strong>}「{plainText(e.quote)}」
+                      {e.req_id && <strong>{e.req_id} </strong>}「{plainText(e.quote, f)}」
                     </div>
                   ))}
-                  <div style={{ color: dark.ink }}>이렇게 고쳐 보세요: {plainText(f.suggestion)}</div>
+                  <div style={{ color: dark.ink }}>이렇게 고쳐 보세요: {f.suggestion}</div>
                   <div>고칠 곳: {f.kind === 'technical_identifier' ? '참고 · 기술용 이름 사용' : f.target_stage ? STAGE_LABEL[f.target_stage] : '판단 필요'}</div>
                 </div>
               )}

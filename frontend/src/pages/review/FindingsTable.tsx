@@ -44,13 +44,13 @@ function FindingsTable({ findings, names }: Props) {
             <div className="stack-sm" style={{ gap: 4 }}>
               {f.evidence.map((e, i) => (
                 <span key={i}>
-                  {e.req_id && <span className="mono subtle">{e.req_id} </span>}「{plainText(e.quote)}」
+                  {e.req_id && <span className="mono subtle">{e.req_id} </span>}「{plainText(e.quote, f)}」
                 </span>
               ))}
             </div>
           ),
         },
-        { key: 'suggestion', title: '제안', render: (f) => plainText(f.suggestion) },
+        { key: 'suggestion', title: '제안', render: (f) => f.suggestion },
         {
           key: 'source',
           title: '출처 · 돌아갈 단계',

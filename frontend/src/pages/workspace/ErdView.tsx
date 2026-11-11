@@ -6,7 +6,7 @@ import Button from '../../ui/Button.tsx'
 import Loading from '../../ui/Loading.tsx'
 import Notice from '../../ui/Notice.tsx'
 import { artifactText, saveArtifact } from './files.ts'
-import { downloadErrorText, isAllowedErdSource, mermaidConfig, svgDataUri, svgSize, zoomSteps } from './rules.ts'
+import { downloadErrorText, erdFitScale, isAllowedErdSource, mermaidConfig, svgDataUri, svgSize, zoomSteps } from './rules.ts'
 
 // ERD 보기 (UI-05 「ERD는 확대·이동과 원문 다운로드」).
 // 서버가 만든 .mmd만 그린다. 웹·PDF 모두 Mermaid 11.17.2 (ADR-0004).
@@ -73,7 +73,7 @@ function ErdView({ runId, artifact }: Props) {
     if (!size || !width) return
     const padding = 32 // .erd-box 안쪽 여백 16px × 2
     const height = window.innerHeight * 0.7 - padding - 2
-    setScale(Math.max(0.1, Math.min(1, (width - padding) / size.width, height / size.height)))
+    setScale(erdFitScale(size, width - padding, height))
   }, [size])
 
   // 처음 그림을 그리면 전체가 한 번에 보이게 맞춘다
