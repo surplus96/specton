@@ -35,7 +35,7 @@ function App() {
           path="workspace"
           element={
             <LazyBoundary>
-              <Suspense fallback={<Loading text="작업공간을 불러오는 중이에요" />}>
+              <Suspense fallback={<Loading text="화면을 불러오는 중이에요" />}>
                 <AiWorkspacePage />
               </Suspense>
             </LazyBoundary>

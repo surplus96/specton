@@ -156,7 +156,7 @@ function Canvas({ graph, selected, onSelect }: Props) {
       role="region"
       style={{ height: '100%' }}
       onKeyDown={onKeyDown}
-      aria-label="문서 추적. Tab으로 항목 이동, Enter로 선택하면 이어진 앞뒤 항목이 강조됩니다. Esc 선택 해제"
+      aria-label="요구사항 따라가기. Tab으로 항목을 옮겨 다니고, Enter로 고르면 이어진 앞뒤 항목이 강조돼요. Esc로 선택을 풀어요"
     >
       <ReactFlow
         nodes={[...headers, ...nodes]}

@@ -73,7 +73,7 @@ describe('UI-07 다운로드 표', () => {
       'rtm.csv',
     ])
     expect(downloadAllList([])).toEqual([])
-    expect(artifactLabel(ref('erd', 'mmd'))).toBe('ERD Mermaid')
+    expect(artifactLabel(ref('erd', 'mmd'))).toBe('ERD 그림 원본(.mmd)')
   })
 
   it('새로 생성하지 않는 검토 보고서는 빈 다운로드 행을 만들지 않고 기존 파일만 보존한다', () => {
@@ -81,6 +81,11 @@ describe('UI-07 다운로드 표', () => {
     expect(downloadRows([ref('ddl', 'sql', true)], true).some((r) => r.kind === 'review')).toBe(false)
     const historical = downloadRows([ref('review', 'md', true)], true).find((r) => r.kind === 'review')
     expect(historical?.files[0].file.state).toBe('ready')
+  })
+  it('요구사항 파일이 없으면 다운로드 표에 요구사항 줄을 두지 않는다', () => {
+    expect(downloadRows([ref('ddl', 'sql', true)], true).some((r) => r.kind === 'requirements')).toBe(false)
+    const made = downloadRows([ref('requirements', 'md', true)], true).find((r) => r.kind === 'requirements')
+    expect(made?.files[0].file.state).toBe('ready')
   })
   it('승인 전에는 PDF를 「승인 후」, 없는 파일을 「없음」으로 나눈다', () => {
     const rows = downloadRows([ref('erd', 'mmd'), ref('ddl', 'sql')], false)
@@ -114,8 +119,8 @@ describe('UI-07 다운로드 표', () => {
     const withMessage = new ApiError(409, { code: 'ARTIFACT_NOT_READY', message: '서버 안내', run_id: null, retryable: false })
     expect(downloadErrorText(withMessage)).toBe('서버 안내')
     const bare = new ApiError(409, null)
-    expect(downloadErrorText(bare)).toMatch(/HTTP 409/)
-    expect(downloadErrorText(new Error('x'))).toBe('파일을 받지 못했습니다.')
+    expect(downloadErrorText(bare)).toBe('파일을 받지 못했어요. 잠시 뒤 다시 해 주세요.')
+    expect(downloadErrorText(new Error('x'))).toBe('파일을 받지 못했어요. 잠시 뒤 다시 해 주세요.')
   })
 })
 

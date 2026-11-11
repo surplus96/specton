@@ -33,9 +33,9 @@ function ActivityPanel({ events = [], receivedAt = {}, connection, status, idleT
   const end = running ? Math.max(now, ...times) : times.length > 0 ? Math.max(...times) : null
 
   return (
-    <section className="activity" aria-label="서버 작업">
+    <section className="activity" aria-label="진행 기록">
       <div className="row row--between">
-        <h2 className="h3">서버 작업</h2>
+        <h2 className="h3">진행 기록</h2>
         {conn && <StatusTag tone={conn.tone}>{conn.label}</StatusTag>}
       </div>
       {status && (
@@ -51,7 +51,7 @@ function ActivityPanel({ events = [], receivedAt = {}, connection, status, idleT
       <p className="sr-only" role="status" aria-atomic="true">{items[0]?.message ?? idleText}</p>
       {items.length === 0 ? (
         <p className="muted" style={{ margin: '14px 0 0', fontSize: 14 }}>
-          {idleText ?? '서버 소식을 기다리고 있어요…'}
+          {idleText ?? '다음 소식을 기다리고 있어요'}
         </p>
       ) : (
         <ol>

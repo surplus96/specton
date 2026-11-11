@@ -9,21 +9,21 @@ const TEAM_NAME = '설계로'
 const PARTNERS = ['한화내일아카데미', '한화시스템', '고용노동부']
 
 const TEAM = [
-  { name: '최태영', role: '실행 제어 · 통합', leader: true },
+  { name: '최태영', role: '전체 흐름 · 통합', leader: true },
   { name: '김희영', role: '입력 · 분석 · 평가' },
-  { name: '박성진', role: '기능 · API · 저장' },
+  { name: '박성진', role: '기능 설계 · 화면 연결 · 저장' },
   { name: '김유경', role: '데이터 모델 · 검증' },
   { name: '김순재', role: '관계 · 시각화 · 웹' },
 ]
 
 const FLOW = [
   { n: '1', title: '실행 시작', desc: '파일 올리고 실행', kind: '' },
-  { n: '2', title: '추출 확인', desc: '확인할 항목이 있을 때만', kind: 'cond' },
-  { n: '3', title: '분석 확인', desc: '경고·질문·분할이 있을 때만', kind: 'cond' },
-  { n: '4', title: '설계 진행', desc: '멈추지 않음', kind: '' },
-  { n: '5', title: '결과 작업공간', desc: '기능·ERD·DDL·RTM·검토', kind: '' },
-  { n: '6', title: '최종 검토', desc: '항상 사람이 누름', kind: 'human' },
-  { n: '7', title: '다운로드', desc: '형식별 내려받기', kind: '' },
+  { n: '2', title: '원문 확인', desc: '확인할 항목이 있을 때만', kind: 'cond' },
+  { n: '3', title: '요구사항 확인', desc: '경고·질문·분할이 있을 때만', kind: 'cond' },
+  { n: '4', title: '설계 중', desc: '멈추지 않음', kind: '' },
+  { n: '5', title: '결과 보기', desc: '문서 4종과 검토 의견', kind: '' },
+  { n: '6', title: '최종 승인', desc: '승인은 늘 사람이 눌러요', kind: 'human' },
+  { n: '7', title: '내려받기', desc: '형식별 내려받기', kind: '' },
 ]
 
 const OUTPUTS = [
@@ -62,7 +62,7 @@ function AboutPage() {
           ))}
         </div>
         <p className="muted" style={{ fontSize: 14, marginTop: 12 }}>
-          점선은 필요할 때만 멈추는 단계, 라임은 사람이 결정하는 단계예요. 수정 요청을 보내면 다시 설계해 새 revision이 생겨요.
+          점선은 필요할 때만 멈추는 단계, 라임은 사람이 결정하는 단계예요. 수정을 요청하면 다시 설계해서 다음 차수 설계안이 생겨요.
         </p>
       </section>
 

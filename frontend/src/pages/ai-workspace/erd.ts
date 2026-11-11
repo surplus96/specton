@@ -44,7 +44,7 @@ export function typeText(a: Pick<DesignAttribute, 'data_type' | 'length' | 'prec
 }
 
 export function relationshipLabel(r: Pick<DesignRelationship, 'id' | 'cardinality' | 'optional' | 'identifying'>): string {
-  return [r.id, r.cardinality, r.optional ? '선택' : '필수', r.identifying ? '식별' : null].filter(Boolean).join(' · ')
+  return [r.cardinality, r.optional ? '없어도 됨' : '꼭 있음', r.identifying ? '부모 키 포함' : null].filter(Boolean).join(' · ')
 }
 
 // 카드 크기 추정 (ELK가 겹치지 않게 배치하려면 크기를 먼저 알아야 한다). 화면 카드 CSS와 맞춘다

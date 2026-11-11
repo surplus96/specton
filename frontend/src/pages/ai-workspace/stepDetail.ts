@@ -2,7 +2,7 @@
 // 지금 API(SSE·view)에 있는 값만 쓰고 추정으로 메우지 않는다. 노드 단위 시작·끝·LLM 호출 수치는 2단계(서버)에서 더한다.
 import type { SseEvent } from '../../api/types.ts'
 import type { AnalysedRequirement, ArtifactRef, DesignItem, ExtractionBlock, Finding } from '../../api/viewItems.ts'
-import { SEVERITY_LABEL } from '../review/rules.ts'
+import { REVIEWER_LABEL, SEVERITY_LABEL } from '../review/rules.ts'
 import { stagesOf, type PipelineNodeId } from './pipeline.ts'
 
 export type StepData = {
@@ -37,26 +37,44 @@ export function stepEvents(id: PipelineNodeId, events: readonly SseEvent[], revi
 
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : [])
 
+/** 사람 확인 종류 · 멈춘 이유 · 문제 코드 · SQL 테스트 상태를 쉬운 말로 (화면에 영어 키를 보이지 않는다) */
+const ASK_TEXT: Record<string, string> = { extraction: '원문 확인', requirements: '요구사항 확인', review: '최종 승인' }
+const HITL_TEXT: Record<string, string> = {
+  rework_limit: '세 번 다시 설계해도 의견이 남음',
+  repeated_findings: '같은 의견이 되풀이됨',
+  router_undecided: '어디부터 다시 설계할지 정하지 못함',
+  manual_review: '사람이 판단해야 하는 의견이 있음',
+}
+const CODE_TEXT: Record<string, string> = {
+  LLM_OUTPUT_INVALID: 'AI 답이 형식에 맞지 않음',
+  LLM_UNAVAILABLE: 'AI에 연결하지 못함',
+  LLM_REFUSED: 'AI가 답하지 않음',
+  BUDGET_EXCEEDED: 'AI 사용 한도를 넘음',
+  EXTRACTION_FAILED: '문서를 읽지 못함',
+}
+export const SQL_TEST_TEXT: Record<string, string> = { passed: '통과', failed: '실패', error: '테스트 중 문제', unverified: '검증 미완료' }
+const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}초`
+
 /** payload의 알려진 칸을 짧은 글로. 원문·비밀값은 payload에 없으므로(docs/06) 그대로 옮겨도 된다 */
 export function payloadSummary(payload: Record<string, unknown> | undefined): string | null {
   if (!payload) return null
   const parts: string[] = []
-  if (payload.result_saved === false) parts.push('결과 미저장')
-  if (payload.recovered) parts.push('체크포인트에서 복구 (노드 소요 기록 없음)')
-  if (typeof payload.duration_ms === 'number') parts.push(`소요 ${payload.duration_ms} ms`)
+  if (payload.result_saved === false) parts.push('결과 저장 안 됨')
+  if (payload.recovered) parts.push('멈춘 곳에서 이어서 진행')
+  if (typeof payload.duration_ms === 'number') parts.push(`${seconds(payload.duration_ms)} 걸림`)
   if (Array.isArray(payload.calls)) for (const c of payload.calls) {
-    if (c && typeof c === 'object') parts.push(`${c.model} · 입력 ${c.input_tokens} / 출력 ${c.output_tokens} 토큰 · 재요청 ${Math.max(0, Number(c.attempt) - 1)}회 · ${c.duration_ms} ms · ${c.outcome}`)
+    if (c && typeof c === 'object') parts.push(`AI 사용량: 읽은 글 ${c.input_tokens} · 쓴 글 ${c.output_tokens} (토큰) · 다시 물어봄 ${Math.max(0, Number(c.attempt) - 1)}번 · ${seconds(Number(c.duration_ms))}`)
   }
-  if (payload.file_format) parts.push(`산출물: ${String(payload.kind)}.${String(payload.file_format)}${payload.approved ? ' (승인본)' : ''}`)
-  else if (payload.interrupt_id && payload.kind) parts.push(`확인 요청: ${String(payload.kind)}`)
-  if (list(payload.failed_branches).length) parts.push(`빠진 관점: ${list(payload.failed_branches).join(', ')}`)
-  if (Array.isArray(payload.rejected_findings) && payload.rejected_findings.length) parts.push(`근거 검사에서 제외: ${payload.rejected_findings.length}건`)
-  if (payload.router_decision) parts.push('재작업 판단 기록 있음')
-  if (payload.hitl_reason) parts.push(`멈춘 이유: ${String(payload.hitl_reason)}`)
+  if (payload.file_format) parts.push(`만든 파일: ${String(payload.file_format).toUpperCase()}${payload.approved ? ' (승인본)' : ''}`)
+  else if (payload.interrupt_id && payload.kind) parts.push(`사람 확인: ${ASK_TEXT[String(payload.kind)] ?? String(payload.kind)}`)
+  if (list(payload.failed_branches).length) parts.push(`못 한 검토: ${list(payload.failed_branches).map((id) => REVIEWER_LABEL[id] ?? id).join(', ')}`)
+  if (Array.isArray(payload.rejected_findings) && payload.rejected_findings.length) parts.push(`근거가 없어 뺀 의견 ${payload.rejected_findings.length}건`)
+  if (payload.router_decision) parts.push('다시 설계할지 판단함')
+  if (payload.hitl_reason) parts.push(`멈춘 이유: ${HITL_TEXT[String(payload.hitl_reason)] ?? String(payload.hitl_reason)}`)
   if (payload.info === 'skipped_sheets') parts.push(`건너뛴 시트: ${list(payload.sheets).join(', ')}`)
   if (payload.warning === 'excluded_related') parts.push(`제외 경고: ${String(payload.source_id)}`)
-  if (Array.isArray(payload.confirmed_block_ids)) parts.push(`확인한 블록 ${payload.confirmed_block_ids.length}개`)
-  if (payload.code) parts.push(`오류: ${String(payload.code)}${payload.retryable ? ' (다시 시도 가능)' : ''}`)
+  if (Array.isArray(payload.confirmed_block_ids)) parts.push(`확인한 원문 ${payload.confirmed_block_ids.length}줄`)
+  if (payload.code) parts.push(`문제: ${CODE_TEXT[String(payload.code)] ?? String(payload.code)}${payload.retryable ? ' (다시 해 볼 수 있음)' : ''}`)
   if (payload.detail) parts.push(String(payload.detail))
   return parts.length ? parts.join(' · ') : null
 }
@@ -69,12 +87,12 @@ function counted(values: readonly string[]): string {
 
 function artifactRows(kind: string, artifacts: readonly ArtifactRef[]): StepRow[] {
   const mine = artifacts.filter((a) => a.kind === kind)
-  const files = mine.map((a) => `${a.file_format} ${a.approved ? '승인본' : '초안'} (${a.hash.slice(0, 8)})`).join(', ')
+  const files = mine.map((a) => `${a.file_format.toUpperCase()} ${a.approved ? '승인본' : '초안'}`).join(', ')
   const rows = [{ label: '파일', value: files || '아직 없음' }]
   if (kind === 'ddl') {
     const sql = mine.find((a) => a.file_format === 'sql') as (ArtifactRef & { validation?: { status: string; validated_at?: string | null } }) | undefined
-    rows.push({ label: 'SQL 검증', value: sql ? (sql.validation?.status ?? 'unverified') : '없음' })
-    if (sql?.validation?.validated_at) rows.push({ label: '검증 시각', value: new Date(sql.validation.validated_at).toLocaleString('ko-KR') })
+    rows.push({ label: 'SQL 테스트', value: sql ? SQL_TEST_TEXT[sql.validation?.status ?? 'unverified'] ?? sql.validation?.status ?? '검증 미완료' : '없음' })
+    if (sql?.validation?.validated_at) rows.push({ label: '테스트 시각', value: new Date(sql.validation.validated_at).toLocaleString('ko-KR') })
   }
   return rows
 }

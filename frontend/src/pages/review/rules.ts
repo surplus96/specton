@@ -6,6 +6,7 @@
 // - 보류: decision 'hold'. 같은 확인 요청으로 계속 기다린다
 import type { ReviewResponse, SseEvent } from '../../api/types.ts'
 import type { DesignItem, Finding, Severity } from '../../api/viewItems.ts'
+import { revisionText } from '../runMeta.ts'
 
 export const SEVERITY_LABEL: Record<Severity, string> = { critical: '차단', major: '주요', minor: '참고' }
 
@@ -53,13 +54,34 @@ export function canApprove(findings: readonly Finding[]): boolean {
 export const REVIEWER_LABEL: Record<string, string> = {
   A05: '관계 모순',
   A06: '데이터 누락',
-  A07: '비기능 요구',
-  A08: '정규화',
+  A07: '품질 요구',
+  A08: '중복 정리',
 }
 
-/** 지적 출처 문장: 규칙 검사는 코드, LLM 지적은 검토 관점 */
+/** 규칙 코드의 쉬운 이름 (docs/05 규칙 표). 코드 자체는 화면에 쓰지 않고 마우스를 올리면 보인다 */
+const RULE_NAME: Record<string, string> = {
+  'RULE-01': '참조 확인',
+  'RULE-02': '요구사항 연결',
+  'RULE-03': '키·데이터 종류',
+  'RULE-04': '테이블 연결',
+  'RULE-05': '이름 규칙',
+  'RULE-06': '만들기·조회·수정·삭제',
+  'RULE-07': 'SQL 실행',
+}
+
+/** 규칙 코드를 쉬운 이름으로. 공통표준 검사(SC-xx)는 「공통표준 이름」 */
+export function ruleName(code: string | null | undefined): string | null {
+  if (!code) return null
+  if (RULE_NAME[code]) return RULE_NAME[code]
+  return code.startsWith('SC-') ? '공통표준 이름' : null
+}
+
+/** 의견 출처 문장: 규칙 검사는 쉬운 규칙 이름, AI 의견은 검토 관점 */
 export function sourceText(f: Pick<Finding, 'source' | 'rule_code' | 'reviewer_id'>): string {
-  if (f.source === 'rule') return `규칙 검사 ${f.rule_code ?? ''}`.trim()
+  if (f.source === 'rule') {
+    const name = ruleName(f.rule_code)
+    return name ? `규칙 검사 · ${name}` : '규칙 검사'
+  }
   const id = f.reviewer_id ?? ''
   return REVIEWER_LABEL[id] ? `${REVIEWER_LABEL[id]} 검토` : `${id} 검토`.trim()
 }
@@ -142,14 +164,13 @@ export function reviewDiagnostics(events: readonly SseEvent[], interruptId: stri
   const payload = [...events].reverse().find(e => e.event === 'interrupt' && e.data.payload?.kind === 'review' && e.data.payload?.interrupt_id === interruptId)?.data.payload
   if (!payload) return []
   const messages: string[] = []
-  const reasons: Record<string, string> = { unknown_target: '현재 설계에 없는 대상', unknown_req_id: '현재 요구사항에 없는 근거 ID', quote_not_found: '요구사항에서 확인되지 않는 인용' }
   if (Array.isArray(payload.rejected_findings)) {
-    for (const value of payload.rejected_findings) {
-      if (!value || typeof value !== 'object') continue
+    const rejected = payload.rejected_findings.filter((value) => {
+      if (!value || typeof value !== 'object') return false
       const r = value as Record<string, unknown>
-      if (typeof r.finding_id !== 'string' || typeof r.reason !== 'string') continue
-      messages.push(`검토 지적 제외: ${typeof r.reviewer_id === 'string' ? r.reviewer_id : ''} ${r.finding_id} — ${reasons[r.reason] ?? '근거 확인 실패'}. 유효한 지적 목록에는 포함하지 않았습니다.`)
-    }
+      return typeof r.finding_id === 'string' && typeof r.reason === 'string'
+    })
+    if (rejected.length > 0) messages.push(`근거가 확인되지 않은 의견 ${rejected.length}건은 뺐어요.`)
   }
   const value = payload.router_decision
   if (value && typeof value === 'object' && !Array.isArray(value)) {
@@ -157,7 +178,7 @@ export function reviewDiagnostics(events: readonly SseEvent[], interruptId: stri
     const stages: Record<string, string> = { requirements: '요구사항', functions: '기능 설계', data_model: '데이터 모델' }
     if (typeof r.revision === 'number') {
       const stage = typeof r.stage === 'string' ? stages[r.stage] ?? '판단 불가' : '판단 불가'
-      messages.push(`A09 판단 (revision ${r.revision} 기준): ${stage}${typeof r.rationale === 'string' ? ` — ${r.rationale}` : ''}${typeof r.error_code === 'string' ? ` · 오류 코드: ${r.error_code}` : ''}`)
+      messages.push(`다시 설계할 곳: ${stage} (${revisionText(r.revision)} 기준).${typeof r.rationale === 'string' ? ` ${r.rationale}` : ''}`)
     }
   }
   return messages

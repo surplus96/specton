@@ -30,7 +30,7 @@ function Pipeline({ design, artifacts, onOpen }: Props) {
             className="card card--link pipeline__card"
             style={{ padding: 18 }}
             onClick={() => onOpen(s.tab)}
-            aria-label={`${s.title}: ${s.status.text}${s.extra ? `, ${s.extra.text}` : ''}. 결과 작업공간에서 보기`}
+            aria-label={`${s.title}: ${s.status.text}${s.extra ? `, ${s.extra.text}` : ''}. 결과 보기에서 보기`}
           >
             <span className="row row--between">
               <Icon name={ICON[s.key]} size={22} />

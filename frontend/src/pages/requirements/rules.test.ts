@@ -54,8 +54,8 @@ describe('표시', () => {
   })
 
   it('유형 표시', () => {
-    expect(typeText({ type: 'FR', nfr_category: null })).toBe('기능 (FR)')
-    expect(typeText({ type: 'NFR', nfr_category: 'retention' })).toBe('비기능 · 보관 (NFR)')
+    expect(typeText({ type: 'FR', nfr_category: null })).toBe('기능')
+    expect(typeText({ type: 'NFR', nfr_category: 'retention' })).toBe('품질 · 보관')
   })
 })
 

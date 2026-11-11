@@ -79,7 +79,7 @@ function ReviewPanel({ run, events, onChanged, label }: Props) {
   return (
     <div className="stack">
       <ScreenHead
-        eyebrow={<RunEyebrow screen="최종 검토" label={label} run={run} />}
+        eyebrow={<RunEyebrow screen="최종 승인" label={label} run={run} />}
         title={
           <>
             마지막 결정은 <strong>사람이</strong> 합니다

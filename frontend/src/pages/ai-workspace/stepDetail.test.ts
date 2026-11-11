@@ -56,10 +56,10 @@ describe('stepEvents', () => {
 describe('payloadSummary', () => {
   it('알려진 칸을 사람이 읽는 글로 줄인다', () => {
     expect(payloadSummary({ kind: 'review', interrupt_id: 'i1', failed_branches: ['A07'], hitl_reason: 'rework_limit' })).toBe(
-      '확인 요청: review · 빠진 관점: A07 · 멈춘 이유: rework_limit',
+      '사람 확인: 최종 승인 · 못 한 검토: 품질 요구 · 멈춘 이유: 세 번 다시 설계해도 의견이 남음',
     )
     expect(payloadSummary({ info: 'skipped_sheets', sheets: ['표지', '목차'] })).toBe('건너뛴 시트: 표지, 목차')
-    expect(payloadSummary({ code: 'LLM_UNAVAILABLE', retryable: true, detail: '키 없음' })).toBe('오류: LLM_UNAVAILABLE (다시 시도 가능) · 키 없음')
+    expect(payloadSummary({ code: 'LLM_UNAVAILABLE', retryable: true, detail: '키 없음' })).toBe('문제: AI에 연결하지 못함 (다시 해 볼 수 있음) · 키 없음')
     expect(payloadSummary(undefined)).toBeNull()
   })
 })
@@ -100,8 +100,10 @@ describe('stepResult', () => {
       { kind: 'ddl', file_format: 'sql', revision: 0, hash: 'abcdef0123456789', approved: false, validation: { status: 'passed' } },
     ] as unknown as ArtifactRef[]
     const rows = stepResult('ddl', data({ artifacts }))
-    expect(value(rows, '파일')).toBe('sql 초안 (abcdef01)')
-    expect(value(rows, 'SQL 검증')).toBe('passed')
+    expect(value(rows, '파일')).toBe('SQL 초안')
+    expect(value(rows, 'SQL 테스트')).toBe('통과')
+    const pending = [{ ...artifacts[0], validation: { status: 'unverified' } }] as unknown as ArtifactRef[]
+    expect(value(stepResult('ddl', data({ artifacts: pending })), 'SQL 테스트')).toBe('검증 미완료')
     expect(value(stepResult('erd', data({ artifacts })), '파일')).toBe('아직 없음')
   })
 

@@ -10,9 +10,9 @@ import { PROGRESS_STAGES } from './screens.ts'
 /** 이벤트 종류마다 보일 글과 색. 색만으로 구분하지 않도록 글을 함께 쓴다. */
 export const EVENT_LABEL: Record<SseEventName, { label: string; tone: Tone }> = {
   status: { label: '진행', tone: 'info' },
-  interrupt: { label: '확인 요청', tone: 'warning' },
-  artifact: { label: '산출물', tone: 'success' },
-  error: { label: '오류', tone: 'danger' },
+  interrupt: { label: '확인 필요', tone: 'warning' },
+  artifact: { label: '문서 생성', tone: 'success' },
+  error: { label: '문제', tone: 'danger' },
   completed: { label: '완료', tone: 'success' },
   cancelled: { label: '취소', tone: 'neutral' },
 }
@@ -20,9 +20,9 @@ export const EVENT_LABEL: Record<SseEventName, { label: string; tone: Tone }> = 
 /** 이벤트 연결 상태 */
 export const CONNECTION_LABEL: Record<Connection, { label: string; tone: Tone }> = {
   connecting: { label: '연결 중', tone: 'neutral' },
-  live: { label: '실시간', tone: 'info' },
+  live: { label: '실시간으로 보는 중', tone: 'info' },
   retrying: { label: '다시 연결 중', tone: 'warning' },
-  closed: { label: '기록 끝', tone: 'neutral' },
+  closed: { label: '기록 끝남', tone: 'neutral' },
 }
 
 /**
@@ -32,10 +32,10 @@ export const CONNECTION_LABEL: Record<Connection, { label: string; tone: Tone }>
 const STAGE_TITLE: Record<string, string> = {
   ...STATUS_LABEL,
   ...Object.fromEntries(PROGRESS_STAGES.map((s) => [s.stage, s.title])),
-  awaiting_input: '추출 확인',
-  awaiting_requirements: '분석 확인',
-  awaiting_review: '최종 검토',
-  review: '최종 검토',
+  awaiting_input: '원문 확인',
+  awaiting_requirements: '요구사항 확인',
+  awaiting_review: '최종 승인',
+  review: '최종 승인',
 }
 
 export function stageTitle(stage: string | null | undefined): string | null {

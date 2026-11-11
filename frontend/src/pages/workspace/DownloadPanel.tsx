@@ -69,10 +69,10 @@ function DownloadPanel({ run, label }: Props) {
   return (
     <div className="stack">
       <ScreenHead
-        eyebrow={<RunEyebrow screen="다운로드" label={label} run={run} />}
+        eyebrow={<RunEyebrow screen="내려받기" label={label} run={run} />}
         title={
           <>
-            <strong>{approved ? '승인 산출물' : '산출물 내려받기'}</strong>
+            <strong>{approved ? '승인한 설계 문서' : '설계 문서 내려받기'}</strong>
           </>
         }
         actions={
@@ -101,10 +101,10 @@ function DownloadPanel({ run, label }: Props) {
 
           <section aria-label="산출물 흐름" className="stack-sm" style={{ gap: 12 }}>
             <h2 className="section-title" style={{ margin: 0 }}>
-              산출물 파이프라인
+              문서가 만들어진 순서
             </h2>
             <p className="muted" style={{ margin: 0, fontSize: 14 }}>
-              카드를 누르면 결과 작업공간에서 내용을 봐요.
+              카드를 누르면 결과 보기로 가요.
             </p>
             <Pipeline design={design} artifacts={artifacts} onOpen={openWorkspace} />
           </section>

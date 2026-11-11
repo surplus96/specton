@@ -33,7 +33,7 @@ export const ENABLED_PACKS: readonly Pack[] = ['inventory']
 
 export const PACK_OPTIONS = ENABLED_PACKS.map((value) => ({
   value,
-  label: `${PACK_LABELS[value].label} (${value})`,
+  label: PACK_LABELS[value].label,
 }))
 
 function suffixOf(name: string): string {

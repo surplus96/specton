@@ -100,7 +100,7 @@ function ExtractionPanel({ run, events, onChanged, label }: Props) {
   const baseColumns: Column<ExtractionBlock>[] = [
     {
       key: 'status',
-      title: '판정',
+      title: '상태',
       width: 96,
       render: (b) => <StatusTag tone={STATUS_TONE[b.extraction_status]}>{STATUS_LABEL[b.extraction_status]}</StatusTag>,
     },
@@ -124,7 +124,7 @@ function ExtractionPanel({ run, events, onChanged, label }: Props) {
       title: '원문 문장',
       render: (b) => (b.source_text === null ? <span className="subtle">원문 없음</span> : <Lines text={b.source_text} />),
     },
-    { key: 'notice', title: '판정 이유', width: 240, render: (b) => (b.notice ? <Lines text={b.notice} /> : '—') },
+    { key: 'notice', title: '확인할 이유', width: 240, render: (b) => (b.notice ? <Lines text={b.notice} /> : '—') },
   ]
 
   const decisionColumn: Column<ExtractionBlock> = {
@@ -172,7 +172,7 @@ function ExtractionPanel({ run, events, onChanged, label }: Props) {
   return (
     <div className="stack">
       <ScreenHead
-        eyebrow={<RunEyebrow screen="추출 확인" label={label} run={run} />}
+        eyebrow={<RunEyebrow screen="원문 확인" label={label} run={run} />}
         title={
           <>
             확인할 <strong>원문 {blocks ? toCheck.length : ''}건</strong>

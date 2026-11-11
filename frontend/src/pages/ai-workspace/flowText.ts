@@ -7,14 +7,14 @@ const DIRECTION: Record<string, string> = { up: '위', down: '아래', left: '�
 /** movable: 고른 카드를 방향키로 옮길 수 있는 캔버스(ERD)인가 */
 export function ariaLabels(movable: boolean): Partial<AriaLabelConfig> {
   const select = movable
-    ? 'Enter나 Space로 고릅니다. 고른 뒤 방향키로 옮길 수 있고(저장하지 않음), Esc로 선택을 풉니다.'
-    : 'Enter나 Space로 고릅니다. Esc로 선택을 풉니다.'
+    ? 'Enter나 Space로 골라요. 고른 뒤 방향키로 옮길 수 있고(저장하지 않아요), Esc로 선택을 풀어요.'
+    : 'Enter나 Space로 골라요. Esc로 선택을 풀어요.'
   return {
     'node.a11yDescription.default': select,
     'node.a11yDescription.keyboardDisabled': select,
     'node.a11yDescription.ariaLiveMessage': ({ direction, x, y }) =>
-      `고른 카드를 ${DIRECTION[direction] ?? direction}으로 옮겼습니다. 새 위치 x ${Math.round(x)}, y ${Math.round(y)}`,
-    'edge.a11yDescription.default': '연결선입니다. 고르거나 지울 수 없습니다.',
+      `고른 카드를 ${DIRECTION[direction] ?? direction}으로 옮겼어요. 새 위치 x ${Math.round(x)}, y ${Math.round(y)}`,
+    'edge.a11yDescription.default': '연결선이에요. 고르거나 지울 수 없어요.',
     'controls.ariaLabel': '확대·축소 버튼',
     'controls.zoomIn.ariaLabel': '확대',
     'controls.zoomOut.ariaLabel': '축소',

@@ -6,6 +6,7 @@ import { getView } from '../../api/client.ts'
 import { errorMessage } from '../../api/errors.ts'
 import type { AnalysedRequirement, DesignItem, ExtractionBlock, Finding } from '../../api/viewItems.ts'
 import { useRuns } from '../useRuns.ts'
+import { dotDateTime, revisionText } from '../runMeta.ts'
 import { runTitle } from '../../api/runNames.ts'
 import Button from '../../ui/Button.tsx'
 import Notice from '../../ui/Notice.tsx'
@@ -71,14 +72,14 @@ function WorkspaceChooser() {
   const available = runs?.some((run) => run.run_id === selected)
   return (
     <section className="workspace-chooser stack">
-      <ScreenHead eyebrow="개발자용" title="AI Workspace" lead="실행 단계·설계·추적·검증 기록을 조회할 작업을 선택하세요." />
+      <ScreenHead eyebrow="AI 작업 과정" title="AI Workspace" lead="실행 단계·설계·추적·검증 기록을 조회할 작업을 선택하세요." />
       {failed && <Notice kind="error" title="실행 목록을 불러오지 못했어요." action={<Button onClick={reload}>다시 불러오기</Button>} />}
       {runs === null && !failed && <p role="status">실행 목록을 불러오는 중이에요.</p>}
       {runs?.length === 0 && <Notice title="조회할 실행이 없습니다.">새 작업에서 문서를 올린 뒤 확인할 수 있어요.</Notice>}
       <label htmlFor="workspace-run">실행 선택</label>
       <select id="workspace-run" className="select" value={selected} onChange={(event) => setSelected(event.target.value)} disabled={!runs?.length}>
         <option value="">실행을 선택하세요</option>
-        {runs?.map((run) => <option key={run.run_id} value={run.run_id}>{runTitle(run.run_id).title} · {run.run_id.slice(0, 8)} · {STATUS_LABEL[run.status]} · r{run.revision}</option>)}
+        {runs?.map((run) => <option key={run.run_id} value={run.run_id}>{runTitle(run.run_id).title} · {dotDateTime(run.created_at)} · {STATUS_LABEL[run.status]} · {revisionText(run.revision)}</option>)}
       </select>
       <div><Button disabled={!available} onClick={() => navigate(`/workspace?run=${encodeURIComponent(selected)}`)}>작업공간 열기</Button></div>
     </section>
@@ -192,8 +193,8 @@ function Workspace({ runId }: { runId: string }) {
   }
 
   const TABS = [
-    ['erd', `ERD (${erd.cards.length})`],
-    ['trace', '문서 추적'],
+    ['erd', `테이블 관계도 (${erd.cards.length})`],
+    ['trace', '요구사항 따라가기'],
   ] as const
 
   // 탭은 좌우 방향키·Home·End로도 옮긴다 (WAI-ARIA 탭 패턴)
@@ -218,9 +219,7 @@ function Workspace({ runId }: { runId: string }) {
           ← 실행 화면
         </Link>
         <h1 style={{ fontSize: 18, margin: 0 }}>AI Workspace</h1>
-        <span className="aiws-chip" title={runId}>
-          실행 {runId.slice(0, 8)}
-        </span>
+        <span className="aiws-chip">{runTitle(runId).title}</span>
         {run && <span className="aiws-chip">{STATUS_LABEL[run.status]}</span>}
         <span className="aiws-chip">{CONNECTION_LABEL[connection].label}</span>
         <span style={{ color: dark.inkMuted, fontSize: 13 }}>
@@ -228,7 +227,7 @@ function Workspace({ runId }: { runId: string }) {
         </span>
         <span style={{ flex: 1 }} />
         <label style={{ fontSize: 13, color: dark.inkMuted, display: 'flex', alignItems: 'center', gap: 6 }}>
-          revision
+          설계안
           <select
             value={revision}
             onChange={(e) => setPicked(Number(e.target.value))}
@@ -236,7 +235,7 @@ function Workspace({ runId }: { runId: string }) {
           >
             {revisionOptions(run?.revision ?? 0).map((r) => (
               <option key={r} value={r}>
-                {r === run?.revision ? `${r} (최신)` : r}
+                {r === run?.revision ? `${revisionText(r)} (최신)` : revisionText(r)}
               </option>
             ))}
           </select>
@@ -247,7 +246,7 @@ function Workspace({ runId }: { runId: string }) {
           </span>
         )}
         <button type="button" className="aiws-chip" style={{ cursor: 'pointer', background: 'transparent' }} onClick={() => setPanelOpen((o) => !o)} aria-expanded={panelOpen}>
-          {panelOpen ? '패널 닫기 ›' : '‹ 패널 열기'}
+          {panelOpen ? '자세히 닫기 ›' : '‹ 자세히 보기'}
         </button>
       </header>
 
@@ -298,7 +297,7 @@ function Workspace({ runId }: { runId: string }) {
               <p style={{ padding: 20, color: dark.inkMuted }}>불러오는 중…</p>
             ) : tab === 'erd' ? (
               erd.cards.length === 0 ? (
-                <p style={{ padding: 20, color: dark.inkMuted }}>이 revision에는 아직 엔티티가 없습니다.</p>
+                <p style={{ padding: 20, color: dark.inkMuted }}>이 설계안에는 아직 테이블이 없어요.</p>
               ) : (
                 <ErdCanvas
                   cards={erd.cards}

@@ -25,7 +25,7 @@ const FILTERS: { value: Filter; label: string; match: (s: RunState) => boolean }
     match: (s) => ['queued', 'parsing', 'analysing', 'designing', 'generating', 'reviewing', 'exporting', 'cancel_requested'].includes(s),
   },
   { value: 'completed', label: '완료', match: (s) => s === 'completed' },
-  { value: 'stopped', label: '실패 · 취소', match: (s) => s === 'failed' || s === 'cancelled' },
+  { value: 'stopped', label: '멈춘 작업', match: (s) => s === 'failed' || s === 'cancelled' },
 ]
 
 function RunsPage() {
@@ -65,7 +65,7 @@ function RunsPage() {
           <h1 className="title">
             지금까지의 <strong>작업</strong>
           </h1>
-          <p className="lead">이 브라우저에서 시작한 실행만 보여요. 눌러서 그 실행의 화면으로 돌아갈 수 있어요.</p>
+          <p className="lead">이 브라우저에서 시작한 작업만 보여요. 누르면 그 작업으로 돌아가요.</p>
         </div>
         <Button variant="secondary" icon={<Icon name="refresh" size={16} />} onClick={reload}>
           새로고침
@@ -119,11 +119,11 @@ function RunsPage() {
                 const file = runFileName(r.run_id)
                 return (
                   <div className="stack-sm" style={{ gap: 2 }}>
-                    <Link to={`/?run=${encodeURIComponent(r.run_id)}`} title={`실행 ID ${r.run_id}`}>
+                    <Link to={`/?run=${encodeURIComponent(r.run_id)}`}>
                       {file ? titleFromFile(file) : '이름 없는 작업'}
                     </Link>
                     <span className="subtle" style={{ fontSize: 13 }}>
-                      {file ?? '파일 이름은 이 브라우저에서 올린 실행만 보여요'}
+                      {file ?? '이 브라우저에 파일 이름이 저장되어 있지 않아요'}
                     </span>
                   </div>
                 )
