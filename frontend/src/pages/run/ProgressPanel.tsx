@@ -10,6 +10,7 @@ import Button from '../../ui/Button.tsx'
 import ConfirmButton from '../../ui/ConfirmButton.tsx'
 import Notice from '../../ui/Notice.tsx'
 import ScreenHead from '../../ui/ScreenHead.tsx'
+import Elapsed from './Elapsed.tsx'
 import type { Connection } from './followRun.ts'
 import {
   PROGRESS_STAGES,
@@ -26,6 +27,8 @@ import {
 type Props = {
   run: RunStatus
   events: SseEvent[]
+  /** 이벤트 id → 이 화면이 받은 시각(ms). 진행 시간을 잰다 */
+  receivedAt: Record<number, number>
   connection: Connection
   onChanged: () => Promise<void>
   label: string
@@ -41,7 +44,7 @@ const STAGE_DESC: Record<(typeof PROGRESS_STAGES)[number]['stage'], string> = {
 
 type RowState = 'done' | 'now' | 'wait' | 'fail'
 
-function ProgressPanel({ run, events, connection, onChanged, label }: Props) {
+function ProgressPanel({ run, events, receivedAt, connection, onChanged, label }: Props) {
   const navigate = useNavigate()
   const [cancelling, setCancelling] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -99,7 +102,9 @@ function ProgressPanel({ run, events, connection, onChanged, label }: Props) {
         eyebrow={<RunEyebrow screen="설계 중" label={label} run={run} />}
         title={title}
         actions={
-          canCancel(run.status) && (
+          <div className="row" style={{ gap: 16, alignItems: 'center' }}>
+            <Elapsed receivedAt={receivedAt} status={run.status} />
+            {canCancel(run.status) && (
             <ConfirmButton
               variant="danger"
               loading={cancelling}
@@ -113,7 +118,8 @@ function ProgressPanel({ run, events, connection, onChanged, label }: Props) {
             >
               그만두기
             </ConfirmButton>
-          )
+            )}
+          </div>
         }
       />
 

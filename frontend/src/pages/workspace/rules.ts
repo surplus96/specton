@@ -236,8 +236,9 @@ export function revisionOptions(current: number): number[] {
 export type ResultView = 'review' | 'workspace' | 'downloads'
 
 export function resultViews(status: RunState): ResultView[] {
-  if (status === 'awaiting_review') return ['review', 'workspace']
-  if (status === 'completed') return ['downloads', 'workspace']
+  // 보이는 순서: 결과 보기가 먼저. 처음 여는 화면은 chosenView가 최종 승인·내려받기로 고른다
+  if (status === 'awaiting_review') return ['workspace', 'review']
+  if (status === 'completed') return ['workspace', 'downloads']
   return []
 }
 
@@ -245,7 +246,8 @@ export function resultViews(status: RunState): ResultView[] {
 export function chosenView(status: RunState, param: string | null): ResultView | null {
   const views = resultViews(status)
   if (views.length === 0) return null
-  return views.includes(param as ResultView) ? (param as ResultView) : views[0]
+  if (views.includes(param as ResultView)) return param as ResultView
+  return views.find((v) => v !== 'workspace') ?? views[0]
 }
 
 export const VIEW_LABEL: Record<ResultView, string> = {

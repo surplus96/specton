@@ -19,7 +19,6 @@ import { revisionText } from '../runMeta.ts'
 import SqlValidationPanel from './SqlValidationPanel.tsx'
 import { sqlReview } from './sqlValidation.ts'
 import {
-  HITL_REASON_TEXT,
   SEVERITY_LABEL,
   branchText,
   buildResponse,
@@ -27,7 +26,6 @@ import {
   countBySeverity,
   nameIndex,
   problems,
-  reviewDiagnostics,
   reviewNotices,
   type Decision,
 } from './rules.ts'
@@ -66,7 +64,7 @@ function ReviewPanel({ run, events, onChanged, label }: Props) {
   const names = useMemo(() => nameIndex(design), [design])
   const counts = countBySeverity(findings ?? [])
   const approvable = Boolean(reviewSection.data && designSection.data) && sql.status === 'passed' && canApprove(findings ?? [])
-  const { failedBranches, hitlReason } = reviewNotices(events, interruptId)
+  const { failedBranches } = reviewNotices(events, interruptId)
   const blocking = decision ? problems(decision, feedback, findings ?? []) : []
   const checklist = reviewChecklist(design, artifacts, run.revision, sql)
 
@@ -98,14 +96,9 @@ function ReviewPanel({ run, events, onChanged, label }: Props) {
               빠진 관점의 지적은 아래 목록에 없어요. 승인 전에 확인해 주세요.
             </Notice>
           )}
-          {hitlReason && <Notice title={HITL_REASON_TEXT[hitlReason] ?? hitlReason} />}
-          {/* 근거 검사에서 제외한 지적·A09 재작업 판단 (#330). 지금 확인 요청의 것만 */}
-          {reviewDiagnostics(events, interruptId).map((message, index) => (
-            <Notice key={index} kind="plain" title={message} />
-          ))}
-
-
-          {designSection.data && <SqlValidationPanel result={sql} />}
+          {/* 자동 재작업을 멈춘 이유·근거 검사 제외·다시 설계 판단은 AI Workspace에서 본다.
+              SQL은 통과면 안내하지 않고, 승인을 막는 상태(실패·오류·미검증·없음)일 때만 이유를 보인다 */}
+          {designSection.data && sql.status !== 'passed' && <SqlValidationPanel result={sql} />}
 
           <section aria-label="검토 지적" className="stack-sm" style={{ gap: 14 }}>
             <h2 className="section-title" style={{ margin: 0 }}>

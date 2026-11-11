@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { ApiError, errorMessage } from '../api/errors.ts'
 import { runFileName } from '../api/runNames.ts'
@@ -10,7 +10,6 @@ import Segmented from '../ui/Segmented.tsx'
 import ExtractionPanel from './extraction/ExtractionPanel.tsx'
 import RequirementsPanel from './requirements/RequirementsPanel.tsx'
 import ReviewPanel from './review/ReviewPanel.tsx'
-import ActivityPanel from './run/ActivityPanel.tsx'
 import ProgressPanel from './run/ProgressPanel.tsx'
 import { screenFor, screenSteps } from './run/screens.ts'
 import { useRunStatus } from './run/useRunStatus.ts'
@@ -31,13 +30,6 @@ const SCREEN_OF_VIEW: Record<ResultView, ScreenId> = {
 
 
 function RunPage({ runId }: { runId: string }) {
-  const [wide, setWide] = useState(() => window.matchMedia('(min-width: 1100px)').matches)
-  useEffect(() => {
-    const media = window.matchMedia('(min-width: 1100px)')
-    const changed = () => setWide(media.matches)
-    media.addEventListener('change', changed)
-    return () => media.removeEventListener('change', changed)
-  }, [])
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const { run, events, receivedAt, connection, loadError, refresh } = useRunStatus(runId)
@@ -111,7 +103,6 @@ function RunPage({ runId }: { runId: string }) {
 
   const view = chosenView(run.status, params.get('view'))
   const screen = view ? SCREEN_OF_VIEW[view] : screenFor(run.status, run.interrupt?.kind)
-  const showActivity = screen === 'UI-04' && wide
   const steps = screenSteps(run.status, screen, events)
 
   function chooseView(next: ResultView) {
@@ -138,10 +129,10 @@ function RunPage({ runId }: { runId: string }) {
         )}
 
       </div>
-      <div className={`run-layout${showActivity ? ' run-layout--side' : ''}`}>
+      <div className="run-layout">
         <div className="screen" key={screen} style={{ minWidth: 0 }}>
           {screen === 'UI-04' ? (
-            <ProgressPanel run={run} events={events} connection={connection} onChanged={refresh} label={label} />
+            <ProgressPanel run={run} events={events} receivedAt={receivedAt} connection={connection} onChanged={refresh} label={label} />
           ) : screen === 'UI-02' ? (
             <ExtractionPanel run={run} events={events} onChanged={refresh} label={label} />
           ) : screen === 'UI-03' ? (
@@ -154,9 +145,6 @@ function RunPage({ runId }: { runId: string }) {
             <DownloadPanel run={run} label={label} />
           )}
         </div>
-        {showActivity && <aside className="run-layout__side">
-          <ActivityPanel events={events} receivedAt={receivedAt} connection={connection} status={run.status} />
-        </aside>}
       </div>
     </div>
   )
