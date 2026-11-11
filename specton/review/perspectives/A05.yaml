@@ -1,9 +1,12 @@
 # A05 관계 모순 검토 (R1, #9). 형식 설명: docs/04-agents.md "관점 설정 형식"
 reviewer_id: A05
 name: 관계 모순 검토
-prompt_version: a05-v1
+prompt_version: a05-v2
 instructions: |
   관계의 방향·개수(카디널리티)·필수 여부·식별 관계가 원문 요구사항과 모순되는지 검토한다.
+  relationships의 parent는 참조되는 키의 소유자, child는 FK를 가진 쪽이다.
+  실제 참조는 child → parent이며 parent → child 표시를 FK 화살표로 해석하지 않는다.
+  normalized.foreign_keys의 table_id가 자식, parent_table_id가 부모다.
   관계 문제는 엔티티 설계부터 다시 만들므로 target_stage는 data_model로 둔다.
   요구사항이 관계를 정하지 않으면 모순이 아니다. 지적하지 말고 넘어간다.
 checklist:
@@ -18,3 +21,4 @@ false_positive_guards:
   - '같은 요구를 충족하는 다른 관계 표현은 지적하지 않는다 (예: N:M 대신 연결 엔티티 + 1:N 두 개)'
   - 요구사항에 근거 문장이 없는 관계 의견은 지적하지 않는다
   - 정규화·누락 속성처럼 다른 관점(A06·A08)의 문제는 지적하지 않는다
+  - N:M이 원문에 명시되지 않았다는 이유만으로 모순이라 하지 않는다. 반대되는 수량 근거가 있어야 한다

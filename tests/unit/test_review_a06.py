@@ -131,7 +131,7 @@ def _settings() -> Settings:
 
 def test_a06_reads_requirements_functions_entities_and_relationships() -> None:
     assert set(A06.inputs) == {"requirements", "functions", "entities", "relationships"}
-    assert A06.prompt_version == "a06-v4"
+    assert A06.prompt_version == "a06-v5"
 
 
 def test_a06_is_loaded_with_the_other_perspectives() -> None:

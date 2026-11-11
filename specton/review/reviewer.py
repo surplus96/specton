@@ -238,6 +238,9 @@ def _review_data(
     `normalized`는 목록이 아니라 정리 결과 하나라 요약 보기로 넣는다. 고른 관점이 있는데 정리
     결과가 없으면 LLM을 부르기 전에 멈춘다. 정리 결과 없이 정상 검토처럼 처리하지 않는다 (#12).
     """
+    # 관계 검토에는 존재하는 정리 결과도 함께 전달한다. 정리 전 단독 검토는 유지한다.
+    if "relationships" in sections and state.normalized is not None:
+        sections = (*sections, "normalized")
     selected = [s for s in SECTION_ORDER if s in sections]
     data: dict[str, Any] = {}
     for section in selected:
