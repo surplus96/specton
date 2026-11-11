@@ -3,26 +3,30 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { getView } from '../../api/client.ts'
 import { errorMessage } from '../../api/errors.ts'
-import type { RunStatus } from '../../api/types.ts'
+import type { Pack, RunStatus } from '../../api/types.ts'
 import type { ArtifactRef, DesignItem, Finding } from '../../api/viewItems.ts'
-import StatusTag from '../../layout/StatusTag.tsx'
 import Button from '../../ui/Button.tsx'
-import DataTable from '../../ui/DataTable.tsx'
 import Loading from '../../ui/Loading.tsx'
 import Notice from '../../ui/Notice.tsx'
 import ScreenHead from '../../ui/ScreenHead.tsx'
-import DownloadAll from './DownloadAll.tsx'
-import DownloadButton from './DownloadButton.tsx'
+import DownloadCard from './DownloadCard.tsx'
+import { PACK_LABELS } from '../upload/rules.ts'
 import Pipeline from './Pipeline.tsx'
 import type { WorkspaceTab } from './pipeline.ts'
 import ResultSummary from './ResultSummary.tsx'
-import { FORMAT_LABEL, KIND_LABEL, downloadRows, isApproved, toArtifacts, type DownloadRow } from './rules.ts'
+import { isApproved, toArtifacts } from './rules.ts'
 
-// UI-07 다운로드: 승인 완료 카드(전체 내려받기) · 결과 요약 · 산출물 파이프라인 · 형식별 내려받기.
+// UI-07 내려받기: 설계 문서 카드(시안: 어두운 판 + 문서 4종 타일) · 결과 요약 · 문서가 만들어진 순서.
 // 생성 대기·파일 없음·승인 전 PDF는 칸마다 이유를 적는다. 초안 파일 이름에는 서버가 -draft를 붙인다.
 type Props = {
   run: RunStatus
   label: string
+}
+
+/** 카드 위 작은 글: 설계에 쓴 업무 분야 (예: 재고관리 요구사항) */
+function subjectOf(design: readonly DesignItem[]): string {
+  const pack = design.find((d) => d.type === 'entity')?.pack as Pack | undefined
+  return pack && PACK_LABELS[pack] ? `${PACK_LABELS[pack].label} 요구사항` : '요구사항'
 }
 
 function DownloadPanel({ run, label }: Props) {
@@ -88,14 +92,7 @@ function DownloadPanel({ run, label }: Props) {
       ) : (
         <>
           <div className="decide">
-            <div className={`decision-card${approved ? ' decision-card--done' : ''}`}>
-              <span style={{ fontSize: 14, opacity: 0.8 }}>{approved ? '승인 완료' : '초안 · 승인 전'}</span>
-              <h3>{approved ? '다운로드 준비 완료' : '승인 전 초안이에요.'}</h3>
-              <span style={{ opacity: 0.8 }}>
-                {approved ? '형식별로 내려받을 수 있어요.' : '파일 이름 끝에 -draft가 붙고, PDF는 승인한 뒤에 만들어져요.'}
-              </span>
-              <DownloadAll runId={run.run_id} artifacts={artifacts} variant={approved ? 'accent' : 'primary'} />
-            </div>
+            <DownloadCard runId={run.run_id} artifacts={artifacts} approved={approved} subject={subjectOf(design)} />
             <ResultSummary design={design} findings={findings} />
           </div>
 
@@ -109,45 +106,6 @@ function DownloadPanel({ run, label }: Props) {
             <Pipeline design={design} artifacts={artifacts} onOpen={openWorkspace} />
           </section>
 
-          <section aria-label="산출물" className="stack-sm" style={{ gap: 12 }}>
-            <div className="row">
-              <h2 className="section-title" style={{ margin: 0 }}>
-                형식별 내려받기
-              </h2>
-              <StatusTag tone={approved ? 'success' : 'warning'}>{approved ? '승인본' : '초안 (승인 전)'}</StatusTag>
-            </div>
-            <DataTable<DownloadRow>
-              label="산출물"
-              rows={downloadRows(artifacts, approved)}
-              rowKey={(r) => r.kind}
-              minWidth={560}
-              columns={[
-                { key: 'kind', title: '산출물', width: 180, render: (r) => <strong>{KIND_LABEL[r.kind]}</strong> },
-                {
-                  key: 'files',
-                  title: '내려받기',
-                  render: (r) => (
-                    <div className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
-                      {r.files.map(({ format, file }) =>
-                        file.state === 'ready' ? (
-                          <DownloadButton key={format} runId={run.run_id} artifact={file.artifact} />
-                        ) : (
-                          <span key={format} className="stack-sm" style={{ gap: 2 }}>
-                            <Button variant="secondary" size="sm" disabled>
-                              {FORMAT_LABEL[format]} · {file.state === 'needs-approval' ? '승인 후' : '없음'}
-                            </Button>
-                            <span className="subtle" style={{ fontSize: 12 }}>
-                              {file.state === 'needs-approval' ? 'PDF는 승인한 뒤에 만들어져요' : '아직 만들어지지 않았어요'}
-                            </span>
-                          </span>
-                        ),
-                      )}
-                    </div>
-                  ),
-                },
-              ]}
-            />
-          </section>
         </>
       )}
     </div>

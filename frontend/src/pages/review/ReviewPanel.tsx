@@ -20,6 +20,7 @@ import SqlValidationPanel from './SqlValidationPanel.tsx'
 import { sqlReview } from './sqlValidation.ts'
 import {
   HITL_REASON_TEXT,
+  reviewDiagnostics,
   SEVERITY_LABEL,
   branchText,
   buildResponse,
@@ -27,7 +28,6 @@ import {
   countBySeverity,
   nameIndex,
   problems,
-  reviewDiagnostics,
   reviewNotices,
   type Decision,
 } from './rules.ts'
@@ -67,6 +67,7 @@ function ReviewPanel({ run, events, onChanged, label }: Props) {
   const counts = countBySeverity(findings ?? [])
   const approvable = Boolean(reviewSection.data && designSection.data) && sql.status === 'passed' && canApprove(findings ?? [])
   const { failedBranches, hitlReason } = reviewNotices(events, interruptId)
+  const diagnostics = reviewDiagnostics(events, interruptId)
   const blocking = decision ? problems(decision, feedback, findings ?? []) : []
   const checklist = reviewChecklist(design, artifacts, run.revision, sql)
 
@@ -98,14 +99,13 @@ function ReviewPanel({ run, events, onChanged, label }: Props) {
               빠진 관점의 지적은 아래 목록에 없어요. 승인 전에 확인해 주세요.
             </Notice>
           )}
-          {hitlReason && <Notice title={HITL_REASON_TEXT[hitlReason] ?? hitlReason} />}
-          {/* 근거 검사에서 제외한 지적·A09 재작업 판단 (#330). 지금 확인 요청의 것만 */}
-          {reviewDiagnostics(events, interruptId).map((message, index) => (
-            <Notice key={index} kind="plain" title={message} />
-          ))}
-
-
-          {designSection.data && <SqlValidationPanel result={sql} />}
+          {(hitlReason || diagnostics.length > 0) && <details className="more">
+            <summary>검토 경위 보기</summary>
+            {hitlReason && <p>{HITL_REASON_TEXT[hitlReason] ?? hitlReason}</p>}
+            {diagnostics.map((message, index) => <p key={index}>{message}</p>)}
+          </details>}
+          {/* SQL은 승인을 막는 상태일 때만 별도 안내한다. */}
+          {designSection.data && sql.status !== 'passed' && <SqlValidationPanel result={sql} />}
 
           <section aria-label="검토 지적" className="stack-sm" style={{ gap: 14 }}>
             <h2 className="section-title" style={{ margin: 0 }}>

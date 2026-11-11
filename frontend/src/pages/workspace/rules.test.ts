@@ -127,8 +127,8 @@ describe('UI-07 다운로드 표', () => {
 
 describe('화면 고르기', () => {
   it('결과가 있을 때만 결과 작업공간으로 바꿀 수 있고, 첫 화면이 기본이다', () => {
-    expect(resultViews('awaiting_review')).toEqual(['review', 'workspace'])
-    expect(resultViews('completed')).toEqual(['downloads', 'workspace'])
+    expect(resultViews('awaiting_review')).toEqual(['workspace', 'review'])
+    expect(resultViews('completed')).toEqual(['workspace', 'downloads'])
     expect(resultViews('designing')).toEqual([])
     expect(chosenView('awaiting_review', null)).toBe('review')
     expect(chosenView('awaiting_review', 'workspace')).toBe('workspace')
