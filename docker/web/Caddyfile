@@ -28,7 +28,13 @@
 
 	handle {
 		root * /srv
-		try_files {path} /index.html
-		file_server
+		route {
+			try_files {path} /index.html
+			# HTML은 새 빌드를 확인하고, 파일명에 해시가 붙은 자산만 오래 보관한다.
+			header Cache-Control "no-cache"
+			@assets path /assets/*
+			header @assets Cache-Control "public, max-age=31536000, immutable"
+			file_server
+		}
 	}
 }

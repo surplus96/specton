@@ -1,4 +1,4 @@
-import { Fragment, useState, type ReactNode } from 'react'
+import { Fragment, useId, useState, type ReactNode } from 'react'
 
 // 표. 표·원문처럼 이어서 읽는 것은 큰 영역에 두고, 넓으면 표 안에서만 가로로 움직인다.
 export type Column<T> = {
@@ -16,6 +16,8 @@ type Props<T> = {
   /** 행을 펼쳐 아래에 더 보일 내용 */
   expand?: (row: T) => ReactNode
   expandLabel?: (row: T, open: boolean) => string
+  /** 펼치기 버튼에 표시할 글자. 생략하면 기존 아이콘만 표시한다. */
+  expandText?: string
   pageSize?: number
   empty?: ReactNode
   minWidth?: number
@@ -29,12 +31,14 @@ function DataTable<T>({
   rowKey,
   expand,
   expandLabel,
+  expandText,
   pageSize,
   empty = '내용이 없어요.',
   minWidth = 640,
   label,
   className,
 }: Props<T>) {
+  const tableId = useId()
   const [page, setPage] = useState(0)
   const [open, setOpen] = useState<Set<string>>(new Set())
   const pages = pageSize ? Math.max(1, Math.ceil(rows.length / pageSize)) : 1
@@ -58,7 +62,7 @@ function DataTable<T>({
       <table className="table" style={{ minWidth }} aria-label={label}>
         <thead>
           <tr>
-            {expand && <th style={{ width: 44 }} aria-label="펼치기" />}
+            {expand && <th style={{ width: expandText ? 110 : 44 }} aria-label="상세">{expandText ? '상세' : null}</th>}
             {columns.map((c) => (
               <th key={c.key} style={c.width ? { width: c.width } : undefined}>
                 {c.title}
@@ -77,15 +81,17 @@ function DataTable<T>({
                     <td>
                       <button
                         type="button"
-                        className="icon-btn"
-                        style={{ width: 28, height: 28 }}
+                        className={expandText ? 'btn btn--secondary btn--sm' : 'icon-btn'}
+                        style={expandText ? { whiteSpace: 'nowrap' } : { width: 28, height: 28 }}
                         aria-expanded={isOpen}
+                        aria-controls={isOpen ? `${tableId}-${encodeURIComponent(key)}` : undefined}
                         aria-label={expandLabel ? expandLabel(row, isOpen) : isOpen ? '접기' : '펼치기'}
                         onClick={() => toggle(key)}
                       >
-                        <span style={{ display: 'inline-block', transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 150ms' }}>
+                        <span aria-hidden="true" style={{ display: 'inline-block', transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 150ms' }}>
                           ›
                         </span>
+                        {expandText && <span>{isOpen ? '접기' : expandText}</span>}
                       </button>
                     </td>
                   )}
@@ -96,7 +102,7 @@ function DataTable<T>({
                   ))}
                 </tr>
                 {expand && isOpen && (
-                  <tr className="sub-row">
+                  <tr className="sub-row" id={`${tableId}-${encodeURIComponent(key)}`}>
                     <td colSpan={colCount}>{expand(row)}</td>
                   </tr>
                 )}
