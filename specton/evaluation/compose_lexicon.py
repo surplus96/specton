@@ -15,7 +15,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("spec", type=Path, help="출처·선정 근거를 기록한 비공개 JSON")
     parser.add_argument("--pack-root", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True, help="존재하지 않는 새 사본 경로")
-    parser.add_argument("--reviews", type=Path, help="선정 해시에 연결된 R1·R4 승인 JSON")
+    parser.add_argument(
+        "--reviews", type=Path, help="선정 해시에 연결된 R1·R4 승인 또는 명시적 R1 한정 확정 JSON"
+    )
     args = parser.parse_args(argv)
     try:
         result = compose_overlay(args.pack_root, args.spec, args.out, reviews=args.reviews)

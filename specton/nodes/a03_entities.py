@@ -402,6 +402,9 @@ def run(
     pack: str,
     token_budget: int | None = None,
     feedback: str | None = None,
+    naming_lexicon: Lexicon | None = None,
+    naming_guidance: Mapping[str, str] | None = None,
+    naming_words: Sequence[Mapping[str, str]] = (),
 ) -> NodeRun[A03Result]:
     """요구사항·기능으로 엔티티를 설계하고 코드가 ID를 붙여 기능의 `entity_ops`를 채운다."""
     if not state.requirements:
@@ -417,13 +420,21 @@ def run(
         feedback,
     )
     examples = load_examples(pack, "A03", A03Output, root=settings.pack_root)
+    if naming_lexicon is not None:
+        data["evaluation_naming"] = {
+            "approved_name_forms": dict(naming_guidance or {}),
+            "source_words": list(naming_words),
+            "scope": "post_observation_exploration; preserve business meaning and constraints",
+        }
 
     def ask(payload: Mapping[str, Any], budget: int | None) -> LLMResult[A03Output]:
         request = build_request(
             settings,
             role="design",
             stage="A03",
-            prompt_version=PROMPT_VERSION,
+            prompt_version=f"{PROMPT_VERSION}-exploration-v1"
+            if naming_lexicon is not None
+            else PROMPT_VERSION,
             system=SYSTEM_PROMPT,
             data=payload,
             examples=examples,
@@ -438,7 +449,12 @@ def run(
     )
     result = ask(data, token_budget)
     draft, calls = result.output, result.calls
-    unresolved = _unresolved_names(draft, load_pack_lexicon(pack, settings.pack_root))
+    unresolved = _unresolved_names(
+        draft,
+        naming_lexicon
+        if naming_lexicon is not None
+        else load_pack_lexicon(pack, settings.pack_root),
+    )
     spent = sum(c.input_tokens + c.output_tokens for c in calls)
     if unresolved and (token_budget is None or spent < token_budget):
         review = ask(
@@ -484,13 +500,29 @@ def _unresolved_names(draft: EntityDesignDraft, lexicon: Lexicon) -> list[str]:
 
 
 def _same_shape(before: EntityDesignDraft, after: EntityDesignDraft) -> bool:
-    """이름 재검토가 이름 말고 구성을 바꾸지 않았는지 본다.
-
-    shortcut: 엔티티별 속성 수와 CRUD 항목 수만 비교한다. 타입·키까지 바뀌는 사례가 보이면 넓힌다.
-    """
-    return [len(e.attributes) for e in before.entities] == [
-        len(e.attributes) for e in after.entities
-    ] and len(before.entity_ops) == len(after.entity_ops)
+    """이름과 그 참조만 되돌려 비교한다. 타입·NULL·키·근거·CRUD 변경은 채택하지 않는다."""
+    if len(before.entities) != len(after.entities):
+        return False
+    restored = after.model_dump()
+    entity_names = {}
+    for old, new, raw in zip(before.entities, after.entities, restored["entities"], strict=True):
+        if len(old.attributes) != len(new.attributes):
+            return False
+        entity_names[_nfc(new.name)] = old.name
+        attribute_names = {
+            _nfc(a.name): b.name for b, a in zip(old.attributes, new.attributes, strict=True)
+        }
+        raw["name"] = old.name
+        for old_attr, new_attr in zip(old.attributes, raw["attributes"], strict=True):
+            new_attr["name"] = old_attr.name
+        if raw["unique_keys"] is not None:
+            raw["unique_keys"] = tuple(
+                tuple(attribute_names.get(_nfc(name), name) for name in group)
+                for group in raw["unique_keys"]
+            )
+    for op in restored["entity_ops"]:
+        op["entity_name"] = entity_names.get(_nfc(op["entity_name"]), op["entity_name"])
+    return restored == before.model_dump()
 
 
 # 해시 앞 16자리(64비트). 한 실행의 엔티티·속성 수에서 충돌 확률은 무시할 만하고, 나면 멈춘다.

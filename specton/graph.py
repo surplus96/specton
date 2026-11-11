@@ -128,6 +128,7 @@ def _merge_artifacts(
 
 
 class GraphState(TypedDict, total=False):
+    evaluation_condition: str  # 평가 전용 실행기의 고정 조건 해시. 기본 API는 사용하지 않는다
     call_summaries: Annotated[dict[str, tuple[dict[str, Any], ...]], operator.or_]
     design: DesignState
     documents: tuple[DocumentRef, ...]  # 업로드 문서 (parse 노드 입력)

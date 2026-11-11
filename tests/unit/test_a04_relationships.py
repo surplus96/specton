@@ -497,3 +497,52 @@ def test_invalid_reuse_can_be_retried_without_changing_relationship_semantics() 
     assert [call.outcome for call in result.calls] == ["invalid_output", "ok"]
     assert result.output[0].optional is False
     assert result.output[0].fk_bindings is None
+
+
+def test_graph_defers_fk_null_conflict_without_mutating_the_design() -> None:
+    from specton.agent_nodes import design_nodes
+    from specton.codegen.normalize_step import normalize_from_state
+    from specton.contracts.normalized import NormalizeFailed, ProblemCode
+    from specton.packs.build import DEFAULT_ROOT
+    from specton.review.normalization_findings import failure_mapper, rule_severities
+    from specton.review.rule_policy import load_policies
+
+    design = _binding_input(True)
+    design = design.evolve(
+        versions=design.versions.evolve(pack_id="inventory", pack_version="0.1.23")
+    )
+    draft = _bound_relation(False)
+    client, transport = stub_client(reply(A04Output(relationships=(draft,))))
+    settings = Settings(_env_file=None)
+    updated = design_nodes(lambda: client, settings)["a04"]({"design": design})["design"]
+    assert len(transport.sent) == 1
+    assert updated.entities == design.entities
+    assert updated.relationships[0].optional is False
+    assert updated.relationships[0].fk_bindings is not None
+    result = normalize_from_state({"design": updated}, root=DEFAULT_ROOT)
+    assert isinstance(result, NormalizeFailed)
+    conflicts = tuple(p for p in result.problems if p.code is ProblemCode.INVALID_FK_BINDING)
+    assert conflicts, result.problems
+    review = failure_mapper(
+        rule_severities(root=DEFAULT_ROOT), policies=load_policies(root=DEFAULT_ROOT)
+    )(updated, conflicts)
+    assert not review["requires_manual_review"]
+    assert all(
+        f.severity.value == "critical" and f.target_stage == "data_model"
+        for f in review["findings"]
+    )
+
+
+def test_deferred_null_conflict_still_rejects_unknown_binding_attributes() -> None:
+    draft = _bound_relation(False).evolve(
+        fk_bindings=({"parent_attribute_name": "없는속성", "child_attribute_name": "창고코드"},)
+    )
+    client, _ = stub_client(reply(A04Output(relationships=(draft,))), max_structured_retries=0)
+    with pytest.raises(LLMContractError):
+        run(
+            client,
+            _binding_input(True),
+            Settings(_env_file=None),
+            pack="inventory",
+            defer_binding_conflicts=True,
+        )
