@@ -57,7 +57,7 @@ describe('errorPlace: 오류를 보일 자리', () => {
 
 describe('팩 선택지', () => {
   it('지금은 재고관리만 고를 수 있다', () => {
-    expect(PACK_OPTIONS).toEqual([{ value: 'inventory', label: '재고관리 (inventory)' }])
+    expect(PACK_OPTIONS).toEqual([{ value: 'inventory', label: '재고관리' }])
   })
 })
 

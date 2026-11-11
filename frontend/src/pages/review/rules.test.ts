@@ -98,7 +98,7 @@ describe('지적 표시', () => {
   })
 
   it('출처: 규칙 검사는 코드, LLM은 검토 관점 이름', () => {
-    expect(sourceText(finding('F', 'critical'))).toBe('규칙 검사 RULE-03')
+    expect(sourceText(finding('F', 'critical'))).toBe('규칙 검사 · 키·데이터 종류')
     expect(sourceText(finding('F', 'major'))).toBe('데이터 누락 검토')
   })
 
@@ -259,10 +259,8 @@ it('제외 사유·A09 판단은 현재 interrupt만 표시하고 이전 기록�
   })]
   const messages = reviewDiagnostics(events, 'now')
   expect(messages).toHaveLength(2)
-  expect(messages[0]).toContain('A07-1')
-  expect(messages[0]).toContain('인용')
-  expect(messages[1]).toContain('revision 1')
-  expect(messages[1]).toContain('LLM_TIMEOUT')
+  expect(messages[0]).toBe('근거가 확인되지 않은 의견 1건은 뺐어요.')
+  expect(messages[1]).toBe('다시 설계할 곳: 판단 불가 (2차 설계안 기준).')
   expect(reviewDiagnostics(events, undefined)).toEqual([])
   expect(reviewDiagnostics([ev(3, 'legacy', {})], 'legacy')).toEqual([])
   expect(reviewDiagnostics([ev(4, 'answer', { router_decision: { revision: 2, stage: 'functions', rationale: '기능 책임 누락', error_code: null } })], 'answer')[0]).toContain('기능 책임 누락')

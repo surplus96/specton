@@ -55,24 +55,24 @@ type Def = { id: PipelineNodeId; title: string; kind: NodeKind; step: number; la
 /** 노드 정의. step은 위→아래 순서, 같은 step의 노드는 병렬 가지(lane 0~3) */
 export const PIPELINE: readonly Def[] = [
   { id: 'parse', title: '문서 읽기', kind: 'code', step: 0 },
-  { id: 'extraction_check', title: '추출 확인', kind: 'human', step: 1 },
-  { id: 'a01', title: 'A01 요구사항 분석', kind: 'ai', step: 2 },
-  { id: 'requirements_check', title: '분석 확인', kind: 'human', step: 3 },
-  { id: 'a02', title: 'A02 기능', kind: 'ai', step: 4 },
-  { id: 'a03', title: 'A03 엔티티', kind: 'ai', step: 5 },
-  { id: 'a04', title: 'A04 관계', kind: 'ai', step: 6 },
-  { id: 'normalize', title: '모델 정리', kind: 'code', step: 7 },
-  { id: 'ddl', title: 'DDL', kind: 'code', step: 8, lane: 0 },
-  { id: 'erd', title: 'ERD', kind: 'code', step: 8, lane: 1 },
-  { id: 'rtm', title: 'RTM', kind: 'code', step: 8, lane: 2 },
+  { id: 'extraction_check', title: '원문 확인', kind: 'human', step: 1 },
+  { id: 'a01', title: '요구사항 정리', kind: 'ai', step: 2 },
+  { id: 'requirements_check', title: '요구사항 확인', kind: 'human', step: 3 },
+  { id: 'a02', title: '기능 설계', kind: 'ai', step: 4 },
+  { id: 'a03', title: '테이블 설계', kind: 'ai', step: 5 },
+  { id: 'a04', title: '테이블 연결', kind: 'ai', step: 6 },
+  { id: 'normalize', title: '이름·키 정리', kind: 'code', step: 7 },
+  { id: 'ddl', title: 'SQL 만들기', kind: 'code', step: 8, lane: 0 },
+  { id: 'erd', title: '관계도 그리기', kind: 'code', step: 8, lane: 1 },
+  { id: 'rtm', title: '추적표 만들기', kind: 'code', step: 8, lane: 2 },
   { id: 'rules', title: '규칙 검사', kind: 'code', step: 9 },
-  { id: 'A05', title: 'A05 관계 모순', kind: 'ai', step: 10, lane: 0 },
-  { id: 'A06', title: 'A06 데이터 누락', kind: 'ai', step: 10, lane: 1 },
-  { id: 'A07', title: 'A07 비기능', kind: 'ai', step: 10, lane: 2 },
-  { id: 'A08', title: 'A08 정규화', kind: 'ai', step: 10, lane: 3 },
-  { id: 'a09', title: 'A09 재작업 판단', kind: 'ai', step: 11 },
-  { id: 'final_review', title: '최종 검토', kind: 'human', step: 12 },
-  { id: 'export', title: '내보내기', kind: 'code', step: 13 },
+  { id: 'A05', title: '연결 모순 검토', kind: 'ai', step: 10, lane: 0 },
+  { id: 'A06', title: '빠진 데이터 검토', kind: 'ai', step: 10, lane: 1 },
+  { id: 'A07', title: '품질 요구 검토', kind: 'ai', step: 10, lane: 2 },
+  { id: 'A08', title: '중복 정리 검토', kind: 'ai', step: 10, lane: 3 },
+  { id: 'a09', title: '다시 설계 판단', kind: 'ai', step: 11 },
+  { id: 'final_review', title: '최종 승인', kind: 'human', step: 12 },
+  { id: 'export', title: '최종 문서 만들기', kind: 'code', step: 13 },
 ]
 
 const GENERATORS = ['ddl', 'erd', 'rtm'] as const
@@ -173,20 +173,20 @@ export function pipelineNodes({ run, events, artifacts, findings }: PipelineInpu
     const observed = nodeEvent(def.id, events, run.revision)
     if (observed) {
       const state = nodeState(observed)
-      if (state === 'running' && stopped) return at(status === 'failed' ? 'failed' : 'cancelled', '종료 이벤트 없이 실행이 멈춤')
-      return at(state, '서버 노드 이벤트 기준')
+      if (state === 'running' && stopped) return at(status === 'failed' ? 'failed' : 'cancelled', '끝났다는 기록 없이 멈췄어요')
+      return at(state)
     }
     const normalizeEvent = nodeEvent('normalize', events, run.revision)
     const normalizationFailed = normalizeEvent?.data.payload?.normalization_failed === true
     const ddlValidation = nodeEvent('ddl', events, run.revision)?.data.payload?.validation_status
-    if (normalizationFailed && [...GENERATORS, 'rules', ...REVIEWERS].includes(def.id)) return at('skipped', '정리 실패로 실행하지 않음')
-    if ((ddlValidation === 'failed' || ddlValidation === 'error') && ['rules', ...REVIEWERS].includes(def.id)) return at('skipped', 'SQL 검증 실패로 실행하지 않음')
+    if (normalizationFailed && [...GENERATORS, 'rules', ...REVIEWERS].includes(def.id)) return at('skipped', '이름·키 정리가 실패해 건너뛰었어요')
+    if ((ddlValidation === 'failed' || ddlValidation === 'error') && ['rules', ...REVIEWERS].includes(def.id)) return at('skipped', 'SQL 테스트가 실패해 건너뛰었어요')
     // 사람 확인 노드를 건너뛴 경우 (ADR-0015 조건부 확인)
     if (def.id === 'extraction_check' && !askedExtraction && current > def.step) return at('skipped', '확인할 원문이 없어 생략')
     if (def.id === 'requirements_check' && skippedRequirements) return at('skipped', '확인할 항목이 없어 생략')
     if (def.id === 'a09') {
-      if (run.revision > 0) return at('done', `재작업 ${run.revision}회`)
-      if (current > def.step) return at('skipped', '재작업 없음')
+      if (run.revision > 0) return at('done', `${run.revision}번 다시 설계`)
+      if (current > def.step) return at('skipped', '다시 설계 안 함')
     }
 
     if (!active.ids.has(def.id) && (current === Number.POSITIVE_INFINITY || def.step < current)) {
@@ -204,13 +204,13 @@ export function pipelineNodes({ run, events, artifacts, findings }: PipelineInpu
       return at(cancelled ? 'cancelled' : 'failed', cancelled ? '취소로 멈춤' : '이 단계에서 실패')
     }
     if ((GENERATORS as readonly string[]).includes(def.id)) {
-      return made.has(def.id as (typeof GENERATORS)[number]) ? at('done', '산출물 있음') : at('running', '만드는 중')
+      return made.has(def.id as (typeof GENERATORS)[number]) ? at('done', '만들었어요') : at('running', '만드는 중')
     }
     if ((REVIEWERS as readonly string[]).includes(def.id)) {
-      return reviewed.has(def.id) ? at('done', '지적 있음') : at('running', '검토 중 (지적 없으면 끝나도 그대로)')
+      return reviewed.has(def.id) ? at('done', '의견 있음') : at('running', '검토 중')
     }
-    if (def.id === 'rules') return ruleFindings ? at('done', '규칙 지적 있음') : at('running')
-    if ((DESIGN as readonly string[]).includes(def.id)) return at('running', '설계 묶음 진행 중 (세부 단계는 서버가 알리지 않음)')
+    if (def.id === 'rules') return ruleFindings ? at('done', '규칙 의견 있음') : at('running')
+    if ((DESIGN as readonly string[]).includes(def.id)) return at('running', '설계하는 중')
     return at('running')
   })
 }

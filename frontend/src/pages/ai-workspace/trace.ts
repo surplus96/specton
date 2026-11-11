@@ -20,9 +20,9 @@ export const COLUMN_TITLE: Record<TraceColumn, string> = {
   block: '원문',
   requirement: '요구사항',
   function: '기능',
-  entity: '엔티티',
-  relationship: '관계',
-  finding: '지적',
+  entity: '테이블',
+  relationship: '테이블 연결',
+  finding: '검토 의견',
 }
 
 export const COLUMNS: readonly TraceColumn[] = ['block', 'requirement', 'function', 'entity', 'relationship', 'finding']
@@ -31,9 +31,9 @@ export const COLUMNS: readonly TraceColumn[] = ['block', 'requirement', 'functio
 export type TraceMark = 'unlinked' | 'excluded' | 'no-source' | null
 
 export const MARK_LABEL: Record<Exclude<TraceMark, null>, string> = {
-  unlinked: '미연결',
-  excluded: '제외',
-  'no-source': '확인(원문 없음)',
+  unlinked: '안 이어짐',
+  excluded: '뺌',
+  'no-source': '원문 없음',
 }
 
 export type TraceNode = {
@@ -143,7 +143,7 @@ export function buildTrace({ blocks, requirements, design, findings }: TraceInpu
         key: k,
         column: 'block',
         id: b.block_id,
-        title: b.source_id ?? '(원문 ID 없음)',
+        title: b.source_id ?? '(원문 번호 없음)',
         detail: b.source_text,
         mark: excluded ? 'excluded' : noSource ? 'no-source' : hasOut.has(k) ? null : 'unlinked',
         sourceRef: b.source_ref,

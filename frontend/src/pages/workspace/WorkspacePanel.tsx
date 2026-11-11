@@ -23,6 +23,7 @@ import { artifactText } from './files.ts'
 import { workspaceTab, type WorkspaceTab } from './pipeline.ts'
 import ResultSummary from './ResultSummary.tsx'
 import { parseRtmCsv, RtmFormatError, RTM_COLUMNS, type RtmRow } from './rtm.ts'
+import { revisionText } from '../runMeta.ts'
 import { KIND_LABEL, downloadErrorText, isApproved, isDownloadable, missingKinds, revisionOptions, toArtifacts, type ArtifactKind } from './rules.ts'
 
 // UI-05 결과 작업공간: 기능·ERD·DDL·RTM·검토 탭, revision 고르기, 미완성 가지 표시.
@@ -76,17 +77,17 @@ function WorkspacePanel({ run, label, onReview }: Props) {
   return (
     <div className="stack">
       <ScreenHead
-        eyebrow={<RunEyebrow screen="결과 작업공간" label={label} run={run} />}
+        eyebrow={<RunEyebrow screen="결과 보기" label={label} run={run} />}
         title={
           <>
             <strong>설계 초안</strong>이 준비됐어요
           </>
         }
-        lead="설계 결과와 산출물을 탭으로 봐요. 설계를 바꾸려면 최종 검토에서 수정을 요청하세요."
+        lead="설계 결과를 문서별로 볼 수 있어요. 고칠 게 있으면 최종 승인 화면에서 수정을 요청해 주세요."
         actions={
           onReview && (
             <Button variant="accent" size="lg" onClick={onReview} iconEnd={<Icon name="arrowRight" size={18} />}>
-              최종 검토로
+              최종 승인으로
             </Button>
           )
         }
@@ -94,12 +95,12 @@ function WorkspacePanel({ run, label, onReview }: Props) {
 
       <div className="row">
         <label htmlFor="revision" className="muted">
-          revision
+          설계안
         </label>
         <select id="revision" className="select" style={{ width: 160 }} value={revision} onChange={(e) => setRevision(Number(e.target.value))}>
           {revisionOptions(run.revision).map((r) => (
             <option key={r} value={r}>
-              {r === run.revision ? `${r} (최신)` : r}
+              {r === run.revision ? `${revisionText(r)} (최신)` : revisionText(r)}
             </option>
           ))}
         </select>
@@ -117,8 +118,8 @@ function WorkspacePanel({ run, label, onReview }: Props) {
       ) : (
         <>
           {missing.length > 0 && (
-            <Notice kind="warning" title={`미완성: ${missing.map((k) => KIND_LABEL[k]).join(', ')}`}>
-              이 revision에서 아직 만들어지지 않았거나 생성에 실패한 산출물이에요.
+            <Notice kind="warning" title={`아직 없는 문서: ${missing.map((k) => KIND_LABEL[k]).join(', ')}`}>
+              이 설계안에서는 아직 못 만들었어요.
             </Notice>
           )}
           {findings && <ResultSummary design={data.design} findings={findings} />}
@@ -164,11 +165,10 @@ function TextArtifact({ runId, artifact, kind }: { runId: string; artifact: Arti
     <div className="stack-sm" style={{ gap: 14 }}>
       <div className="row row--between">
         <span className="muted" style={{ fontSize: 14 }}>
-          {artifact.validation ? `SQL 검증: ${VALIDATION_TEXT[artifact.validation.status]}` : 'SQL 검증 결과는 최종 검토에서 확인해요'}
+          {artifact.validation ? `SQL 검증: ${VALIDATION_TEXT[artifact.validation.status]}` : 'SQL 검증 결과는 최종 승인에서 확인해요'}
         </span>
         <DownloadButton runId={runId} artifact={artifact} />
       </div>
-      {artifact.validation && <p className="subtle">파일 머리말의 validation 값은 생성 시점의 기록입니다. 이후 검증 결과는 위 SQL 검증 표시를 확인해 주세요.</p>}
       {error ? (
         <Notice kind="error" title={error} />
       ) : text === null ? (
@@ -203,19 +203,19 @@ function RtmTab({ runId, artifacts }: { runId: string; artifacts: ArtifactRef[] 
     setError(null)
     artifactText(runId, csv).then(parseRtmCsv)
       .then((data) => { if (alive) setRows(data) })
-      .catch((err: unknown) => { if (alive) setError(err instanceof RtmFormatError ? 'RTM 파일 형식이 예상과 달라 미리보기를 표시하지 못했어요. 원본 파일은 위 버튼으로 내려받을 수 있어요.' : errorMessage(err)) })
+      .catch((err: unknown) => { if (alive) setError(err instanceof RtmFormatError ? '추적표를 미리 보지 못했어요. 파일은 내려받을 수 있어요.' : errorMessage(err)) })
     return () => { alive = false }
   }, [runId, csv, attempt])
   return (
     <div className="stack-sm">
       <div className="row row--between">
-        <span className="muted">서버가 생성한 정식 RTM CSV의 전체 열·행입니다.</span>
+        <span className="muted">요구사항 추적표 전체예요. 내려받는 파일과 같아요.</span>
         <div className="row">{files.map((a) => <DownloadButton key={a.file_format} runId={runId} artifact={a} />)}</div>
       </div>
       {!csv ? <Notice kind="warning" title="RTM CSV가 아직 없어요 (미완성)" />
         : error ? <Notice kind="error" title={error} action={<Button onClick={() => setAttempt((n) => n + 1)}>다시 불러오기</Button>} />
-        : rows === null ? <Loading text="정식 RTM을 불러오는 중이에요" />
-        : <DataTable<RtmRow> label="정식 RTM 미리보기" rows={rows} rowKey={(r) => String(rows.indexOf(r))} pageSize={30} minWidth={1500}
+        : rows === null ? <Loading text="추적표를 불러오는 중이에요" />
+        : <DataTable<RtmRow> label="요구사항 추적표 미리보기" rows={rows} rowKey={(r) => String(rows.indexOf(r))} pageSize={30} minWidth={1500}
             columns={RTM_COLUMNS.map((name) => ({ key: name, title: name, render: (r: RtmRow) => r[name] || '—' }))} />}
     </div>
   )

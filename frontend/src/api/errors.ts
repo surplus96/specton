@@ -48,23 +48,23 @@ function isErrorBody(data: unknown): data is ApiErrorBody {
 
 // 서버 문구가 없을 때 쓰는 안내. 서버 문구(body.message)가 있으면 그것을 그대로 보여 준다.
 const FALLBACK_MESSAGES: Record<ErrorCode, string> = {
-  RUN_NOT_FOUND: '실행을 찾을 수 없습니다.',
+  RUN_NOT_FOUND: '이 작업을 찾을 수 없어요.',
   RUN_REVISION_CONFLICT: '다른 곳에서 내용이 바뀌었습니다. 새로고침한 뒤 다시 시도해 주세요.',
-  INTERRUPT_STALE: '이미 답했거나 지금 기다리는 확인 요청이 아닙니다. 새로고침해 주세요.',
-  EVENT_REPLAY_EXPIRED: '진행 기록을 다시 불러와야 합니다.',
+  INTERRUPT_STALE: '이미 답한 확인이에요. 새로고침해 주세요.',
+  EVENT_REPLAY_EXPIRED: '진행 기록을 다시 불러올게요. 새로고침해 주세요.',
   ARTIFACT_NOT_READY: '파일이 아직 만들어지지 않았습니다.',
   ARTIFACT_FORMAT_UNSUPPORTED: '이 형식으로는 내려받을 수 없습니다.',
   UPLOAD_TOO_LARGE: '파일이 너무 큽니다.',
   UNSUPPORTED_MEDIA_TYPE: '지원하는 형식은 .xlsx, .csv, .hwpx, .hwp입니다.',
-  PACK_UNSUPPORTED: '지원하지 않는 도메인 팩입니다.',
-  INVALID_RESPONSE: '답변 내용을 확인해 주세요.',
-  INVALID_REQUEST: '요청 내용을 확인해 주세요.',
-  LLM_REFUSED: '모델이 응답을 거절했습니다. 입력을 확인해 주세요.',
-  LLM_OUTPUT_INVALID: '모델 출력이 형식에 맞지 않습니다. 다시 시도해 주세요.',
-  LLM_UNAVAILABLE: '모델을 호출하지 못했습니다. 잠시 후 다시 시도해 주세요.',
-  BUDGET_EXCEEDED: '실행 예산을 넘었습니다. 입력을 줄여 다시 시도해 주세요.',
+  PACK_UNSUPPORTED: '아직 지원하지 않는 업무 분야예요.',
+  INVALID_RESPONSE: '입력한 내용을 다시 확인해 주세요.',
+  INVALID_REQUEST: '입력한 내용을 다시 확인해 주세요.',
+  LLM_REFUSED: 'AI가 이 문서에 답하지 않았어요. 문서 내용을 확인해 주세요.',
+  LLM_OUTPUT_INVALID: 'AI 답이 형식에 맞지 않았어요. 다시 해 주세요.',
+  LLM_UNAVAILABLE: 'AI에 연결하지 못했어요. 잠시 뒤 다시 해 주세요.',
+  BUDGET_EXCEEDED: '문서가 AI 사용 한도를 넘었어요. 요구사항을 나눠 올려 주세요.',
   EXTRACTION_FAILED: '문서를 읽지 못했습니다. 다른 파일로 다시 시도해 주세요.',
-  INTERNAL: '서버 오류가 발생했습니다.',
+  INTERNAL: '문제가 생겼어요. 잠시 뒤 다시 해 주세요.',
 }
 
 /** 화면에 보여 줄 한글 안내 */
@@ -73,7 +73,7 @@ export function errorMessage(err: unknown): string {
     if (err.body?.message) return err.body.message
     const code = err.code
     if (code === 'NETWORK') return '서버에 연결하지 못했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.'
-    if (code === 'UNKNOWN') return `요청을 처리하지 못했습니다 (HTTP ${err.status}).`
+    if (code === 'UNKNOWN') return '요청을 처리하지 못했어요. 잠시 뒤 다시 해 주세요.'
     return FALLBACK_MESSAGES[code]
   }
   return '알 수 없는 오류가 발생했습니다.'

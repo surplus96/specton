@@ -42,7 +42,7 @@ function StepCard({ data }: NodeProps<StepNode>) {
         </div>
       )}
       <Handle type="source" position={Position.Bottom} style={{ visibility: 'hidden' }} />
-      {/* 재작업 선은 오른쪽으로 돌아 올라가 다른 선·카드와 겹치지 않게 한다 */}
+      {/* 다시 설계 선은 오른쪽으로 돌아 올라가 다른 선·카드와 겹치지 않게 한다 */}
       <Handle id="side-out" type="source" position={Position.Right} style={{ visibility: 'hidden' }} />
       <Handle id="side-in" type="target" position={Position.Right} style={{ visibility: 'hidden' }} />
     </div>
@@ -63,7 +63,7 @@ function PipelineGraph({ nodes, selected, onSelect }: Props) {
     if (!nodes.length) return []
     const lanes = new Map<number, number>()
     for (const n of nodes) if (n.lane !== undefined) lanes.set(n.step, (lanes.get(n.step) ?? 0) + 1)
-    // 오른쪽으로 도는 재작업 선과 그 글자가 잘리지 않게, 맞춤(fitView) 범위를 넓히는 보이지 않는 칸
+    // 오른쪽으로 도는 다시 설계 선과 그 글자가 잘리지 않게, 맞춤(fitView) 범위를 넓히는 보이지 않는 칸
     const spacer: SpacerNode = {
       id: 'spacer',
       type: 'spacer',
@@ -104,7 +104,7 @@ function PipelineGraph({ nodes, selected, onSelect }: Props) {
         ...(e.rework ? { sourceHandle: 'side-out', targetHandle: 'side-in' } : {}),
         animated: e.rework,
         style: { stroke: 'var(--aiws-line)', strokeDasharray: e.rework ? '4 4' : undefined },
-        label: e.rework ? '재작업' : undefined,
+        label: e.rework ? '다시 설계' : undefined,
         type: e.rework ? 'smoothstep' : 'straight',
       })),
     [],

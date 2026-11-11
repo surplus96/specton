@@ -34,7 +34,7 @@ describe('ERD 캔버스: 카드와 선', () => {
       { id: 'A1', name: '창고코드', type: 'varchar(20)', pk: true, uq: false, nullable: false },
       { id: 'A2', name: '단가', type: 'numeric(12,3)', pk: false, uq: true, nullable: true },
     ])
-    expect(lines).toEqual([{ id: 'REL-01', source: 'E1', target: 'E2', label: 'REL-01 · 1:N · 선택 · 식별', identifying: true, optional: true }])
+    expect(lines).toEqual([{ id: 'REL-01', source: 'E1', target: 'E2', label: '1:N · 없어도 됨 · 부모 키 포함', identifying: true, optional: true }])
   })
 
   it('없는 엔티티를 가리키는 관계는 그리지 않는다', () => {
@@ -62,7 +62,7 @@ describe('ERD 캔버스: 카드와 선', () => {
 
   it('타입·선 글자', () => {
     expect(typeText({ data_type: 'date', length: null, precision: null, scale: null })).toBe('date')
-    expect(relationshipLabel({ id: 'R', cardinality: 'N:M', optional: false, identifying: false })).toBe('R · N:M · 필수')
+    expect(relationshipLabel({ id: 'R', cardinality: 'N:M', optional: false, identifying: false })).toBe('N:M · 꼭 있음')
   })
 })
 

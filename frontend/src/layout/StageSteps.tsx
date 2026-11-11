@@ -1,19 +1,19 @@
 // 화면 단계 표시줄 (UI-01~07, docs/09-ui-flow.md). 지난 단계는 진한 선, 지금 단계는 라임.
 // 실패·취소로 실제로 거치지 않은 확인 화면은 지난 단계로 칠하지 않는다(unreached).
 export const SCREENS = [
-  { id: 'UI-01', title: '실행 시작' },
-  { id: 'UI-02', title: '추출 확인' },
-  { id: 'UI-03', title: '분석 확인' },
-  { id: 'UI-04', title: '설계 진행' },
-  { id: 'UI-05', title: '결과 작업공간' },
-  { id: 'UI-06', title: '최종 검토' },
-  { id: 'UI-07', title: '다운로드' },
+  { id: 'UI-01', title: '파일 올리기' },
+  { id: 'UI-02', title: '원문 확인' },
+  { id: 'UI-03', title: '요구사항 확인' },
+  { id: 'UI-04', title: '설계 중' },
+  { id: 'UI-05', title: '결과 보기' },
+  { id: 'UI-06', title: '최종 승인' },
+  { id: 'UI-07', title: '내려받기' },
 ] as const
 
 export type ScreenId = (typeof SCREENS)[number]['id']
 
 export type StepState = 'done' | 'now' | 'skipped' | 'available' | 'todo'
-const STATE_TEXT: Record<StepState, string> = { done: '지남', now: '지금', skipped: '생략', available: '결과 있음', todo: '' }
+const STATE_TEXT: Record<StepState, string> = { done: '완료', now: '지금', skipped: '건너뜀', available: '결과 있음', todo: '' }
 function StageSteps({ steps }: { steps: Record<ScreenId, StepState> }) {
   return (
     <ol className="stage-strip" aria-label="화면 단계" style={{ listStyle: 'none', padding: 0 }}>

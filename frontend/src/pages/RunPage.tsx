@@ -74,15 +74,14 @@ function RunPage({ runId }: { runId: string }) {
     const notFound = loadError instanceof ApiError && loadError.status === 404
     return (
       <section className="screen" style={{ paddingTop: 24 }}>
-        <p className="eyebrow">실행 ID {runId}</p>
         <h1 className="title" style={{ marginBottom: 24 }}>
           {notFound ? (
             <>
-              실행을 <strong>찾을 수 없어요</strong>
+              작업을 <strong>찾을 수 없어요</strong>
             </>
           ) : (
             <>
-              실행을 <strong>불러오지 못했어요</strong>
+              작업을 <strong>불러오지 못했어요</strong>
             </>
           )}
         </h1>
@@ -102,13 +101,13 @@ function RunPage({ runId }: { runId: string }) {
             </div>
           }
         >
-          {notFound ? '다른 브라우저에서 시작했거나 세션이 바뀌면 이 실행을 볼 수 없어요.' : undefined}
+          {notFound ? '다른 브라우저에서 시작한 작업은 여기서 볼 수 없어요.' : undefined}
         </Notice>
       </section>
     )
   }
 
-  if (!run) return <Loading text="실행 상태를 불러오고 있어요" />
+  if (!run) return <Loading text="작업을 불러오는 중이에요" />
 
   const view = chosenView(run.status, params.get('view'))
   const screen = view ? SCREEN_OF_VIEW[view] : screenFor(run.status, run.interrupt?.kind)

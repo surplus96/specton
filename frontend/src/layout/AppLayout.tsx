@@ -115,13 +115,13 @@ function AppLayout() {
             <Icon name="search" />
             <span className="nav__text">작업 검색</span>
           </Link>
-          <Link to={workspaceUrl} aria-current={isWorkspace ? 'page' : undefined} title="AI Workspace · 개발자용">
+          <Link to={workspaceUrl} aria-current={isWorkspace ? 'page' : undefined} title="AI Workspace">
             <Icon name="code" />
-            <span className="nav__text">AI Workspace <small>개발자용</small></span>
+            <span className="nav__text">AI Workspace</span>
           </Link>
         </nav>
 
-        <div className="sidebar__foot">요구사항 문서 → 설계 산출물</div>
+        <div className="sidebar__foot">요구사항 정의서 → 설계 문서</div>
       </aside>
 
       {drawer && <div className="scrim" onClick={() => setDrawer(false)} aria-hidden="true" />}

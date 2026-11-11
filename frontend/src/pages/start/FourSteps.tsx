@@ -5,7 +5,7 @@ const STATE_TEXT: Record<StepState, string> = {
   done: '완료',
   now: '진행 중',
   wait: '확인 필요',
-  fail: '멈춤',
+  fail: '멈췄어요',
   todo: '대기',
 }
 

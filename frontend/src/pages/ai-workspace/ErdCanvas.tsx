@@ -32,13 +32,13 @@ function EntityNode({ data }: NodeProps<CardNode>) {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '8px 10px', borderBottom: `1px solid ${dark.border}` }}>
         <strong style={{ fontSize: 14 }}>{card.name}</strong>
         {card.findingCount > 0 && (
-          <span className="aiws-chip" style={{ borderColor: 'var(--darktones-awaiting-fg)', color: 'var(--darktones-awaiting-fg)' }} title="이 엔티티를 가리키는 지적">
+          <span className="aiws-chip" style={{ borderColor: 'var(--darktones-awaiting-fg)', color: 'var(--darktones-awaiting-fg)' }} title="이 테이블에 대한 의견">
             ⚠ {card.findingCount}
           </span>
         )}
       </div>
       <div style={{ padding: '4px 0 6px' }}>
-        {card.attributes.length === 0 && <div style={{ padding: '2px 10px', fontSize: 12, color: dark.inkMuted }}>속성 없음</div>}
+        {card.attributes.length === 0 && <div style={{ padding: '2px 10px', fontSize: 12, color: dark.inkMuted }}>항목 없음</div>}
         {card.attributes.map((a) => (
           <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '1px 10px', fontSize: 12, lineHeight: '20px' }}>
             <span style={{ width: 22, color: a.pk ? 'var(--darktones-awaiting-fg)' : dark.inkMuted, fontWeight: 700 }} aria-label={a.pk ? '기본 키' : undefined}>
@@ -126,7 +126,7 @@ function Canvas({ cards, lines, selected, focus, onSelect }: Props) {
         width: card.width,
         height: card.height,
         selected: selected === card.id,
-        ariaLabel: `엔티티 ${card.name}, 속성 ${card.attributes.length}개`,
+        ariaLabel: `테이블 ${card.name}, 항목 ${card.attributes.length}개`,
       }))
   }, [positions, moved, cards, lit, selected])
 
@@ -195,11 +195,11 @@ function Canvas({ cards, lines, selected, focus, onSelect }: Props) {
       role="region"
       style={{ height: '100%' }}
       onKeyDown={onKeyDown}
-      aria-label="ERD 캔버스. Tab으로 엔티티 이동, Enter로 선택, 방향키로 고른 엔티티 옮기기, + - 0 으로 확대·축소·맞춤, Esc 선택 해제"
+      aria-label="테이블 관계도. Tab으로 테이블을 옮겨 다녀요. Enter로 고르고, 방향키로 고른 테이블을 옮겨요. + - 0 으로 확대·축소·맞춤, Esc로 선택을 풀어요"
     >
       {layoutError && (
         <div role="status" style={{ position: 'absolute', zIndex: 5, margin: 12, color: 'var(--darktones-awaiting-fg)', fontSize: 13 }}>
-          자동 배치를 하지 못해 격자로 놓았습니다.
+          자동으로 배치하지 못해 줄 맞춰 놓았어요.
         </div>
       )}
       <ReactFlow<CardNode>

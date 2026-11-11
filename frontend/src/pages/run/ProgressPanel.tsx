@@ -34,9 +34,9 @@ type Props = {
 const STAGE_DESC: Record<(typeof PROGRESS_STAGES)[number]['stage'], string> = {
   parsing: '원문을 문장 단위로 읽어요',
   analysing: '요구사항을 나누고 분류해요',
-  designing: '기능 · 엔티티 · 관계를 잡아요',
+  designing: '기능과 테이블, 테이블 연결을 정해요',
   generating: '기능 명세 · ERD · DDL · RTM을 만들어요',
-  reviewing: '검토 결과에 따라 다시 작업해요',
+  reviewing: '네 가지 관점으로 검토하고, 고칠 곳이 있으면 다시 설계해요',
 }
 
 type RowState = 'done' | 'now' | 'wait' | 'fail'
@@ -96,7 +96,7 @@ function ProgressPanel({ run, events, connection, onChanged, label }: Props) {
   return (
     <div className="stack">
       <ScreenHead
-        eyebrow={<RunEyebrow screen="설계 진행" label={label} run={run} />}
+        eyebrow={<RunEyebrow screen="설계 중" label={label} run={run} />}
         title={title}
         actions={
           canCancel(run.status) && (
@@ -104,22 +104,22 @@ function ProgressPanel({ run, events, connection, onChanged, label }: Props) {
               variant="danger"
               loading={cancelling}
               loadingText="취소 요청 중"
-              title="실행을 취소할까요?"
+              title="설계를 그만둘까요?"
               description="진행 중인 작업이 끝나면 멈춰요. 되돌릴 수 없어요."
-              okText="실행 취소"
-              cancelText="계속 진행"
+              okText="그만두기"
+              cancelText="계속하기"
               danger
               onConfirm={cancel}
             >
-              실행 취소
+              그만두기
             </ConfirmButton>
           )
         }
       />
 
       {requirementsCheckSkipped(events) && (
-        <Notice kind="plain" title="분석 확인 생략 · 확인할 항목 없음">
-          확인할 경고·질문·분할이 없어 분석 확인 없이 설계로 넘어왔어요. 사람이 승인한 것은 아니에요.
+        <Notice kind="plain" title="요구사항 확인 생략 · 확인할 항목 없음">
+          확인할 경고·질문·분할이 없어 요구사항 확인 없이 설계로 넘어왔어요. 사람이 승인한 것은 아니에요.
         </Notice>
       )}
 
@@ -145,7 +145,7 @@ function ProgressPanel({ run, events, connection, onChanged, label }: Props) {
       {run.status === 'queued' && <Notice title="실행을 기다리고 있어요">다른 실행이 끝나면 시작해요.</Notice>}
       {run.status === 'cancel_requested' && (
         <Notice kind="warning" title="취소를 요청했어요">
-          진행 중인 작업이 끝나면 취소돼요. 최대 2분쯤 걸릴 수 있어요.
+          지금 하던 단계가 끝나면 멈춰요. 길면 5분쯤 걸려요.
         </Notice>
       )}
       {run.status === 'cancelled' && (

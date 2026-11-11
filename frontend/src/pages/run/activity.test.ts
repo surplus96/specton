@@ -30,15 +30,15 @@ describe('서버 작업 패널 기록', () => {
 
   it('이벤트 종류는 글과 색으로 함께 보인다', () => {
     const [error] = activityItems([ev(1, 'error', '실패했습니다')])
-    expect(error).toMatchObject({ label: '오류', tone: 'danger' })
+    expect(error).toMatchObject({ label: '문제', tone: 'danger' })
     const [ask] = activityItems([ev(1, 'interrupt', '확인해 주세요', 'awaiting_input')])
-    expect(ask).toMatchObject({ label: '확인 요청', tone: 'warning', stage: '추출 확인' })
+    expect(ask).toMatchObject({ label: '확인 필요', tone: 'warning', stage: '원문 확인' })
   })
 
   it('단계 이름은 화면 이름으로 바꾸고 모르는 값은 그대로 둔다', () => {
     expect(stageTitle('parsing')).toBe('문서 읽기')
     expect(stageTitle('failed')).toBe('실패') // 서버는 실행 상태 이름도 stage로 보낸다
-    expect(stageTitle('review')).toBe('최종 검토')
+    expect(stageTitle('review')).toBe('최종 승인')
     expect(stageTitle('new_stage')).toBe('new_stage')
     expect(stageTitle(null)).toBeNull()
   })

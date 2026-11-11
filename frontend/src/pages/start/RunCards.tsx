@@ -51,7 +51,7 @@ export function ActiveRunCard({ runId }: { runId: string }) {
             {title}
           </h3>
           <div className="muted" style={{ fontSize: 15 }}>
-            {file ?? '이름 없는 작업'} · 확인 받기 · {revisionText(run.revision)}
+            {file ?? '이름 없는 작업'} · {revisionText(run.revision)}
           </div>
         </div>
         <Button onClick={open}>{runAction(run.status)}</Button>

@@ -17,10 +17,10 @@ function ResultSummary({ design, findings }: Props) {
   const all: Card[] = [
     { label: '요구사항', value: c.requirements, icon: 'file' },
     { label: '기능', value: c.functions, icon: 'list' },
-    { label: '엔티티 (테이블)', value: c.entities, icon: 'database' },
+    { label: '테이블', value: c.entities, icon: 'database' },
     { label: '관계', value: c.relationships, icon: 'link' },
-    { label: '검토 지적', value: c.findings, icon: 'check', finding: true },
-    { label: '차단 지적', value: c.blocking, icon: 'alert', danger: c.blocking > 0, finding: true },
+    { label: '검토 의견', value: c.findings, icon: 'check', finding: true },
+    { label: '꼭 고칠 것', value: c.blocking, icon: 'alert', danger: c.blocking > 0, finding: true },
   ]
   // 지적을 못 불러왔는데 「0건」으로 보이면 안 되므로 지적 칸은 뺀다
   const cards = findings === null ? all.filter((card) => !card.finding) : all

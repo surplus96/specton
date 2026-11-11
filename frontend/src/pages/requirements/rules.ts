@@ -23,8 +23,8 @@ export const NFR_LABEL: Record<NfrCategory, string> = {
 }
 
 export function typeText(req: Pick<AnalysedRequirement, 'type' | 'nfr_category'>): string {
-  if (req.type === 'FR') return '기능 (FR)'
-  return req.nfr_category ? `비기능 · ${NFR_LABEL[req.nfr_category]} (NFR)` : '비기능 (NFR)'
+  if (req.type === 'FR') return '기능'
+  return req.nfr_category ? `품질 · ${NFR_LABEL[req.nfr_category]}` : '품질 요구'
 }
 
 /** 같은 원문에서 2건 이상 나온 요구사항 (docs/09 UI-03 「분할」). 원문 ID가 없으면 원문 위치로 묶는다. */

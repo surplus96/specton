@@ -69,7 +69,7 @@ function UploadPanel() {
   async function submit() {
     if (inFlight.current) return
     if (!file) setFileError('요구사항 문서를 골라 주세요.')
-    if (!pack) setPackError('업무 분야(도메인 팩)를 골라 주세요.')
+    if (!pack) setPackError('업무 분야를 골라 주세요.')
     if (!file || !pack || fileError) return
     inFlight.current = true
     setSubmitting(true)
@@ -118,7 +118,7 @@ function UploadPanel() {
             <span className="drop__icon" aria-hidden="true">
               <Icon name="fileUp" size={24} />
             </span>
-            <div className="drop__title">RFP나 요구사항 정의서를 끌어다 놓으세요</div>
+            <div className="drop__title">요구사항 정의서를 여기에 끌어다 놓으세요</div>
             <div className="drop__formats">
               {FORMAT_TEXT} · 최대 {MAX_UPLOAD_MB}MB · 파일 1개
             </div>
@@ -135,7 +135,7 @@ function UploadPanel() {
               <div style={{ minWidth: 0 }}>
                 <div className="file-chip__name">{file.name}</div>
                 <div className="file-chip__meta">
-                  {sizeText(file.size)} · {fileError ? '올릴 수 없는 파일' : '선택됨 · 아직 올리지 않았어요'}
+                  {sizeText(file.size)} · {fileError ? '올릴 수 없는 파일' : "파일을 골랐어요. '설계 시작'을 누르면 올라가요."}
                 </div>
               </div>
               <button type="button" className="icon-btn" onClick={clear} aria-label="고른 파일 빼기" disabled={submitting}>
@@ -182,7 +182,7 @@ function UploadPanel() {
             setFormError(null)
           }}
         >
-          {ENABLED_PACKS.length > 1 && <option value="">팩 선택</option>}
+          {ENABLED_PACKS.length > 1 && <option value="">업무 분야 선택</option>}
           {PACK_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}

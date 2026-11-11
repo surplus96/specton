@@ -17,7 +17,7 @@ class LazyBoundary extends Component<Props, State> {
     if (!this.state.failed) return this.props.children
     return (
       <div role="alert" style={{ padding: 32 }}>
-        <p>화면을 불러오지 못했습니다. 새 버전이 배포되었거나 네트워크가 끊겼을 수 있습니다.</p>
+        <p>화면을 불러오지 못했어요. 새로고침해 주세요.</p>
         <button type="button" onClick={() => window.location.reload()}>
           다시 불러오기
         </button>{' '}

@@ -93,7 +93,7 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
     { key: 'type', title: '유형', width: 110, render: (r) => typeText(r) },
     {
       key: 'issues',
-      title: '품질 경고 · 질문',
+      title: 'AI가 물어본 것',
       width: 180,
       render: (r) => r.quality_issues.length === 0
         ? <span className="subtle">{split.has(r.id) ? '자동 분할됨 · 진행 가능' : '경고 없음'}</span>
@@ -126,17 +126,17 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
                     aria-label={`${r.id} ${a.action === 'edit' ? '수정 문장' : `분할 문장 ${i + 1}`}`}
                     aria-invalid={!text.trim()}
                     value={text}
-                    placeholder={a.action === 'split' ? `조각 ${i + 1}` : '바꿀 문장'}
+                    placeholder={a.action === 'split' ? `나눈 문장 ${i + 1}` : '바꿀 문장'}
                     onChange={(e) => setAnswer(r.id, { ...a, texts: a.texts.map((t, j) => (j === i ? e.target.value : t)) })}
                   />
                   {a.action === 'split' && a.texts.length > 2 && (
                     <Button
                       variant="secondary"
                       size="sm"
-                      aria-label={`${r.id} 조각 ${i + 1} 지우기`}
+                      aria-label={`${r.id} 나눈 문장 ${i + 1} 지우기`}
                       onClick={() => setAnswer(r.id, { ...a, texts: a.texts.filter((_, j) => j !== i) })}
                     >
-                      빼기
+                      지우기
                     </Button>
                   )}
                 </div>
@@ -144,10 +144,10 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
             {a.action === 'split' && (
               <div className="stack-sm" style={{ gap: 4 }}>
                 <Button variant="secondary" size="sm" icon={<Icon name="plus" size={14} />} onClick={() => setAnswer(r.id, { ...a, texts: [...a.texts, ''] })}>
-                  조각 더하기
+                  문장 더하기
                 </Button>
                 <span className="subtle" style={{ fontSize: 13 }}>
-                  첫 조각은 원래 요구사항을 이어받고, 나머지는 새 요구사항이 돼요.
+                  첫 문장은 원래 요구사항을 이어받고, 나머지는 새 요구사항이 돼요.
                 </span>
               </div>
             )}
@@ -166,7 +166,7 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
       <p className="requirement-detail-text">{req.text}</p>
       {split.has(req.id) && <Notice title="같은 원문에서 자동 분할된 요구사항입니다.">원문의 조건·대상이 유지됐으면 ‘유지’로 진행하세요.</Notice>}
       {req.source_text && req.source_text !== req.text && <div className="stack-sm"><h3 className="h3">원문 전체</h3><p className="requirement-detail-text">{req.source_text}</p></div>}
-      {req.quality_issues.length > 0 && <div className="stack-sm"><h3 className="h3">품질 경고 · 질문</h3>
+      {req.quality_issues.length > 0 && <div className="stack-sm"><h3 className="h3">AI가 물어본 것</h3>
         {req.quality_issues.map((issue, i) => <div key={i} className="stack-sm"><strong className="requirement-detail-text">{issue.message}</strong>{issue.question && <p className="requirement-detail-text">확인 질문: {issue.question}</p>}</div>)}
       </div>}
     </section>
@@ -176,7 +176,7 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
   return (
     <div className="stack">
       <ScreenHead
-        eyebrow={<RunEyebrow screen="분석 확인" label={label} run={run} />}
+        eyebrow={<RunEyebrow screen="요구사항 확인" label={label} run={run} />}
         title={
           <>
             확인할 <strong>요구사항 {reqs ? toCheck.length : ''}건</strong>
@@ -196,7 +196,7 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
           {notice && <Notice kind="warning" title={notice} />}
           <section aria-label="품질 경고·질문" className="stack-sm">
             <h2 className="section-title" style={{ margin: 0 }}>
-              품질 경고 · 질문 {toCheck.length}건
+              AI가 물어본 것 {toCheck.length}건
             </h2>
             <DataTable label="품질 경고·질문" rows={toCheck} rowKey={(r) => r.id} columns={columns} expand={details} expandLabel={detailLabel} expandText="상세 보기" minWidth={1000} empty="품질 경고·질문이 없어요." />
           </section>

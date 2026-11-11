@@ -46,7 +46,7 @@ function ErdView({ runId, artifact }: Props) {
     artifactText(runId, artifact)
       .then(async (text) => {
         if (!isAllowedErdSource(text)) {
-          if (alive) setError('ERD 원문 형식이 맞지 않아 그리지 않았어요 (ERD 외 내용 또는 지시문 포함).')
+          if (alive) setError('ERD를 그리지 못했어요. 원본 파일은 내려받을 수 있어요.')
           return
         }
         const mermaid = await loadMermaid()
@@ -85,7 +85,7 @@ function ErdView({ runId, artifact }: Props) {
   if (!artifact) {
     return (
       <Notice kind="warning" title="ERD가 아직 없어요 (미완성)">
-        ERD 생성 가지가 끝나지 않았거나 실패했어요.
+        ERD를 아직 못 만들었어요.
       </Notice>
     )
   }
@@ -109,13 +109,13 @@ function ErdView({ runId, artifact }: Props) {
         </div>
         <span className="muted mono">{Math.round(scale * 100)}%</span>
         <Button variant="ghost" size="sm" icon={<Icon name="download" size={16} />} onClick={download} style={{ marginLeft: 'auto' }}>
-          원문(.mmd) 내려받기
+          그림 원본(.mmd) 내려받기
         </Button>
       </div>
       {downloadError && <Notice kind="error" title={downloadError} />}
       {error ? (
         <Notice kind="error" title={error}>
-          원문(.mmd)은 내려받아 확인할 수 있어요.
+          그림 원본(.mmd)은 내려받아 확인할 수 있어요.
         </Notice>
       ) : !src || !size ? (
         <Loading text="ERD를 그리는 중이에요" />

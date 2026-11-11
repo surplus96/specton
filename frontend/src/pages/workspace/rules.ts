@@ -23,22 +23,25 @@ export const ARTIFACT_FORMATS: Record<ArtifactKind, readonly ArtifactFormat[]> =
 export const KIND_LABEL: Record<ArtifactKind, string> = {
   functions: '기능 명세',
   erd: 'ERD',
-  ddl: 'DDL (SQL)',
-  rtm: 'RTM (추적표)',
+  ddl: 'DDL(테이블 만드는 SQL)',
+  rtm: 'RTM(요구사항 추적표)',
   requirements: '요구사항',
   review: '검토 결과',
-  manifest: '산출물 목록 (manifest)',
+  manifest: '파일 목록',
 }
 
 export const KIND_ORDER: readonly ArtifactKind[] = ['functions', 'erd', 'ddl', 'rtm', 'requirements', 'review', 'manifest']
 
-/** 실행마다 있지 않은 산출물. 실제로 만들어졌을 때만 다운로드 표에 줄을 둔다 */
-const OPTIONAL_KINDS: readonly ArtifactKind[] = ['review', 'manifest']
+/**
+ * 실행마다 있지 않은 산출물. 실제로 만들어졌을 때만 다운로드 표에 줄을 둔다.
+ * 요구사항 Markdown은 지금 서버가 만들지 않아 늘 「없음」 줄이 남았다.
+ */
+const OPTIONAL_KINDS: readonly ArtifactKind[] = ['requirements', 'review', 'manifest']
 
 export const FORMAT_LABEL: Record<ArtifactFormat, string> = {
-  md: 'Markdown',
+  md: '문서(.md)',
   pdf: 'PDF',
-  mmd: 'Mermaid',
+  mmd: '그림 원본(.mmd)',
   sql: 'SQL',
   xlsx: 'Excel',
   csv: 'CSV',
@@ -132,19 +135,19 @@ export function fileNameOf(a: Pick<ArtifactRef, 'kind' | 'file_format' | 'revisi
 
 /** 내려받기 실패 안내 (UI-07 「생성 대기·파일 없음·접근 불가 안내」). 서버 문구가 있으면 먼저 쓴다. */
 export function downloadErrorText(err: unknown): string {
-  if (!(err instanceof ApiError)) return '파일을 받지 못했습니다.'
+  if (!(err instanceof ApiError)) return '파일을 받지 못했어요. 잠시 뒤 다시 해 주세요.'
   if (err.body?.message) return err.body.message
   switch (err.code) {
     case 'ARTIFACT_NOT_READY':
-      return '파일이 아직 만들어지지 않았습니다. PDF는 승인한 뒤에 만들어집니다.'
+      return '파일이 아직 없어요. PDF는 승인하면 생겨요.'
     case 'ARTIFACT_FORMAT_UNSUPPORTED':
-      return '이 산출물은 그 형식으로 받을 수 없습니다.'
+      return '이 문서는 그 형식으로 받을 수 없어요.'
     case 'RUN_NOT_FOUND':
-      return '실행을 찾을 수 없거나 접근할 수 없습니다.'
+      return '이 작업을 찾을 수 없어요.'
     case 'NETWORK':
-      return '서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+      return '연결하지 못했어요. 잠시 뒤 다시 해 주세요.'
     default:
-      return `파일을 받지 못했습니다 (HTTP ${err.status}).`
+      return '파일을 받지 못했어요. 잠시 뒤 다시 해 주세요.'
   }
 }
 
@@ -240,9 +243,9 @@ export function chosenView(status: RunState, param: string | null): ResultView |
 }
 
 export const VIEW_LABEL: Record<ResultView, string> = {
-  review: '최종 검토',
-  workspace: '결과 작업공간',
-  downloads: '다운로드',
+  review: '최종 승인',
+  workspace: '결과 보기',
+  downloads: '내려받기',
 }
 
 // ── 실행 상태 이름 (UI-01 「이전 실행」 등) ────────────────────────────────
@@ -250,13 +253,13 @@ export const VIEW_LABEL: Record<ResultView, string> = {
 export const STATUS_LABEL: Record<RunState, string> = {
   queued: '대기',
   parsing: '문서 읽는 중',
-  awaiting_input: '추출 확인 대기',
+  awaiting_input: '원문 확인 대기',
   analysing: '분석 중',
-  awaiting_requirements: '분석 확인 대기',
+  awaiting_requirements: '요구사항 확인 대기',
   designing: '설계 중',
-  generating: '산출물 생성 중',
+  generating: '문서 만드는 중',
   reviewing: '검토 중',
-  awaiting_review: '최종 검토 대기',
+  awaiting_review: '최종 승인 대기',
   exporting: '내보내는 중',
   completed: '완료',
   failed: '실패',

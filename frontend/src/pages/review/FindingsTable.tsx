@@ -57,7 +57,7 @@ function FindingsTable({ findings, names }: Props) {
           width: 180,
           render: (f) => (
             <div className="stack-sm" style={{ gap: 2 }}>
-              <span>{sourceText(f)}</span>
+              <span title={f.rule_code ?? undefined}>{sourceText(f)}</span>
               <span className="subtle" style={{ fontSize: 13 }}>
                 {f.kind === 'technical_identifier' ? '참고 · 기술 식별자 사용' : f.target_stage ? STAGE_LABEL[f.target_stage] : '판단 필요'}
               </span>

@@ -3,33 +3,33 @@ import Icon from '../../layout/Icon.tsx'
 // 첫 방문 「작동 과정 · 샘플 재생」 (F안 시안). 실제 실행 데이터가 아니라 가상 예시라는 것을 분명히 적는다.
 // 단계가 차례로 채워지는 움직임만 있고(줄어든 동작이면 멈춤), 눌러서 실행되는 버튼은 두지 않는다.
 const STEPS = [
-  { n: '01', title: '문서 읽기', desc: '행과 열을 읽어 요구사항을 찾아요' },
+  { n: '01', title: '문서 읽기', desc: '표의 줄마다 요구사항을 읽고, 어디서 읽었는지 남겨요' },
   { n: '02', title: '요구사항 정리', desc: '요구사항을 나누고 기능 · 비기능으로 분류해요' },
-  { n: '03', title: '초안 생성', desc: '기능 명세서 · ERD · DDL · RTM을 만들고, 규칙 검사와 AI 검토를 함께 돌려요' },
+  { n: '03', title: '초안 생성', desc: '설계 문서 4종을 만들고, 규칙과 AI가 빠진 곳을 찾아요' },
   { n: '04', title: '검토와 승인', desc: '사람이 검토하고 최종 승인해요' },
 ]
 
 const INPUT = [
-  ['REQ-F-001', '품목 등록'],
-  ['REQ-F-002', '입고 처리'],
-  ['REQ-F-003', '출고 처리'],
-  ['REQ-F-004', '재고 조회'],
+  ['SFR-001', '품목 등록'],
+  ['SFR-002', '입고 처리'],
+  ['SFR-003', '출고 처리'],
+  ['SFR-004', '재고 조회'],
   ['REQ-N-001', '이력 보관'],
   ['REQ-N-002', '접근 권한'],
 ]
 
 const SORTED: [string, string, boolean][] = [
-  ['REQ-F-001', '품목 등록', true],
-  ['REQ-F-002', '입고 처리', true],
-  ['REQ-F-003', '출고 처리', true],
+  ['SFR-001', '품목 등록', true],
+  ['SFR-002', '입고 처리', true],
+  ['SFR-003', '출고 처리', true],
   ['REQ-N-001', '이력 보관', false],
   ['REQ-N-002', '접근 권한', false],
 ]
 
 const RTM = [
-  ['REQ-F-001', 'F-01', 'item'],
-  ['REQ-F-002', 'F-02', 'stock · stock_txn'],
-  ['REQ-F-003', 'F-03', 'stock · stock_txn'],
+  ['SFR-001', 'F-01', 'item'],
+  ['SFR-002', 'F-02', 'stock · stock_txn'],
+  ['SFR-003', 'F-03', 'stock · stock_txn'],
   ['REQ-N-001', '—', 'stock_txn'],
 ]
 
@@ -138,7 +138,7 @@ function SampleDemo() {
           설계 초안 4종을 만들었어요. 검사 결과와 AI 검토 의견을 확인하고 승인해 주세요
         </span>
         <span className="row" style={{ gap: 12 }}>
-          <span style={{ opacity: 0.7, fontSize: 14 }}>차단 오류가 없을 때 사람이 승인해요</span>
+          <span style={{ opacity: 0.7, fontSize: 14 }}>꼭 고칠 것이 없을 때 사람이 승인해요</span>
           <span className="badge badge--lime" style={{ fontSize: 14, padding: '6px 12px' }}>
             승인 대기
           </span>
