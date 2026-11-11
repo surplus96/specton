@@ -17,6 +17,7 @@
 
 | PR | 내용 |
 |---|---|
+| #326 | `NormalizedModel.technical_names?`: 정리 객체 ID와 미등록 논리명 대응. 스냅샷·체크포인트·모델 해시에 포함하고, 값이 없는 이전 모델의 해시 형식은 유지 |
 | #289 | `status.payload`에 선택적 노드 task ID·시작/종료·UTC 시각·소요·호출 메타데이터. `RunView.normalization`에 선택적 정리 수치·팩 버전 요약. 모델·해시·승인 계약은 유지 |
 | #292 (#290) | EntityDraft.unique_keys(속성 이름 묶음) → Entity.unique_keys(속성 ID 묶음), RelationshipDraft.fk_bindings(속성 이름 쌍) → Relationship.fk_bindings(속성 ID 쌍). 없거나 빈 선언은 이전 모델 해시에서 제외. 명시적 직접 PK 재사용만 허용하며 invalid_fk_binding은 RULE-04·설계 재작업 |
 | #252 | 정리 결과에 선택적 common_version·policy_digest. 새 실행의 팩·표준 정책 근거를 보존하며, 두 값이 없는 옛 스냅샷의 모델 해시에는 null 키를 추가하지 않음 |
