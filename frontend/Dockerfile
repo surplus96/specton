@@ -12,6 +12,9 @@ WORKDIR /web
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY . .
+# 비우면 같은 주소(Caddy가 /runs·/health를 api로 넘김). 다른 도메인 API를 쓸 때만 --build-arg로 넣는다
+ARG VITE_API_BASE_URL=
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 RUN npm run build
 
 FROM ${CADDY_IMAGE}

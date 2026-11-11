@@ -16,6 +16,7 @@ export const ARTIFACT_FORMATS: Record<ArtifactKind, readonly ArtifactFormat[]> =
   rtm: ['xlsx', 'csv'],
   requirements: ['md'],
   review: ['md'],
+  manifest: ['json'], // 승인 기준 산출물 목록 (#222). 승인한 revision에서 만든다
 }
 
 /** 화면에 보일 순서와 이름 */
@@ -26,9 +27,13 @@ export const KIND_LABEL: Record<ArtifactKind, string> = {
   rtm: 'RTM (추적표)',
   requirements: '요구사항',
   review: '검토 결과',
+  manifest: '산출물 목록 (manifest)',
 }
 
-export const KIND_ORDER: readonly ArtifactKind[] = ['functions', 'erd', 'ddl', 'rtm', 'requirements', 'review']
+export const KIND_ORDER: readonly ArtifactKind[] = ['functions', 'erd', 'ddl', 'rtm', 'requirements', 'review', 'manifest']
+
+/** 실행마다 있지 않은 산출물. 실제로 만들어졌을 때만 다운로드 표에 줄을 둔다 */
+const OPTIONAL_KINDS: readonly ArtifactKind[] = ['review', 'manifest']
 
 export const FORMAT_LABEL: Record<ArtifactFormat, string> = {
   md: 'Markdown',
@@ -37,6 +42,7 @@ export const FORMAT_LABEL: Record<ArtifactFormat, string> = {
   sql: 'SQL',
   xlsx: 'Excel',
   csv: 'CSV',
+  json: 'JSON',
 }
 
 /** 설계 뒤 병렬로 만드는 산출물 (specton/graph.py GENERATORS). 없으면 그 가지가 미완성이다. */
@@ -104,7 +110,7 @@ export function artifactLabel(a: Pick<ArtifactRef, 'kind' | 'file_format'>): str
 
 /** UI-07 표: 종류마다 형식별 상태. 승인 전 PDF는 목록에 있든 없든 「승인 후」로 구분한다. */
 export function downloadRows(artifacts: readonly ArtifactRef[], approved: boolean): DownloadRow[] {
-  return KIND_ORDER.filter((kind) => kind !== 'review' || artifacts.some((a) => a.kind === 'review')).map((kind) => ({
+  return KIND_ORDER.filter((kind) => !OPTIONAL_KINDS.includes(kind) || artifacts.some((a) => a.kind === kind)).map((kind) => ({
     kind,
     files: ARTIFACT_FORMATS[kind].map((format) => {
       const artifact = artifacts.find((a) => a.kind === kind && a.file_format === format)
