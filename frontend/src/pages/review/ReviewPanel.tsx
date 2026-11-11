@@ -19,6 +19,8 @@ import { revisionText } from '../runMeta.ts'
 import SqlValidationPanel from './SqlValidationPanel.tsx'
 import { sqlReview } from './sqlValidation.ts'
 import {
+  HITL_REASON_TEXT,
+  reviewDiagnostics,
   SEVERITY_LABEL,
   branchText,
   buildResponse,
@@ -64,7 +66,8 @@ function ReviewPanel({ run, events, onChanged, label }: Props) {
   const names = useMemo(() => nameIndex(design), [design])
   const counts = countBySeverity(findings ?? [])
   const approvable = Boolean(reviewSection.data && designSection.data) && sql.status === 'passed' && canApprove(findings ?? [])
-  const { failedBranches } = reviewNotices(events, interruptId)
+  const { failedBranches, hitlReason } = reviewNotices(events, interruptId)
+  const diagnostics = reviewDiagnostics(events, interruptId)
   const blocking = decision ? problems(decision, feedback, findings ?? []) : []
   const checklist = reviewChecklist(design, artifacts, run.revision, sql)
 
@@ -96,8 +99,12 @@ function ReviewPanel({ run, events, onChanged, label }: Props) {
               빠진 관점의 지적은 아래 목록에 없어요. 승인 전에 확인해 주세요.
             </Notice>
           )}
-          {/* 자동 재작업을 멈춘 이유·근거 검사 제외·다시 설계 판단은 AI Workspace에서 본다.
-              SQL은 통과면 안내하지 않고, 승인을 막는 상태(실패·오류·미검증·없음)일 때만 이유를 보인다 */}
+          {(hitlReason || diagnostics.length > 0) && <details className="more">
+            <summary>검토 경위 보기</summary>
+            {hitlReason && <p>{HITL_REASON_TEXT[hitlReason] ?? hitlReason}</p>}
+            {diagnostics.map((message, index) => <p key={index}>{message}</p>)}
+          </details>}
+          {/* SQL은 승인을 막는 상태일 때만 별도 안내한다. */}
           {designSection.data && sql.status !== 'passed' && <SqlValidationPanel result={sql} />}
 
           <section aria-label="검토 지적" className="stack-sm" style={{ gap: 14 }}>

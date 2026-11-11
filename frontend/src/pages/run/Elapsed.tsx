@@ -24,8 +24,8 @@ function Elapsed({ receivedAt, status }: Props) {
   const start = Math.min(...times)
   const end = running ? Math.max(now, ...times) : Math.max(...times)
   return (
-    <span className="muted" style={{ fontSize: 15, whiteSpace: 'nowrap' }} aria-label={`진행 시간 ${formatElapsed(end - start)}`}>
-      진행 시간 <strong style={{ color: 'var(--ink)', fontSize: 18 }}>{formatElapsed(end - start)}</strong>
+    <span className="muted" style={{ fontSize: 15, whiteSpace: 'nowrap' }} title="이 화면에서 처음 소식을 받은 뒤 지난 시간이에요. 새로고침하면 다시 시작해요." aria-label={`이 화면 기준 진행 시간 ${formatElapsed(end - start)}`}>
+      화면 경과 <strong style={{ color: 'var(--ink)', fontSize: 18 }}>{formatElapsed(end - start)}</strong>
     </span>
   )
 }
