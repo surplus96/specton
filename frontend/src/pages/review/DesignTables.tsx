@@ -1,107 +1,108 @@
-import { Table, Tabs, Typography } from 'antd'
-import type { TableColumnsType } from 'antd'
+import { useState } from 'react'
 import type { DesignAttribute, DesignEntity, DesignFunction, DesignItem, DesignRelationship } from '../../api/viewItems.ts'
+import DataTable from '../../ui/DataTable.tsx'
+import Segmented from '../../ui/Segmented.tsx'
 import { crudText, dataTypeText, keyText, priorityText, relationText, splitDesign } from './design.ts'
 
-// 설계 결과 표: 기능·엔티티·관계 (/view?section=design). 최종 검토(UI-06)에서 무엇을 승인하는지 보여 준다.
-// 결과 작업공간(UI-05)에서도 같은 표를 쓴다. ERD는 8단계(mermaid JS)에서 더한다.
+// 설계 결과 표: 기능·엔티티·관계 (/view?section=design). 최종 검토(UI-06)와 결과 작업공간(UI-05)이 같이 쓴다.
 type Props = {
   items: DesignItem[]
   names: Map<string, string>
 }
 
-const reqText = (ids: string[]) => ids.join(', ')
+type Part = 'functions' | 'entities' | 'relationships'
 
-function DesignTables({ items, names }: Props) {
-  const { functions, entities, relationships } = splitDesign(items)
+const reqText = (ids: string[]) => (ids.length ? ids.join(', ') : '—')
 
-  if (items.length === 0) {
-    return <Typography.Text type="secondary">설계 결과가 아직 없습니다.</Typography.Text>
-  }
-
-  const functionColumns: TableColumnsType<DesignFunction> = [
-    { title: 'ID', dataIndex: 'id', width: 80 },
-    { title: '기능', dataIndex: 'name', width: 140 },
-    { title: '설명', dataIndex: 'description' },
-    { title: '우선순위', key: 'priority', width: 110, render: (_, f) => priorityText(f) },
-    { title: '엔티티 CRUD', key: 'crud', width: 180, render: (_, f) => crudText(f, names) },
-    { title: '요구사항', dataIndex: 'req_ids', width: 130, render: reqText },
-  ]
-
-  const entityColumns: TableColumnsType<DesignEntity> = [
-    { title: 'ID', dataIndex: 'id', width: 80 },
-    { title: '엔티티', dataIndex: 'name', width: 140 },
-    { title: '설명', dataIndex: 'description' },
-    { title: '속성', key: 'count', width: 80, render: (_, e) => `${e.attributes.length}개` },
-    { title: '요구사항', dataIndex: 'req_ids', width: 130, render: reqText },
-  ]
-
-  const attributeColumns: TableColumnsType<DesignAttribute> = [
-    { title: '속성', dataIndex: 'name', width: 140 },
-    { title: '타입', key: 'type', width: 130, render: (_, a) => dataTypeText(a) },
-    { title: '키', key: 'key', width: 100, render: (_, a) => keyText(a) },
-    { title: '빈 값', dataIndex: 'nullable', width: 80, render: (n: boolean) => (n ? '허용' : '불가') },
-    { title: '설명', dataIndex: 'description', render: (d: string | null) => d ?? '—' },
-  ]
-
-  const relationshipColumns: TableColumnsType<DesignRelationship> = [
-    { title: 'ID', dataIndex: 'id', width: 80 },
-    {
-      title: '관계',
-      key: 'pair',
-      width: 180,
-      render: (_, r) => `${names.get(r.parent) ?? r.parent} → ${names.get(r.child) ?? r.child}`,
-    },
-    { title: '성격', key: 'kind', width: 160, render: (_, r) => relationText(r) },
-    { title: '근거', dataIndex: 'rationale' },
-    { title: '요구사항', dataIndex: 'req_ids', width: 130, render: reqText },
-  ]
-
+function AttributeTable({ entity }: { entity: DesignEntity }) {
   return (
-    <Tabs
-      items={[
-        {
-          key: 'functions',
-          label: `기능 ${functions.length}`,
-          children: (
-            <Table rowKey="id" size="small" pagination={false} columns={functionColumns} dataSource={functions} scroll={{ x: 900 }} />
-          ),
-        },
-        {
-          key: 'entities',
-          label: `엔티티 ${entities.length}`,
-          children: (
-            <Table
-              rowKey="id"
-              size="small"
-              pagination={false}
-              columns={entityColumns}
-              dataSource={entities}
-              scroll={{ x: 800 }}
-              expandable={{
-                expandedRowRender: (e) => (
-                  <Table rowKey="id" size="small" pagination={false} columns={attributeColumns} dataSource={e.attributes} />
-                ),
-              }}
-            />
-          ),
-        },
-        {
-          key: 'relationships',
-          label: `관계 ${relationships.length}`,
-          children: (
-            <Table
-              rowKey="id"
-              size="small"
-              pagination={false}
-              columns={relationshipColumns}
-              dataSource={relationships}
-              scroll={{ x: 900 }}
-            />
-          ),
-        },
+    <DataTable<DesignAttribute>
+      label={`${entity.name} 속성`}
+      rows={entity.attributes}
+      rowKey={(a) => a.id}
+      minWidth={640}
+      empty="속성이 없어요."
+      columns={[
+        { key: 'name', title: '속성', width: 160, render: (a) => a.name },
+        { key: 'type', title: '타입', width: 140, render: (a) => <span className="mono">{dataTypeText(a)}</span> },
+        { key: 'key', title: '키', width: 110, render: (a) => keyText(a) },
+        { key: 'null', title: '빈 값', width: 80, render: (a) => (a.nullable ? '허용' : '불가') },
+        { key: 'desc', title: '설명', render: (a) => a.description ?? '—' },
       ]}
     />
+  )
+}
+
+function DesignTables({ items, names }: Props) {
+  const [part, setPart] = useState<Part>('functions')
+  const { functions, entities, relationships } = splitDesign(items)
+  if (items.length === 0) return <div className="card empty">설계 결과가 아직 없어요.</div>
+
+  return (
+    <div className="stack-sm" style={{ gap: 14 }}>
+      <Segmented<Part>
+        label="설계 결과 종류"
+        size="sm"
+        value={part}
+        onChange={setPart}
+        options={[
+          { value: 'functions', label: `기능 ${functions.length}` },
+          { value: 'entities', label: `엔티티 ${entities.length}` },
+          { value: 'relationships', label: `관계 ${relationships.length}` },
+        ]}
+      />
+      {part === 'functions' && (
+        <DataTable<DesignFunction>
+          label="기능"
+          rows={functions}
+          rowKey={(f) => f.id}
+          minWidth={900}
+          empty="기능이 없어요."
+          columns={[
+            { key: 'id', title: 'ID', width: 90, render: (f) => <span className="mono">{f.id}</span> },
+            { key: 'name', title: '기능', width: 160, render: (f) => <strong>{f.name}</strong> },
+            { key: 'desc', title: '설명', render: (f) => f.description },
+            { key: 'priority', title: '우선순위', width: 110, render: (f) => priorityText(f) },
+            { key: 'crud', title: '엔티티 CRUD', width: 190, render: (f) => crudText(f, names) },
+            { key: 'req', title: '근거 요구사항', width: 140, render: (f) => <span className="mono">{reqText(f.req_ids)}</span> },
+          ]}
+        />
+      )}
+      {part === 'entities' && (
+        <DataTable<DesignEntity>
+          label="엔티티"
+          rows={entities}
+          rowKey={(e) => e.id}
+          minWidth={820}
+          empty="엔티티가 없어요."
+          expand={(e) => <AttributeTable entity={e} />}
+          expandLabel={(e, open) => `${e.name} 속성 ${open ? '접기' : '펼치기'}`}
+          columns={[
+            { key: 'id', title: 'ID', width: 90, render: (e) => <span className="mono">{e.id}</span> },
+            { key: 'name', title: '엔티티', width: 160, render: (e) => <strong>{e.name}</strong> },
+            { key: 'desc', title: '설명', render: (e) => e.description },
+            { key: 'count', title: '속성', width: 80, render: (e) => `${e.attributes.length}개` },
+            { key: 'req', title: '근거 요구사항', width: 140, render: (e) => <span className="mono">{reqText(e.req_ids)}</span> },
+          ]}
+        />
+      )}
+      {part === 'relationships' && (
+        <DataTable<DesignRelationship>
+          label="관계"
+          rows={relationships}
+          rowKey={(r) => r.id}
+          minWidth={900}
+          empty="관계가 없어요."
+          columns={[
+            { key: 'id', title: 'ID', width: 90, render: (r) => <span className="mono">{r.id}</span> },
+            { key: 'pair', title: '관계', width: 200, render: (r) => `${names.get(r.parent) ?? r.parent} → ${names.get(r.child) ?? r.child}` },
+            { key: 'kind', title: '성격', width: 170, render: (r) => relationText(r) },
+            { key: 'why', title: '근거', render: (r) => r.rationale },
+            { key: 'req', title: '근거 요구사항', width: 140, render: (r) => <span className="mono">{reqText(r.req_ids)}</span> },
+          ]}
+        />
+      )}
+    </div>
   )
 }
 

@@ -1,13 +1,17 @@
-import { Alert, Button, Flex, Segmented, Spin, Typography } from 'antd'
+import { useEffect, useRef } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { ApiError, errorMessage } from '../api/errors.ts'
+import { runFileName } from '../api/runNames.ts'
+import Icon from '../layout/Icon.tsx'
 import StageSteps, { type ScreenId } from '../layout/StageSteps.tsx'
-import PageCard from '../layout/PageCard.tsx'
-import WithActivity from '../layout/WithActivity.tsx'
-import ActivityPanel from './run/ActivityPanel.tsx'
+import Button from '../ui/Button.tsx'
+import Loading from '../ui/Loading.tsx'
+import Notice from '../ui/Notice.tsx'
+import Segmented from '../ui/Segmented.tsx'
 import ExtractionPanel from './extraction/ExtractionPanel.tsx'
 import RequirementsPanel from './requirements/RequirementsPanel.tsx'
 import ReviewPanel from './review/ReviewPanel.tsx'
+import ActivityPanel from './run/ActivityPanel.tsx'
 import ProgressPanel from './run/ProgressPanel.tsx'
 import { displayStage, screenFor, unreachedScreens } from './run/screens.ts'
 import { useRunStatus } from './run/useRunStatus.ts'
@@ -15,11 +19,11 @@ import DownloadPanel from './workspace/DownloadPanel.tsx'
 import WorkspacePanel from './workspace/WorkspacePanel.tsx'
 import { VIEW_LABEL, chosenView, resultViews, type ResultView } from './workspace/rules.ts'
 
-// 실행 하나의 화면 (/?run=<runId>, App.tsx).
+// 실행 하나의 화면 (/?run=<runId>).
 // 상태를 조회하고 이벤트(SSE)로 따라가며, 상태에 맞는 화면(UI-02~07)을 고른다 (run/screens.ts).
 // 결과가 있으면(최종 검토 대기·완료) 위쪽에서 결과 작업공간(UI-05)으로 바꿔 볼 수 있다 (&view=workspace).
 // 새로고침해도 상태 조회와 주소로 같은 화면에 돌아온다.
-// 모든 화면 옆(좁으면 아래)에 서버 작업 패널을 붙여 이벤트를 실시간으로 보인다 (run/ActivityPanel).
+// 서버 작업 패널은 설계 진행(UI-04)에서는 오른쪽에, 표가 넓은 확인·결과 화면에서는 본문 아래에 둔다.
 const SCREEN_OF_VIEW: Record<ResultView, ScreenId> = {
   review: 'UI-06',
   workspace: 'UI-05',
@@ -32,29 +36,64 @@ function RunPage({ runId }: { runId: string }) {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const { run, events, receivedAt, connection, loadError, refresh } = useRunStatus(runId)
+  const file = runFileName(runId)
+  const lastScreen = useRef<ScreenId | null>(null)
+  const viewParam = params.get('view')
+  const currentScreen: ScreenId | null = run
+    ? (() => {
+        const v = chosenView(run.status, viewParam)
+        return v ? SCREEN_OF_VIEW[v] : screenFor(run.status, run.interrupt?.kind)
+      })()
+    : null
+
+  // 화면이 바뀌면 맨 위로 (스크롤한 채로 새 화면 중간에 떨어지지 않게)
+  useEffect(() => {
+    if (!currentScreen) return
+    if (lastScreen.current !== null && lastScreen.current !== currentScreen) window.scrollTo({ top: 0 })
+    lastScreen.current = currentScreen
+  }, [currentScreen])
+
+  const label = file ?? `실행 ${runId.slice(0, 8)}`
 
   if (loadError) {
     const notFound = loadError instanceof ApiError && loadError.status === 404
     return (
-      <PageCard title={notFound ? '실행을 찾을 수 없습니다' : '실행을 불러오지 못했습니다'} subtitle={`실행 ID: ${runId}`}>
-        <Alert
-          type={notFound ? 'warning' : 'error'}
-          showIcon
+      <section className="screen" style={{ paddingTop: 24 }}>
+        <p className="eyebrow">실행 ID {runId}</p>
+        <h1 className="title" style={{ marginBottom: 24 }}>
+          {notFound ? (
+            <>
+              실행을 <strong>찾을 수 없어요</strong>
+            </>
+          ) : (
+            <>
+              실행을 <strong>불러오지 못했어요</strong>
+            </>
+          )}
+        </h1>
+        <Notice
+          kind={notFound ? 'warning' : 'error'}
           title={errorMessage(loadError)}
-          action={<Button onClick={() => navigate('/start')}>업로드로 돌아가기</Button>}
-        />
-      </PageCard>
+          action={
+            <div className="row">
+              {!notFound && (
+                <Button variant="secondary" size="sm" onClick={() => window.location.reload()}>
+                  다시 불러오기
+                </Button>
+              )}
+              <Button size="sm" onClick={() => navigate('/')}>
+                새 작업으로
+              </Button>
+            </div>
+          }
+        >
+          {notFound ? '다른 브라우저에서 시작했거나 세션이 바뀌면 이 실행을 볼 수 없어요.' : undefined}
+        </Notice>
+      </section>
     )
   }
 
-  if (!run) {
-    return (
-      <Flex vertical align="center" gap={12}>
-        <Spin size="large" />
-        <Typography.Text type="secondary">실행 상태를 불러오고 있습니다</Typography.Text>
-      </Flex>
-    )
-  }
+  if (!run) return <Loading text="실행 상태를 불러오고 있어요" />
 
   const view = chosenView(run.status, params.get('view'))
   const screen = view ? SCREEN_OF_VIEW[view] : screenFor(run.status, run.interrupt?.kind)
@@ -69,44 +108,51 @@ function RunPage({ runId }: { runId: string }) {
   }
 
   return (
-    <Flex vertical gap={24}>
+    <div>
       <StageSteps current={screen} unreached={unreached} />
-      {/* 개발용 AI Workspace (#281). 기존 흐름은 그대로 두고 새 탭으로 연다.
-          mock은 실행을 탭 메모리에만 두므로 같은 탭에서 연다 (새 탭에서는 실행을 찾지 못함) */}
-      <Flex justify="flex-end" style={{ marginTop: -12 }}>
+      <div className="row row--between" style={{ marginBottom: 20 }}>
+        {view ? (
+          <Segmented<ResultView>
+            label="볼 화면"
+            value={view}
+            onChange={chooseView}
+            options={resultViews(run.status).map((v) => ({ value: v, label: VIEW_LABEL[v] }))}
+          />
+        ) : (
+          <span />
+        )}
+        {/* 개발용 AI Workspace (#281). mock은 실행을 탭 메모리에만 두므로 같은 탭에서 연다 */}
         <Link
+          className="topbar__link"
+          style={{ fontSize: 14 }}
           to={`/workspace?run=${encodeURIComponent(run.run_id)}`}
           {...(WORKSPACE_NEW_TAB ? { target: '_blank', rel: 'noopener' } : {})}
         >
-          작업공간 열기 (개발용){WORKSPACE_NEW_TAB ? ' ↗' : ''}
+          작업공간 열기 (개발용)
+          {WORKSPACE_NEW_TAB && <Icon name="external" size={14} />}
         </Link>
-      </Flex>
-      <WithActivity side={<ActivityPanel events={events} receivedAt={receivedAt} connection={connection} status={run.status} />}>
-        <Flex vertical gap={24}>
-          {view && (
-            <Segmented<ResultView>
-              aria-label="볼 화면"
-              value={view}
-              onChange={chooseView}
-              options={resultViews(run.status).map((v) => ({ value: v, label: VIEW_LABEL[v] }))}
-            />
-          )}
+      </div>
+      <div className={`run-layout${screen === 'UI-04' ? ' run-layout--side' : ''}`}>
+        <div className="screen" key={screen} style={{ minWidth: 0 }}>
           {screen === 'UI-04' ? (
-            <ProgressPanel run={run} events={events} connection={connection} onChanged={refresh} />
+            <ProgressPanel run={run} events={events} connection={connection} onChanged={refresh} label={label} />
           ) : screen === 'UI-02' ? (
-            <ExtractionPanel run={run} events={events} onChanged={refresh} />
+            <ExtractionPanel run={run} events={events} onChanged={refresh} label={label} />
           ) : screen === 'UI-03' ? (
-            <RequirementsPanel run={run} onChanged={refresh} />
+            <RequirementsPanel run={run} onChanged={refresh} label={label} />
           ) : screen === 'UI-05' ? (
-            <WorkspacePanel run={run} />
+            <WorkspacePanel run={run} label={label} onReview={run.status === 'awaiting_review' ? () => chooseView('review') : undefined} />
           ) : screen === 'UI-06' ? (
-            <ReviewPanel run={run} events={events} onChanged={refresh} />
+            <ReviewPanel run={run} events={events} onChanged={refresh} label={label} />
           ) : (
-            <DownloadPanel run={run} />
+            <DownloadPanel run={run} label={label} />
           )}
-        </Flex>
-      </WithActivity>
-    </Flex>
+        </div>
+        <aside className="run-layout__side">
+          <ActivityPanel events={events} receivedAt={receivedAt} connection={connection} status={run.status} />
+        </aside>
+      </div>
+    </div>
   )
 }
 

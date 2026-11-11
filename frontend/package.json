@@ -15,7 +15,6 @@
   },
   "dependencies": {
     "@xyflow/react": "^12.12.1",
-    "antd": "^6.7.0",
     "elkjs": "^0.12.1",
     "mermaid": "11.17.2",
     "react": "^19.1.0",

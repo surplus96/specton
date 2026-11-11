@@ -318,3 +318,13 @@ describe('실패 흐름', () => {
     expect(nextAction(err.code)).toBe('retry')
   })
 })
+
+describe('세션 쿠키 전달', () => {
+  it('API 출처가 달라도 HTTP 세션 전송을 요청한다', async () => {
+    server.use(http.get('http://specton.test/runs', ({ request }) => {
+      expect(request.credentials).toBe('include')
+      return HttpResponse.json([])
+    }))
+    expect(await listRuns()).toEqual([])
+  })
+})

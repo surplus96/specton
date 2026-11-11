@@ -1,41 +1,151 @@
-import { Layout } from 'antd'
-import { Link, Outlet, useLocation } from 'react-router'
-import { colors, weights } from '../theme.ts'
+import { useEffect, useState } from 'react'
+import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router'
+import { runFileName, titleFromFile } from '../api/runNames.ts'
+import { runBadge } from '../pages/runMeta.ts'
+import { useRuns } from '../pages/useRuns.ts'
+import Icon from './Icon.tsx'
 
-// 모든 화면이 공유하는 틀: 맨 위 바 + 가운데 본문.
-// <Outlet /> 자리에 주소에 맞는 화면(HomePage, UploadPage, RunPage …)이 들어간다.
-// 첫 화면(/)은 흰 바(남색 글자 + 파랑 「ton」), 그 밖의 화면은 남색 바(아래 파랑 선).
-// 실행 화면도 주소가 /?run=<id>라 경로만으로는 같으므로, run 파라미터가 없을 때만 첫 화면으로 본다.
+// 모든 화면이 공유하는 틀 (F안 시안): 왼쪽 딥 포레스트 사이드바 + 오른쪽 흰 작업 영역.
+// 사이드바: 새 작업 · 작업 검색 · 지난 작업 + 최근 작업 몇 개. 넓은 화면은 접을 수 있고, 좁은 화면은 덮개로 연다.
+// 위쪽 바: Docs(서비스 안내) · Try SpecOn(새 작업)
+const COLLAPSE_KEY = 'specton.sidebar.collapsed'
+
+function readCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(COLLAPSE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function Logo() {
+  return (
+    <span className="logo" aria-label="SPECTON">
+      <b aria-hidden="true">SPEC</b>
+      <i aria-hidden="true">+</i>
+      <span aria-hidden="true">ON</span>
+    </span>
+  )
+}
+
 function AppLayout() {
-  const { pathname, search } = useLocation()
-  const home = pathname === '/' && !new URLSearchParams(search).has('run')
+  const [collapsed, setCollapsed] = useState(readCollapsed)
+  const [drawer, setDrawer] = useState(false)
+  const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 960px)').matches)
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 960px)')
+    const change = () => setNarrow(media.matches)
+    media.addEventListener('change', change)
+    return () => media.removeEventListener('change', change)
+  }, [])
+  const location = useLocation()
+  const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const currentRun = location.pathname === '/' ? params.get('run') : null
+  const { runs } = useRuns(20)
+  const recent = (runs ?? []).slice(0, 6)
+
+  // 화면을 옮기면 좁은 화면의 덮개를 닫는다
+  useEffect(() => setDrawer(false), [location.pathname, location.search])
+
+  function toggleCollapse() {
+    setCollapsed((c) => {
+      try {
+        window.localStorage.setItem(COLLAPSE_KEY, c ? '0' : '1')
+      } catch {
+        // 기억하지 못해도 괜찮다
+      }
+      return !c
+    })
+  }
+
+  const isNew = location.pathname === '/' && !currentRun
+  const isRuns = location.pathname === '/history'
+  const searching = isRuns && params.get('search') === '1'
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Layout.Header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 24,
-          ...(home
-            ? { background: colors.canvas, borderBottom: `1px solid ${colors.line}` }
-            : { borderBottom: `4px solid ${colors.primary}` }),
-        }}
-      >
-        <Link
-          to="/"
-          style={{ color: home ? colors.navy : colors.onDark, fontWeight: weights.display, fontSize: 22, letterSpacing: '-0.02em' }}
-        >
-          Spec<span style={{ color: home ? colors.primary : colors.onDarkMuted }}>ton</span>
-        </Link>
-        <span style={{ color: home ? colors.inkMuted : colors.onDarkMuted, fontSize: 15 }}>요구사항 문서 → 설계 산출물</span>
-      </Layout.Header>
-      <Layout.Content style={{ padding: home ? '0 clamp(16px, 2.5vw, 36px)' : '32px clamp(16px, 2.5vw, 36px) 64px' }}>
-        <div style={{ maxWidth: 1480, margin: '0 auto' }}>
-          <Outlet />
+    <div className={`shell${collapsed ? ' shell--collapsed' : ''}${drawer ? ' shell--drawer' : ''}`}>
+      <aside className="sidebar" aria-label="메뉴" inert={narrow && !drawer}>
+        <div className="sidebar__top">
+          <Link to="/" style={{ textDecoration: 'none' }} aria-label="SPECTON 처음 화면">
+            <Logo />
+          </Link>
+          <button
+            type="button"
+            className="icon-btn sidebar__collapse"
+            onClick={toggleCollapse}
+            aria-label={collapsed ? '메뉴 펼치기' : '메뉴 접기'}
+            aria-expanded={!collapsed}
+          >
+            <Icon name="sidebar" />
+          </button>
+          {drawer && (
+            <button type="button" className="icon-btn" onClick={() => setDrawer(false)} aria-label="메뉴 닫기">
+              <Icon name="x" />
+            </button>
+          )}
         </div>
-      </Layout.Content>
-    </Layout>
+
+        <nav className="nav" aria-label="주 메뉴">
+          <Link to="/" aria-current={isNew ? 'page' : undefined} title="새 작업">
+            <Icon name="plus" />
+            <span className="nav__text">새 작업</span>
+          </Link>
+          <Link to="/history?search=1" aria-current={searching ? 'page' : undefined} title="작업 검색">
+            <Icon name="search" />
+            <span className="nav__text">작업 검색</span>
+          </Link>
+          <Link to="/history" aria-current={isRuns && !searching ? 'page' : undefined} title="지난 작업">
+            <Icon name="history" />
+            <span className="nav__text">지난 작업</span>
+          </Link>
+        </nav>
+
+        {recent.length > 0 && (
+          <section className="sidebar__section" aria-label="최근 작업">
+            <div className="sidebar__label">최근 작업</div>
+            <div className="recent">
+              {recent.map((r) => {
+                const file = runFileName(r.run_id)
+                return (
+                  <Link
+                    key={r.run_id}
+                    to={`/?run=${encodeURIComponent(r.run_id)}`}
+                    aria-current={currentRun === r.run_id ? 'page' : undefined}
+                  >
+                    <span className="recent__name">{file ? titleFromFile(file) : `실행 ${r.run_id.slice(0, 8)}`}</span>
+                    <small>{runBadge(r.status).text}</small>
+                  </Link>
+                )
+              })}
+            </div>
+          </section>
+        )}
+
+        <div className="sidebar__foot">요구사항 문서 → 설계 산출물</div>
+      </aside>
+
+      {drawer && <div className="scrim" onClick={() => setDrawer(false)} aria-hidden="true" />}
+
+      <div className="main">
+        <header className="topbar">
+          <button type="button" className="icon-btn topbar__menu" onClick={() => setDrawer(true)} aria-label="메뉴 열기">
+            <Icon name="menu" />
+          </button>
+          <Link className="topbar__link" to="/about">
+            <Icon name="book" size={18} />
+            Docs
+          </Link>
+          <button type="button" className="btn" onClick={() => navigate('/')} style={{ minHeight: 46 }}>
+            Try SpecOn
+            <Icon name="arrowRight" size={18} />
+          </button>
+        </header>
+        <main className="content" id="main">
+          <Outlet />
+        </main>
+      </div>
+    </div>
   )
 }
 

@@ -1,6 +1,5 @@
-import { Steps } from 'antd'
-
-// 화면 단계 표시줄. 순서는 docs/09-ui-flow.md의 UI-01~07을 따른다.
+// 화면 단계 표시줄 (UI-01~07, docs/09-ui-flow.md). 지난 단계는 진한 선, 지금 단계는 라임.
+// 실패·취소로 실제로 거치지 않은 확인 화면은 지난 단계로 칠하지 않는다(unreached).
 export const SCREENS = [
   { id: 'UI-01', title: '실행 시작' },
   { id: 'UI-02', title: '추출 확인' },
@@ -15,22 +14,27 @@ export type ScreenId = (typeof SCREENS)[number]['id']
 
 type Props = {
   current: ScreenId
-  /** 현재 화면보다 앞이지만 실제로 거치지 않은 화면 (실패·취소). 완료(✓) 대신 대기로 보인다. */
   unreached?: readonly ScreenId[]
 }
 
 function StageSteps({ current, unreached = [] }: Props) {
   const index = SCREENS.findIndex((s) => s.id === current)
   return (
-    <Steps
-      size="small"
-      current={index}
-      items={SCREENS.map((s) => ({
-        title: s.title,
-        content: s.id,
-        ...(unreached.includes(s.id) ? { status: 'wait' as const } : {}),
-      }))}
-    />
+    <ol className="stage-strip" aria-label="화면 단계" style={{ listStyle: 'none', padding: 0 }}>
+      {SCREENS.map((s, i) => {
+        const state = i === index ? 'now' : i < index && !unreached.includes(s.id) ? 'done' : 'todo'
+        return (
+          <li key={s.id} className={`stage-strip__item stage-strip__item--${state}`} aria-current={state === 'now' ? 'step' : undefined}>
+            <div className="stage-strip__bar" />
+            <span>
+              <b>{String(i + 1).padStart(2, '0')}</b>
+              {s.title}
+              <span className="sr-only">{state === 'done' ? ' · 지남' : state === 'now' ? ' · 지금' : ''}</span>
+            </span>
+          </li>
+        )
+      })}
+    </ol>
   )
 }
 

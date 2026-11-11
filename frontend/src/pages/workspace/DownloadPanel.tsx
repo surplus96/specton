@@ -1,35 +1,30 @@
 import { useEffect, useState } from 'react'
-import StatusTag from '../../layout/StatusTag.tsx'
 import { useNavigate, useSearchParams } from 'react-router'
-import { Alert, Button, Flex, Spin, Table, Tooltip, Typography } from 'antd'
-import type { TableColumnsType } from 'antd'
 import { getView } from '../../api/client.ts'
 import { errorMessage } from '../../api/errors.ts'
 import type { RunStatus } from '../../api/types.ts'
 import type { ArtifactRef, DesignItem, Finding } from '../../api/viewItems.ts'
-import PageCard from '../../layout/PageCard.tsx'
+import StatusTag from '../../layout/StatusTag.tsx'
+import Button from '../../ui/Button.tsx'
+import DataTable from '../../ui/DataTable.tsx'
+import Loading from '../../ui/Loading.tsx'
+import Notice from '../../ui/Notice.tsx'
+import ScreenHead from '../../ui/ScreenHead.tsx'
 import DownloadAll from './DownloadAll.tsx'
+import DownloadButton from './DownloadButton.tsx'
 import Pipeline from './Pipeline.tsx'
-import ResultSummary from './ResultSummary.tsx'
 import type { WorkspaceTab } from './pipeline.ts'
-import { DownloadButton } from './WorkspacePanel.tsx'
-import {
-  FORMAT_LABEL,
-  KIND_LABEL,
-  downloadRows,
-  isApproved,
-  toArtifacts,
-  type DownloadRow,
-} from './rules.ts'
+import ResultSummary from './ResultSummary.tsx'
+import { FORMAT_LABEL, KIND_LABEL, downloadRows, isApproved, toArtifacts, type DownloadRow } from './rules.ts'
 
-// UI-07 다운로드 (docs/09): 형식별 다운로드·승인 상태. 이전 실행 목록은 UI-01 실행 시작 화면으로 옮겼다(RecentRuns).
-// 생성 대기·파일 없음·접근 불가는 칸마다 안내한다. 초안 파일 이름에는 서버가 -draft를 붙인다 (docs/06).
-// 위쪽에 결과 요약 숫자와 산출물 파이프라인(요구사항 → … → RTM)을 둔다. 카드를 누르면 결과 작업공간 탭으로 간다.
+// UI-07 다운로드: 승인 완료 카드(전체 내려받기) · 결과 요약 · 산출물 파이프라인 · 형식별 내려받기.
+// 생성 대기·파일 없음·승인 전 PDF는 칸마다 이유를 적는다. 초안 파일 이름에는 서버가 -draft를 붙인다.
 type Props = {
   run: RunStatus
+  label: string
 }
 
-function DownloadPanel({ run }: Props) {
+function DownloadPanel({ run, label }: Props) {
   const navigate = useNavigate()
   const [, setParams] = useSearchParams()
   const [artifacts, setArtifacts] = useState<ArtifactRef[] | null>(null)
@@ -43,7 +38,7 @@ function DownloadPanel({ run }: Props) {
     let alive = true
     setArtifacts(null)
     setLoadError(null)
-    // 다운로드에 필요한 것은 design(산출물 목록)뿐이다. review는 요약 카드용이라 따로 받고 실패해도 파일은 받을 수 있다
+    // 다운로드에 필요한 것은 design(산출물 목록)뿐이다. review는 요약용이라 따로 받고 실패해도 파일은 받을 수 있다
     getView(run.run_id, 'design', run.revision)
       .then((designView) => {
         if (!alive) return
@@ -70,96 +65,91 @@ function DownloadPanel({ run }: Props) {
     })
   }
 
-  const fileColumns: TableColumnsType<DownloadRow> = [
-    { title: '산출물', key: 'kind', width: 160, render: (_, r) => KIND_LABEL[r.kind] },
-    {
-      title: '내려받기',
-      key: 'files',
-      render: (_, r) => (
-        <Flex gap={8} wrap>
-          {r.files.map(({ format, file }) =>
-            file.state === 'ready' ? (
-              <DownloadButton key={format} runId={run.run_id} artifact={file.artifact} />
-            ) : (
-              <Tooltip
-                key={format}
-                title={file.state === 'needs-approval' ? 'PDF는 승인한 뒤에 만들어집니다.' : '아직 만들어지지 않았습니다.'}
-              >
-                <Button disabled>
-                  {FORMAT_LABEL[format]} · {file.state === 'needs-approval' ? '승인 후' : '없음'}
-                </Button>
-              </Tooltip>
-            ),
-          )}
-        </Flex>
-      ),
-    },
-  ]
-
-
   return (
-    <PageCard
-      title="다운로드"
-      subtitle={`revision ${run.revision} 산출물을 형식별로 내려받습니다.`}
-      actions={
-        // 끝난 실행에서 바로 다음 문서로. 이 실행은 실행 시작 화면의 「이전 실행」 목록에서 다시 열 수 있다
-        <Button type="primary" size="large" onClick={() => navigate('/start')}>
-          새 문서로 시작
-        </Button>
-      }
-    >
-      <Flex vertical gap={24}>
-        {loadError ? (
-          <Alert
-            type="error"
-            showIcon
-            title={errorMessage(loadError)}
-            action={<Button onClick={() => setReloadKey((k) => k + 1)}>다시 불러오기</Button>}
-          />
-        ) : !artifacts ? (
-          <Flex justify="center">
-            <Spin />
-          </Flex>
-        ) : (
+    <div className="stack">
+      <ScreenHead
+        eyebrow={`다운로드 · ${label} · revision ${run.revision}`}
+        title={
           <>
-            <ResultSummary design={design} findings={findings} />
-            <section aria-label="산출물 흐름">
-              <Typography.Title level={5}>산출물 파이프라인</Typography.Title>
-              <Typography.Paragraph type="secondary" style={{ marginTop: -4 }}>
-                카드를 누르면 결과 작업공간에서 내용을 봅니다.
-              </Typography.Paragraph>
-              <Pipeline design={design} artifacts={artifacts} onOpen={openWorkspace} />
-            </section>
-            <section aria-label="산출물">
-              <Flex gap={8} align="center" style={{ marginBottom: 12 }}>
-                <Typography.Title level={5} style={{ margin: 0 }}>
-                  산출물
-                </Typography.Title>
-                <StatusTag tone={approved ? 'success' : 'warning'}>{approved ? '승인본' : '초안 (승인 전)'}</StatusTag>
-              </Flex>
-              {!approved && (
-                <Alert
-                  style={{ marginBottom: 12 }}
-                  type="info"
-                  showIcon
-                  title="승인 전 파일은 초안입니다."
-                  description="파일 이름 끝에 -draft가 붙고, PDF는 승인한 뒤에 만들어집니다."
-                />
-              )}
-              <DownloadAll runId={run.run_id} artifacts={artifacts} />
-              <Table
-                rowKey="kind"
-                size="small"
-                pagination={false}
-                columns={fileColumns}
-                dataSource={downloadRows(artifacts, approved)}
-              />
-            </section>
+            <strong>설계 초안</strong>, {approved ? '완성.' : '내려받기'}
           </>
-        )}
+        }
+        actions={
+          <Button variant="secondary" onClick={() => navigate('/')}>
+            새 문서로 시작
+          </Button>
+        }
+      />
+      {loadError ? (
+        <Notice kind="error" title={errorMessage(loadError)} action={<Button variant="secondary" size="sm" onClick={() => setReloadKey((k) => k + 1)}>다시 불러오기</Button>} />
+      ) : !artifacts ? (
+        <Loading text="산출물 목록을 불러오는 중이에요" />
+      ) : (
+        <>
+          <div className="decide">
+            <div className={`decision-card${approved ? ' decision-card--done' : ''}`}>
+              <span style={{ fontSize: 14, opacity: 0.8 }}>{approved ? '승인 완료' : '초안 · 승인 전'}</span>
+              <h3>{approved ? '설계 초안, 완성.' : '승인 전 초안이에요.'}</h3>
+              <span style={{ opacity: 0.8 }}>
+                {approved ? '형식별로 내려받을 수 있어요.' : '파일 이름 끝에 -draft가 붙고, PDF는 승인한 뒤에 만들어져요.'}
+              </span>
+              <DownloadAll runId={run.run_id} artifacts={artifacts} variant={approved ? 'accent' : 'primary'} />
+            </div>
+            <ResultSummary design={design} findings={findings} />
+          </div>
 
-      </Flex>
-    </PageCard>
+          <section aria-label="산출물 흐름" className="stack-sm" style={{ gap: 12 }}>
+            <h2 className="section-title" style={{ margin: 0 }}>
+              산출물 파이프라인
+            </h2>
+            <p className="muted" style={{ margin: 0, fontSize: 14 }}>
+              카드를 누르면 결과 작업공간에서 내용을 봐요.
+            </p>
+            <Pipeline design={design} artifacts={artifacts} onOpen={openWorkspace} />
+          </section>
+
+          <section aria-label="산출물" className="stack-sm" style={{ gap: 12 }}>
+            <div className="row">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                형식별 내려받기
+              </h2>
+              <StatusTag tone={approved ? 'success' : 'warning'}>{approved ? '승인본' : '초안 (승인 전)'}</StatusTag>
+            </div>
+            <DataTable<DownloadRow>
+              label="산출물"
+              rows={downloadRows(artifacts, approved)}
+              rowKey={(r) => r.kind}
+              minWidth={560}
+              columns={[
+                { key: 'kind', title: '산출물', width: 180, render: (r) => <strong>{KIND_LABEL[r.kind]}</strong> },
+                {
+                  key: 'files',
+                  title: '내려받기',
+                  render: (r) => (
+                    <div className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
+                      {r.files.map(({ format, file }) =>
+                        file.state === 'ready' ? (
+                          <DownloadButton key={format} runId={run.run_id} artifact={file.artifact} />
+                        ) : (
+                          <span key={format} className="stack-sm" style={{ gap: 2 }}>
+                            <Button variant="secondary" size="sm" disabled>
+                              {FORMAT_LABEL[format]} · {file.state === 'needs-approval' ? '승인 후' : '없음'}
+                            </Button>
+                            <span className="subtle" style={{ fontSize: 12 }}>
+                              {file.state === 'needs-approval' ? 'PDF는 승인한 뒤에 만들어져요' : '아직 만들어지지 않았어요'}
+                            </span>
+                          </span>
+                        ),
+                      )}
+                    </div>
+                  ),
+                },
+              ]}
+            />
+          </section>
+        </>
+      )}
+    </div>
   )
 }
 

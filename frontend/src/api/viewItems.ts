@@ -141,8 +141,8 @@ export type Finding = {
 
 /** 생성한 산출물 한 건. approved가 false면 초안이다 (docs/06 「산출물 형식」). */
 export type ArtifactRef = {
-  kind: 'requirements' | 'functions' | 'erd' | 'ddl' | 'rtm' | 'review'
-  file_format: 'md' | 'pdf' | 'mmd' | 'sql' | 'xlsx' | 'csv'
+  kind: 'requirements' | 'functions' | 'erd' | 'ddl' | 'rtm' | 'review' | 'manifest'
+  file_format: 'md' | 'pdf' | 'mmd' | 'sql' | 'xlsx' | 'csv' | 'json'
   revision: number
   hash: string
   approved: boolean

@@ -25,7 +25,7 @@ async function send(path: string, init?: RequestInit): Promise<Response> {
   let res: Response
   try {
     // credentials: 세션 쿠키(specton_session)를 함께 보낸다 (ADR-0011)
-    res = await fetch(baseUrl + path, { credentials: 'same-origin', ...init })
+    res = await fetch(baseUrl + path, { credentials: 'include', ...init })
   } catch (cause) {
     throw new ApiError(0, null, cause)
   }
