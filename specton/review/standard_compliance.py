@@ -496,7 +496,9 @@ def _check_words(
                 f"synonym:{word}",
                 column,
                 f"{where}: 「{word}」는 공통표준 단어 「{instead}」의 이음동의어입니다.",
-                f"표준어 「{instead}」로 바꾸는 것을 검토한다.",
+                f"공식 이음동의어 대응은 「{word} → {instead}」입니다. "
+                "이름의 해당 부분이 같은 의미인지 확인한 뒤 표준어 사용을 검토합니다. "
+                "진단만으로 논리명·ID·기존 승인 산출물을 변경하지 않습니다.",
             )
 
 
@@ -516,7 +518,10 @@ def _check_classifier(
             "missing_classifier",
             column,
             f"{where}: 끝 단어 「{word}」가 분류어(형식단어)가 아닙니다.",
-            "이름 끝에 분류어(예: 코드·명·일자·번호)를 둔다.",
+            f"현재 끝 단어는 「{word}」, 저장 타입은 {column.data_type.value}입니다. "
+            "값이 코드·명칭·일자·내용 중 무엇인지 확인하고 "
+            "그 의미에 맞는 팩 분류어·도메인을 선택합니다. "
+            "접미어만 자동으로 붙이면 타입·길이 정책과 충돌할 수 있으므로 함께 검토합니다.",
         )
         return
     types = ctx.official.class_types.get(group or "", {}).get(ctx.profile, frozenset())
