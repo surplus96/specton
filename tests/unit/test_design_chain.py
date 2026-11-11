@@ -249,9 +249,9 @@ def test_a08_request_carries_the_chain_result_within_its_inputs() -> None:
     _, sent = _review(state)
 
     # A08은 요구사항·엔티티와 함께 A04 관계와 정리 결과 요약을 받는다 (#12)
-    assert A08.inputs == ("requirements", "entities", "relationships", "normalized")
+    assert A08.inputs == ("requirements", "functions", "entities", "relationships", "normalized")
     data = _data(sent[0])
-    assert list(data) == ["requirements", "entities", "relationships", "normalized"]
+    assert list(data) == ["requirements", "functions", "entities", "relationships", "normalized"]
     assert data["requirements"] == [r.model_dump(mode="json") for r in state.requirements]
     assert data["entities"] == [e.model_dump(mode="json") for e in state.entities]
     assert data["relationships"] == [r.model_dump(mode="json") for r in state.relationships]

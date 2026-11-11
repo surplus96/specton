@@ -83,7 +83,7 @@ def test_a08_receives_real_normalized_columns_and_preserves_original_targets() -
     client, transport = stub_client(reply(json.dumps(response)))
     [result] = run_cases(client, A08, fixtures, SETTINGS)
     data = json.loads(unwrap_data(transport.sent[0].messages[-1].content))
-    assert set(data) == {"requirements", "entities", "relationships", "normalized"}
+    assert set(data) == {"requirements", "functions", "entities", "relationships", "normalized"}
     assert data["entities"][0]["attributes"][1]["id"] == "ATTR-02"
     assert data["normalized"]["tables"][0]["columns"][1]["attribute_id"] in {"ATTR-01", "ATTR-02"}
     assert result.ok and result.found == ("ATTR-02",)
