@@ -51,7 +51,7 @@ function RunPage({ runId }: { runId: string }) {
     lastScreen.current = currentScreen
   }, [currentScreen])
 
-  const label = file ?? `실행 ${runId.slice(0, 8)}`
+  const label = file ?? '이름 없는 작업'
 
   useEffect(() => {
     if (!run || !staleView(run.status, params.get('view'))) return

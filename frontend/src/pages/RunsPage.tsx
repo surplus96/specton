@@ -9,7 +9,7 @@ import DataTable from '../ui/DataTable.tsx'
 import Segmented from '../ui/Segmented.tsx'
 import Loading from '../ui/Loading.tsx'
 import Notice from '../ui/Notice.tsx'
-import { dotDateTime, matchesQuery, runBadge } from './runMeta.ts'
+import { dotDateTime, matchesQuery, revisionBadge, runBadge } from './runMeta.ts'
 import { useRuns } from './useRuns.ts'
 
 // 지난 작업 · 작업 검색 (/history). 이 브라우저 세션이 시작한 실행만 서버가 돌려준다(ADR-0011).
@@ -79,7 +79,7 @@ function RunsPage() {
             ref={search}
             className="input"
             type="search"
-            placeholder="파일 이름, 상태, 날짜, 실행 ID로 찾기"
+            placeholder="파일 이름, 상태, 날짜로 찾기"
             aria-label="작업 검색"
             value={query}
             onChange={(e) => onQuery(e.target.value)}
@@ -119,7 +119,9 @@ function RunsPage() {
                 const file = runFileName(r.run_id)
                 return (
                   <div className="stack-sm" style={{ gap: 2 }}>
-                    <Link to={`/?run=${encodeURIComponent(r.run_id)}`}>{file ? titleFromFile(file) : '설계 실행'}</Link>
+                    <Link to={`/?run=${encodeURIComponent(r.run_id)}`} title={`실행 ID ${r.run_id}`}>
+                      {file ? titleFromFile(file) : '이름 없는 작업'}
+                    </Link>
                     <span className="subtle" style={{ fontSize: 13 }}>
                       {file ?? '파일 이름은 이 브라우저에서 올린 실행만 보여요'}
                     </span>
@@ -140,18 +142,8 @@ function RunsPage() {
                 )
               },
             },
-            { key: 'rev', title: 'revision', width: 90, render: (r) => r.revision },
+            { key: 'rev', title: '설계안', width: 90, render: (r) => revisionBadge(r.revision) },
             { key: 'at', title: '시작', width: 160, nowrap: true, render: (r) => dotDateTime(r.created_at) },
-            {
-              key: 'id',
-              title: '실행 ID',
-              width: 140,
-              render: (r) => (
-                <span className="mono subtle" title={r.run_id}>
-                  {r.run_id.slice(0, 8)}…
-                </span>
-              ),
-            },
             {
               key: 'open',
               title: '',

@@ -74,13 +74,13 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
   const columns: Column<AnalysedRequirement>[] = [
     {
       key: 'id',
-      title: 'ID',
+      title: '원문',
       width: 110,
       render: (r) => (
         <div className="stack-sm" style={{ gap: 2 }}>
-          <span className="mono">{r.id}</span>
-          <span className="subtle" style={{ fontSize: 12 }}>
-            원문 {r.source_id ?? '—'}
+          <span className="mono">{r.source_id ?? '—'}</span>
+          <span className="subtle mono" style={{ fontSize: 12 }}>
+            {r.id}
           </span>
         </div>
       ),
@@ -168,7 +168,7 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
                   조각 더하기
                 </Button>
                 <span className="subtle" style={{ fontSize: 13 }}>
-                  첫 조각은 {r.id}, 나머지는 서버가 새 ID를 붙여요.
+                  첫 조각은 원래 요구사항을 이어받고, 나머지는 새 요구사항이 돼요.
                 </span>
               </div>
             )}

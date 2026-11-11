@@ -15,6 +15,7 @@ import { reviewChecklist } from './checklist.ts'
 import DesignTables from './DesignTables.tsx'
 import FindingsTable from './FindingsTable.tsx'
 import ReviewSummary from './ReviewSummary.tsx'
+import { revisionText } from '../runMeta.ts'
 import SqlValidationPanel from './SqlValidationPanel.tsx'
 import { sqlReview } from './sqlValidation.ts'
 import {
@@ -197,7 +198,7 @@ function ReviewPanel({ run, events, onChanged, label }: Props) {
                     loading={sending}
                     loadingText="승인 중"
                     disabled={!approvable || !canAnswer}
-                    title={`revision ${run.revision}을 승인할까요?`}
+                    title={`${revisionText(run.revision)}을 승인할까요?`}
                     description="승인하면 산출물을 내보내요. 승인본 PDF도 이때 만들어져요."
                     okText="승인"
                     cancelText="취소"

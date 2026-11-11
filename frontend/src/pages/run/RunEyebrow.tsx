@@ -12,7 +12,7 @@ export default function RunEyebrow({ screen, label, run }: { screen: string; lab
     clearTimeout(timer.current)
     timer.current = setTimeout(() => setMessage(''), 3000)
   }
-  return <><span>{runEyebrow(screen, label, run.run_id, run.revision)} · {run.status === 'completed' ? '승인 완료' : run.status === 'exporting' ? '승인 후 내보내기' : STATUS_LABEL[run.status]}</span>{' '}
+  return <><span>{runEyebrow(screen, label, run.revision)} · {run.status === 'completed' ? '승인 완료' : run.status === 'exporting' ? '승인 후 내보내기' : STATUS_LABEL[run.status]}</span>{' '}
     <button type="button" className="link-btn" title={run.run_id} onClick={() => void copy()}>실행 ID 복사</button>
     <span role="status">{message}</span></>
 }

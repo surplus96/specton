@@ -52,16 +52,22 @@ export const STATUS_LABEL: Record<ExtractionBlock['extraction_status'], string> 
   pass: '정상',
 }
 
-/** 보내기 전에 막는 문제. 메시지는 서버 422처럼 블록 ID로 시작한다. */
+/** 사람에게 보이는 원문 이름. 내부 블록 ID 대신 원문 위치와 고객 원문 ID를 쓴다 (예: 「요구사항 시트 4행 · SFR-002」) */
+export function blockLabel(b: Pick<ExtractionBlock, 'source_id' | 'source_ref'>): string {
+  const at = locationText(b.source_ref)
+  return b.source_id ? `${at} · ${b.source_id}` : at
+}
+
+/** 보내기 전에 막는 문제. 메시지는 원문 위치로 시작한다. */
 export function problems(blocks: readonly ExtractionBlock[], decisions: Decisions): string[] {
   const found: string[] = []
   for (const b of blocks) {
     const d = decisions[b.block_id]
     if (b.extraction_status === 'fail' && !d?.exclude) {
-      found.push(`${b.block_id}: 추출에 실패한 블록은 제외해야 합니다`)
+      found.push(`${blockLabel(b)}: 추출에 실패한 원문은 제외해 주세요`)
     }
     if (b.extraction_status === 'review' && d?.exclude && !d.reason.trim()) {
-      found.push(`${b.block_id}: 제외 사유를 적어 주세요`)
+      found.push(`${blockLabel(b)}: 제외 사유를 적어 주세요`)
     }
   }
   return found

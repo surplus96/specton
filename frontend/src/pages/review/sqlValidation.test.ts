@@ -36,6 +36,6 @@ describe('최종 HITL SQL 검증 요약', () => {
     const html = renderToStaticMarkup(createElement(SqlValidationPanel, { result: { status, validatedAt: at } }))
     expect(html).toContain(title)
     expect(html).toContain('검증 시각:')
-    expect(html).toContain(status === 'passed' ? '서버가 최신 결과를 다시 확인' : '필수 검증 조건을 충족하지 못하면 승인할 수 없습니다')
+    expect(html).toContain(status === 'passed' ? '최신 결과를 한 번 더 확인' : '필수 검증 조건을 충족하지 못하면 승인할 수 없습니다')
   })
 })
