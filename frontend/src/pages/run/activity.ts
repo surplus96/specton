@@ -61,9 +61,16 @@ export type ActivityItem = {
  * 패널에 보일 기록. 최신이 맨 위다 (강의장 화면에서 새 소식이 바로 보이게).
  * 종류·단계·문장이 모두 같은 이벤트가 이어지면 한 줄로 합치고 횟수를 센다.
  */
+/** 서버가 단계(노드)마다 남기는 시작·끝 기록인지 (payload.node가 있는 status) */
+export function isNodeEvent(e: SseEvent): boolean {
+  return e.event === 'status' && typeof e.data.payload?.node === 'string'
+}
+
 export function activityItems(events: readonly SseEvent[], receivedAt: Record<number, number> = {}): ActivityItem[] {
   const items: ActivityItem[] = []
   for (const e of events) {
+    // 단계 하나하나의 시작·끝 기록(「a01 시작」·「parse 종료」)은 AI Workspace용이라 여기서는 뺀다
+    if (isNodeEvent(e)) continue
     const stage = stageTitle(e.data.stage)
     const last = items[items.length - 1]
     if (last && last.event === e.event && last.stage === stage && last.message === e.data.message) {

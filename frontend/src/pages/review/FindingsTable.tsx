@@ -2,7 +2,7 @@ import type { Finding, Severity } from '../../api/viewItems.ts'
 import StatusTag from '../../layout/StatusTag.tsx'
 import type { Tone } from '../../theme.ts'
 import DataTable from '../../ui/DataTable.tsx'
-import { SEVERITY_LABEL, STAGE_LABEL, sortFindings, sourceText, targetText } from './rules.ts'
+import { SEVERITY_LABEL, STAGE_LABEL, plainText, sortFindings, sourceText, targetText } from './rules.ts'
 
 // 검토 지적 표. 최종 검토(UI-06)와 결과 작업공간(UI-05) 「검토」 탭이 같이 쓴다.
 // 심각도는 색만이 아니라 글(차단·주요·참고)로도 보인다. 데이터에 없는 지적을 만들어 보이지 않는다.
@@ -44,13 +44,13 @@ function FindingsTable({ findings, names }: Props) {
             <div className="stack-sm" style={{ gap: 4 }}>
               {f.evidence.map((e, i) => (
                 <span key={i}>
-                  {e.req_id && <span className="mono subtle">{e.req_id} </span>}「{e.quote}」
+                  {e.req_id && <span className="mono subtle">{e.req_id} </span>}「{plainText(e.quote)}」
                 </span>
               ))}
             </div>
           ),
         },
-        { key: 'suggestion', title: '제안', render: (f) => f.suggestion },
+        { key: 'suggestion', title: '제안', render: (f) => plainText(f.suggestion) },
         {
           key: 'source',
           title: '출처 · 돌아갈 단계',

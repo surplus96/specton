@@ -19,6 +19,7 @@ import {
   sortFindings,
   sourceText,
   targetText,
+  plainText,
 } from './rules.ts'
 
 const finding = (id: string, severity: Finding['severity'], extra: Partial<Finding> = {}): Finding => ({
@@ -102,12 +103,20 @@ describe('지적 표시', () => {
     expect(sourceText(finding('F', 'major'))).toBe('데이터 누락 검토')
   })
 
-  it('대상은 설계 이름을 먼저, ID는 괄호에 (속성은 엔티티.속성, 관계는 부모 → 자식)', () => {
+  it('대상은 설계 이름만 보이고 내부 ID는 보이지 않는다 (속성은 테이블.항목, 관계는 부모 → 자식)', () => {
     const names = nameIndex(design)
-    expect(targetText({ kind: 'entity', id: 'ENT-01' }, names)).toBe('창고 (ENT-01)')
-    expect(targetText({ kind: 'attribute', id: 'ATTR-01' }, names)).toBe('창고.창고코드 (ATTR-01)')
-    expect(targetText({ kind: 'relationship', id: 'REL-01' }, names)).toBe('창고 → 입고 (REL-01)')
-    expect(targetText({ kind: 'function', id: 'FN-99' }, names)).toBe('FN-99')
+    expect(targetText({ kind: 'entity', id: 'ENT-01' }, names)).toBe('창고')
+    expect(targetText({ kind: 'attribute', id: 'ATTR-01' }, names)).toBe('창고.창고코드')
+    expect(targetText({ kind: 'relationship', id: 'REL-01' }, names)).toBe('창고 → 입고')
+    expect(targetText({ kind: 'function', id: 'FN-99' }, names)).toBe('기능')
+  })
+
+  it('근거 글에서 설계 객체 ID와 임시 영문 이름을 빼고, 요구사항 번호는 남긴다', () => {
+    expect(plainText('명세번호 (ATTR-1a3d7a21b0e5807a): 표준 물리명 미확정. 기술 식별자 c_530ca3961c9de487c306f9b7 사용.')).toBe(
+      '명세번호: 표준 영문 이름을 아직 정하지 못했어요. 임시 영문 이름을 썼어요.',
+    )
+    expect(plainText('피킹지시 (ENT-2f6c39559f8f0aa8) 확인')).toBe('피킹지시 확인')
+    expect(plainText('REQ-01 근거, t_ef11914c209eda772e3ab28f 사용 중')).toBe('REQ-01 근거, 임시 영문 이름 사용 중')
   })
 
   it('불완전 검토·멈춘 이유는 지금 확인 요청의 interrupt 이벤트에서 읽는다', () => {

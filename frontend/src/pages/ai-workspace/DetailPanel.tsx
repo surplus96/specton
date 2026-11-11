@@ -1,6 +1,6 @@
 import type { ArtifactRef, DesignEntity, DesignFunction, DesignItem, Finding, Severity } from '../../api/viewItems.ts'
 import { dark } from '../../theme.ts'
-import { SEVERITY_LABEL, STAGE_LABEL, sortFindings, sourceText, targetText } from '../review/rules.ts'
+import { SEVERITY_LABEL, STAGE_LABEL, plainText, sortFindings, sourceText, targetText } from '../review/rules.ts'
 import type { SqlReview } from '../review/sqlValidation.ts'
 import { KIND_LABEL as ARTIFACT_LABEL, missingKinds } from '../workspace/rules.ts'
 import { findingEntities } from './erd.ts'
@@ -191,7 +191,7 @@ function SelectionDetail({ selection, design, findings, names, traceNodes, pipel
       <Row label="항목">{entity.attributes.length}개</Row>
       <Row label="근거 요구사항">{entity.req_ids.join(', ') || '없음'}</Row>
       <Row label="이 테이블을 쓰는 기능">{crud.length ? crud.map((c) => <div key={c}>{c}</div>) : '없음'}</Row>
-      <Row label="검토 의견">{related.length ? related.map((f) => <div key={f.id}>{f.id} {targetText(f.targets[0], names)}</div>) : '없음'}</Row>
+      <Row label="검토 의견">{related.length ? related.map((f) => <div key={f.id}>{targetText(f.targets[0], names)}</div>) : '없음'}</Row>
     </>
   )
 }
@@ -238,10 +238,10 @@ function DetailPanel(props: Props) {
                 <div style={{ fontSize: 12, marginTop: 6, color: dark.inkMuted, display: 'grid', gap: 4 }}>
                   {f.evidence.map((e, i) => (
                     <div key={i}>
-                      {e.req_id && <strong>{e.req_id} </strong>}「{e.quote}」
+                      {e.req_id && <strong>{e.req_id} </strong>}「{plainText(e.quote)}」
                     </div>
                   ))}
-                  <div style={{ color: dark.ink }}>이렇게 고쳐 보세요: {f.suggestion}</div>
+                  <div style={{ color: dark.ink }}>이렇게 고쳐 보세요: {plainText(f.suggestion)}</div>
                   <div>고칠 곳: {f.kind === 'technical_identifier' ? '참고 · 기술용 이름 사용' : f.target_stage ? STAGE_LABEL[f.target_stage] : '판단 필요'}</div>
                 </div>
               )}

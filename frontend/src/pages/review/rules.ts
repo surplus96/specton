@@ -111,8 +111,30 @@ export function nameIndex(design: readonly DesignItem[]): Map<string, string> {
 }
 
 export function targetText(target: Finding['targets'][number], names: Map<string, string>): string {
-  const name = names.get(target.id)
-  return name ? `${name} (${target.id})` : target.id
+  // 내부 ID(ATTR-…·ENT-…)는 화면에 쓰지 않는다. 이름을 모르면 종류만 말한다
+  return names.get(target.id) ?? TARGET_KIND_TEXT[target.kind] ?? '이름 없는 대상'
+}
+
+const TARGET_KIND_TEXT: Record<string, string> = {
+  requirement: '요구사항',
+  function: '기능',
+  entity: '테이블',
+  attribute: '항목',
+  relationship: '테이블 연결',
+}
+
+/**
+ * 서버가 만든 근거·제안 글에서 사람에게 필요 없는 내부 값을 뺀다.
+ * - 「(ATTR-1a3d…)」처럼 괄호 안의 설계 객체 ID
+ * - 「기술 식별자 c_530c…」 같은 임시 영문 이름
+ * 요구사항 번호(REQ-01)와 고객 원문 ID는 추적에 필요해 남긴다.
+ */
+export function plainText(text: string): string {
+  return text
+    .replace(/\s*\((?:ATTR|ENT|REL|FUNC|FK)-[0-9A-Za-z_-]+\)/g, '')
+    .replace(/표준 물리명 미확정\./g, '표준 영문 이름을 아직 정하지 못했어요.')
+    .replace(/기술 식별자 [a-z]_[0-9a-f]{8,} 사용\./g, '임시 영문 이름을 썼어요.')
+    .replace(/\b[a-z]_[0-9a-f]{12,}\b/g, '임시 영문 이름')
 }
 
 /** 자동 재작업을 멈추고 사람에게 넘긴 이유 (review/rework.py HitlReason) */

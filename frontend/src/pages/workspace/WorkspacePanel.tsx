@@ -28,7 +28,7 @@ import { KIND_LABEL, downloadErrorText, isApproved, isDownloadable, missingKinds
 
 // UI-05 결과 작업공간: 기능·ERD·DDL·RTM·검토 탭, revision 고르기, 미완성 가지 표시.
 // 설계를 직접 고치지는 않는다. 바꾸려면 최종 검토(UI-06)에서 수정을 요청한다.
-// 탭마다 누가 만들었는지(AI 판단 / 코드 생성)를 보인다: LLM은 판단만, ID·SQL·도면·RTM은 코드가 만든다.
+// AI가 판단한 탭(기능·검토)에만 「AI 판단」 표시를 단다. 코드가 만드는 ERD·DDL·RTM 탭에는 표시하지 않는다.
 type Props = {
   run: RunStatus
   label: string
@@ -37,11 +37,8 @@ type Props = {
 }
 
 
-const ORIGIN: Record<WorkspaceTab, string> = {
+const ORIGIN: Partial<Record<WorkspaceTab, string>> = {
   design: 'AI 판단',
-  erd: '코드 생성',
-  ddl: '코드 생성',
-  rtm: '코드 생성',
   review: 'AI 검토 · 규칙',
 }
 
@@ -127,7 +124,7 @@ function WorkspacePanel({ run, label, onReview }: Props) {
             label="결과 탭"
             active={tab}
             onChange={openTab}
-            extra={<span className="badge">{ORIGIN[tab]}</span>}
+            extra={ORIGIN[tab] ? <span className="badge">{ORIGIN[tab]}</span> : undefined}
             items={[
               { key: 'design', label: '기능', content: <DesignTables items={data.design} names={names} /> },
               { key: 'erd', label: 'ERD', content: <ErdView runId={run.run_id} artifact={find('erd', 'mmd')} /> },

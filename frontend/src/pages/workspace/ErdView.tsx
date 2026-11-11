@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { errorMessage } from '../../api/errors.ts'
 import type { ArtifactRef } from '../../api/viewItems.ts'
 import Icon from '../../layout/Icon.tsx'
@@ -67,10 +67,19 @@ function ErdView({ runId, artifact }: Props) {
   const size = useMemo(() => (svg ? svgSize(svg) : null), [svg])
   const src = useMemo(() => (svg ? svgDataUri(svg) : null), [svg])
 
-  function fit() {
+  // 화면에 맞춤: 그림 전체가 가로·세로 모두 상자(.erd-box, 최대 높이 70vh) 안에 들어가는 배율. 원래 크기보다 키우지는 않는다
+  const fit = useCallback(() => {
     const width = box.current?.clientWidth
-    if (size && width) setScale(Math.min(1, (width - 32) / size.width))
-  }
+    if (!size || !width) return
+    const padding = 32 // .erd-box 안쪽 여백 16px × 2
+    const height = window.innerHeight * 0.7 - padding - 2
+    setScale(Math.max(0.1, Math.min(1, (width - padding) / size.width, height / size.height)))
+  }, [size])
+
+  // 처음 그림을 그리면 전체가 한 번에 보이게 맞춘다
+  useEffect(() => {
+    if (src) fit()
+  }, [src, fit])
 
   async function download() {
     if (!artifact) return
