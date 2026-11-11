@@ -49,8 +49,16 @@ def binding_columns(rel: Relationship, parent: Table, child: Table) -> dict[str,
         optional=rel.optional,
         identifying=rel.identifying,
     ):
+        columns = ", ".join(
+            f"{result[key].name}(nullable={str(result[key].nullable).lower()})"
+            if key in result
+            else f"파생 FK {key}(nullable={str(rel.optional and not rel.identifying).lower()})"
+            for key in parent.primary_key
+        )
         raise ValueError(
-            "FK 재사용 NULL 조건 불일치: 필수 FK는 모두 NOT NULL, 선택 FK는 NULL 가능 칸이 필요"
+            "FK 재사용 NULL 조건 불일치: 필수 FK는 모두 NOT NULL, 선택 FK는 NULL 가능 칸이 필요. "
+            f"{parent.name} → {child.name}; optional={str(rel.optional).lower()}, "
+            f"identifying={str(rel.identifying).lower()}; 자식 FK: {columns}"
         )
     return result
 

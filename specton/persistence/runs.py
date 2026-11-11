@@ -161,10 +161,28 @@ def load_run(conn: Connection[DictRow], run_id: UUID) -> RunStatus:
 
 def load_versions(conn: Connection[DictRow], run_id: UUID) -> VersionInfo:
     """실행기용: 첫 설계 상태에 넣을 팩 버전. 노드는 상태의 팩으로 few-shot을 읽는다 (#17)."""
-    row = conn.execute("SELECT pack, pack_version FROM run WHERE run_id = %s", (run_id,)).fetchone()
+    row = conn.execute(
+        "SELECT pack, pack_version, model_config FROM run WHERE run_id = %s", (run_id,)
+    ).fetchone()
     if row is None:
         raise RunNotFoundError(str(run_id))
-    return VersionInfo(pack_id=row["pack"], pack_version=row["pack_version"])
+    config = row["model_config"] or {}
+    policy = config.get("execution_policy") or {}
+    # 기존 API 실행은 모델 설정이 있다. 정책 없는 실행을 묵시 갱신하지 않는다.
+    if config and (
+        not isinstance(policy, dict)
+        or not policy.get("common_version")
+        or not policy.get("policy_digest")
+    ):
+        from specton.packs.provenance import ExecutionPolicyError
+
+        raise ExecutionPolicyError("기존 실행에 고정된 정책 기록이 없습니다. 새 실행이 필요합니다.")
+    return VersionInfo(
+        pack_id=row["pack"],
+        pack_version=row["pack_version"],
+        common_version=policy.get("common_version"),
+        policy_digest=policy.get("policy_digest"),
+    )
 
 
 def load_documents(conn: Connection[DictRow], run_id: UUID) -> list[dict[str, str]]:

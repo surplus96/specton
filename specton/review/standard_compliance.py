@@ -461,7 +461,19 @@ def _check_words(
             f"{where}: 이름을 팩 사전·공통표준 단어로 끝까지 나눌 수 없습니다.",
             "공통표준 단어로 바꾸거나 팩 사전에 낱말을 등록한다.",
         )
-        return
+        # 미등록 조각이 있어도 공백으로 분리된 완전한 단어의 금칙어 진단은 유지한다.
+        known_parts = tuple(
+            word
+            for chunk in _nfc(column.name).split()
+            for word in (split_from_end(chunk, ctx.known) or ())
+        )
+        parts = tuple(
+            w
+            for w in known_parts
+            if w not in ctx.registered and (w in ctx.forbidden or w in ctx.synonyms)
+        )
+        if not parts:
+            return  # 미확인 부분이 있으므로 SC-04 통과로 집계하지 않는다.
     tally.diagnosed["SC-04"] += 1
     for word in dict.fromkeys(parts):
         # 팩에 등록한 낱말은 팩 리뷰를 거친 의도한 선택이라 지적하지 않는다 (R2 11/9, R1 #247)

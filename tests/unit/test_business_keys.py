@@ -141,3 +141,43 @@ def test_absent_new_fields_keep_legacy_payload_hash_and_new_declarations_change_
     assert model_payload(legacy) == old
     assert model_hash(legacy) == expected
     assert model_hash(original) != expected
+
+
+@pytest.mark.parametrize("optional,nullable", [(False, True), (True, False)])
+def test_null_conflict_explains_actual_values_and_preserves_semantics(optional, nullable):
+    from specton.contracts import Severity
+    from specton.review.normalization_findings import map_normalization_failure
+
+    state = business_design()
+    parent, child = state.entities
+    child = child.evolve(
+        attributes=tuple(
+            a.evolve(nullable=nullable) if a.id == "ATTR-wh" else a for a in child.attributes
+        )
+    )
+    state = state.evolve(
+        entities=(parent, child),
+        relationships=(state.relationships[0].evolve(optional=optional),),
+        versions={"pack_id": PACK.name, "pack_version": PACK.version},
+    )
+    result = normalize(state, pack=PACK, lexicon=LEXICON, rules=RULES)
+    assert isinstance(result, NormalizeFailed)
+    problems = tuple(p for p in result.problems if p.code == ProblemCode.INVALID_FK_BINDING)
+    assert len(problems) == 1
+    assert f"optional={str(optional).lower()}" in problems[0].detail
+    assert f"창고코드(nullable={str(nullable).lower()})" in problems[0].detail
+    review = map_normalization_failure(state, problems, severities={"RULE-04": Severity.CRITICAL})
+    assert not review["requires_manual_review"]
+    assert review["findings"][0].target_stage == "data_model"
+    assert "재사용 선언을 제거하지 않는다" in review["findings"][0].suggestion
+    assert state.relationships[0].optional is optional
+    assert state.entities[1].attributes[1].nullable is nullable
+
+    corrected_child = child.evolve(
+        attributes=tuple(
+            a.evolve(nullable=optional) if a.id == "ATTR-wh" else a for a in child.attributes
+        )
+    )
+    corrected = state.evolve(entities=(parent, corrected_child))
+    assert isinstance(normalize(corrected, pack=PACK, lexicon=LEXICON, rules=RULES), Normalized)
+    assert corrected.relationships == state.relationships

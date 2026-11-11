@@ -66,3 +66,44 @@ def test_policy_digest_detects_settings_and_source_changes(tmp_path):
         assert policy_digest(root, "inventory") != original
         path.write_text(before)
     assert policy_digest(root, "inventory") == original
+
+
+def test_run_policy_pin_detects_same_version_content_changes(tmp_path):
+    import shutil
+
+    import pytest
+
+    from specton.packs.build import DEFAULT_ROOT
+    from specton.packs.provenance import ExecutionPolicyError, capture_policy, verify_policy
+
+    root = tmp_path / "packs"
+    shutil.copytree(DEFAULT_ROOT, root)
+    pin = capture_policy(root, "inventory")
+    verify_policy(root, "inventory", pin["common_version"], pin["policy_digest"])
+    p = root / "common/rules.yaml"
+    p.write_text(p.read_text() + "\n# changed policy\n")
+    with pytest.raises(ExecutionPolicyError, match="새 실행"):
+        verify_policy(root, "inventory", pin["common_version"], pin["policy_digest"])
+
+
+def test_incomplete_policy_pin_is_rejected():
+    import pytest
+
+    from specton.packs.build import DEFAULT_ROOT
+    from specton.packs.provenance import ExecutionPolicyError, verify_policy
+
+    with pytest.raises(ExecutionPolicyError, match="불완전"):
+        verify_policy(DEFAULT_ROOT, "inventory", "0.1.8", None)
+
+
+def test_normalizer_rejects_old_common_record_even_without_run_pin():
+    import pytest
+
+    from specton.codegen.normalize_step import normalize_design
+    from specton.packs.provenance import ExecutionPolicyError
+    from tests.unit.test_design_rules_node import state
+
+    design = state(used=True)["design"]
+    old = design.normalized.evolve(common_version="0.1.7", policy_digest="old")
+    with pytest.raises(ExecutionPolicyError, match="새 실행"):
+        normalize_design(design.evolve(normalized=old))

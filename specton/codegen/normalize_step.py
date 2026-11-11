@@ -23,7 +23,7 @@ from specton.codegen.naming import DEFAULT_PACK_ROOT, load_naming_rules, load_pa
 from specton.codegen.normalize import PackRef, normalize
 from specton.contracts import DesignState
 from specton.packs.build import read_yaml
-from specton.packs.provenance import policy_digest
+from specton.packs.provenance import policy_digest, verify_policy
 
 
 def normalize_from_state(
@@ -60,6 +60,13 @@ def normalize_design(design: DesignState, *, root: Path = DEFAULT_PACK_ROOT) -> 
                 ),
             )
         )
+    previous = design.normalized
+    verify_policy(
+        root,
+        pack,
+        design.versions.common_version or (previous.common_version if previous else None),
+        design.versions.policy_digest or (previous.policy_digest if previous else None),
+    )
     result = normalize(
         design,
         pack=PackRef(pack, recorded),

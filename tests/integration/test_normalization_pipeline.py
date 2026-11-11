@@ -34,6 +34,7 @@ from specton.design_rules_node import design_rules_node
 from specton.erd_node import erd_node
 from specton.graph import REVIEWERS, GraphState, Node
 from specton.packs.build import DEFAULT_ROOT, read_yaml
+from specton.packs.provenance import ExecutionPolicyError
 from specton.persistence.db import Pool, create_checkpointer
 from specton.persistence.runs import events_after
 from specton.runner import Runner
@@ -592,10 +593,11 @@ def test_pack_execution_failure_does_not_become_a_rule_or_an_approval(
     status = world.status(run_id)
     assert status.status == "failed" and status.error is not None
     assert status.error.code == "INTERNAL"
-    assert status.error.message == "실행 중 서버 오류가 발생했습니다."
+    assert status.error.message == "팩·검사 정책이 변경되었습니다. 새 실행이 필요합니다."
+    assert status.error.retryable is False
     assert status.interrupt is None and world.visited == []
     models = world.models(run_id)
-    assert models and all("normalized" not in row["normalized_model"] for row in models)
+    assert models == []  # 정책 대조는 설계·체크포인트 저장보다 먼저 수행한다.
     review = world.client.get(f"/runs/{run_id}/view", params={"section": "review"})
     assert review.json()["items"] == []
     events = world.events(run_id)
@@ -607,10 +609,7 @@ def test_pack_execution_failure_does_not_become_a_rule_or_an_approval(
         if record.name == "specton.runner" and record.exc_info
     ]
     (error,) = errors
-    if failure == "version_changed":
-        assert isinstance(error, ValueError) and "pack_mismatch" in str(error)
-    else:
-        assert isinstance(error, FileNotFoundError) and "naming.yaml" in str(error)
+    assert isinstance(error, ExecutionPolicyError)
     stream = world.client.get(f"/runs/{run_id}/events")
     assert stream.status_code == 200 and "event: error" in stream.text
     assert "pack_mismatch" not in stream.text and "naming.yaml" not in stream.text
@@ -618,7 +617,7 @@ def test_pack_execution_failure_does_not_become_a_rule_or_an_approval(
         "interrupt_id": "no-review-on-failed-run", "expected_revision": status.revision,
         "response": {"kind": "review", "decision": "approve", "feedback": ""},
     })  # fmt: skip
-    assert (response.status_code, response.json()["code"]) == (409, "INTERRUPT_STALE")
+    assert (response.status_code, response.json()["code"]) == (422, "INVALID_RESPONSE")
     assert world.status(run_id) == status and world.models(run_id) == models
     assert world.events(run_id) == events
     with world.pool.connection() as conn:
@@ -656,3 +655,69 @@ def test_unknown_business_name_reaches_review_and_survives_restart(pipeline):
     assert restarted.answer(run_id, "approve").status_code == 202
     restarted.runner.run_pending()
     assert restarted.status(run_id).status == "completed"
+
+
+@pytest.mark.parametrize("change", ["version", "same_version_content"])
+def test_policy_changed_after_upload_stops_before_design(pipeline, change):
+    calls = []
+
+    def design(state):
+        calls.append("design")
+        return {"design": state["design"].evolve(entities=(_entity(),))}
+
+    world = pipeline(design)
+    run_id = world.create()
+    root = world.settings.pack_root
+    if change == "version":
+        path = root / "common/manifest.yaml"
+        path.write_text(path.read_text().replace("version: 0.1.8", "version: 0.1.999"))
+    else:
+        path = root / "common/rules.yaml"
+        path.write_text(path.read_text() + "\n# changed after upload\n")
+    world.runner.run_pending()
+    status = world.status(run_id)
+    assert status.status == "failed"
+    assert status.error is not None and status.error.retryable is False
+    assert "새 실행" in status.error.message
+    assert calls == [] and world.visited == []
+
+
+def test_policy_changed_before_approval_preserves_waiting_state(pipeline):
+    def design(state):
+        return {"design": state["design"].evolve(entities=(_entity(),))}
+
+    world = pipeline(design)
+    run_id = world.create()
+    world.runner.run_pending()
+    before = world.status(run_id)
+    snapshots_before = world.models(run_id)
+    path = world.settings.pack_root / "common/rules.yaml"
+    path.write_text(path.read_text() + "\n# changed during HITL\n")
+    response = world.answer(run_id, "approve")
+    assert response.status_code == 422
+    assert "새 실행" in response.json()["message"]
+    assert world.status(run_id) == before
+    assert world.models(run_id) == snapshots_before
+    with world.pool.connection() as conn:
+        assert (
+            conn.execute("SELECT 1 FROM approval WHERE run_id = %s", (UUID(run_id),)).fetchone()
+            is None
+        )
+
+
+def test_legacy_api_run_without_policy_cannot_silently_resume(pipeline):
+    def design(state):
+        pytest.fail("이전 정책 미확정 실행에서 설계가 호출됨")
+
+    world = pipeline(design)
+    run_id = world.create()
+    with world.pool.connection() as conn:
+        conn.execute(
+            "UPDATE run SET model_config = model_config - 'execution_policy' WHERE run_id = %s",
+            (UUID(run_id),),
+        )
+        conn.commit()
+    world.runner.run_pending()
+    status = world.status(run_id)
+    assert status.status == "failed"
+    assert status.error is not None and "정책 기록" in status.error.message

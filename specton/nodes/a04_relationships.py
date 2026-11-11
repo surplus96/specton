@@ -29,7 +29,7 @@ from specton.nodes.common import (
 )
 from specton.packs.examples import load_examples
 
-PROMPT_VERSION = "a04-v7"
+PROMPT_VERSION = "a04-v8"
 SYSTEM_PROMPT = """\
 너는 데이터 모델 관계 설계자다. 주어진 엔티티 사이의 관계를 요구사항에 근거해 판단한다.
 - parent_name·child_name에는 입력 엔티티의 name을 그대로 쓴다.
@@ -48,6 +48,9 @@ SYSTEM_PROMPT = """\
   유지할 수 있고, 나머지 칸의 NULL로 선택 참조의 부재를 표현한다 (MATCH SIMPLE).
   충돌을 숨기려고 재사용 선언을 빼지 않는다. 재사용하려고 요구사항의 선택·식별 의미를 바꾸거나
   존재하는 업무 속성을 바꾸지 않는다. 타입·NULL·키의 최종 검사는 정리 코드도 수행한다.
+- 현재 FK는 즉시 검사하므로 필수 관계가 순환하면 최초 데이터를 넣을 수 없다. 기본값·대표값 선택을
+  소속 관계와 반대 방향의 필수 FK로 무조건 만들지 않는다. 원문 의미에 맞는 선택 상태나
+  자식의 기본 여부 등 순환 없는 표현을 검토하고, 선택성 변경으로 제약을 몰래 완화하지 않는다.
 - req_ids에는 근거 요구사항 ID를 적는다.
 - rationale은 req_ids 요구사항 문장에서 근거 부분을 큰따옴표로 그대로 인용하고,
   판단 설명을 한 문장 덧붙인다.
