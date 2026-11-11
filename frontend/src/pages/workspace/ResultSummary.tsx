@@ -8,14 +8,15 @@ import { resultCounts } from './summary.ts'
 // 흰 카드 + 테두리, 아이콘은 파랑. 차단 지적이 있으면 그 카드만 진한 빨강 면 + 흰 글자.
 type Props = {
   design: readonly DesignItem[]
-  findings: readonly Finding[]
+  /** null이면 검토 지적을 불러오지 못한 것. 지적 카드 대신 안내를 보인다 */
+  findings: readonly Finding[] | null
 }
 
 type Card = { label: string; value: number; icon: IconName; danger?: boolean }
 
 function ResultSummary({ design, findings }: Props) {
-  const c = resultCounts(design, findings)
-  const cards: Card[] = [
+  const c = resultCounts(design, findings ?? [])
+  const all: Card[] = [
     { label: '요구사항', value: c.requirements, icon: 'file' },
     { label: '기능', value: c.functions, icon: 'list' },
     { label: '엔티티 (테이블)', value: c.entities, icon: 'database' },
@@ -23,6 +24,8 @@ function ResultSummary({ design, findings }: Props) {
     { label: '검토 지적', value: c.findings, icon: 'check' },
     { label: '차단 지적', value: c.blocking, icon: 'alert', danger: c.blocking > 0 },
   ]
+  // 지적을 못 불러왔는데 「0건」으로 보이면 안 되므로 지적 카드는 뺀다
+  const cards = findings === null ? all.filter((card) => card.icon !== 'check' && card.icon !== 'alert') : all
   return (
     <section
       aria-label="결과 한눈에 보기"
@@ -63,6 +66,11 @@ function ResultSummary({ design, findings }: Props) {
           </div>
         </div>
       ))}
+      {findings === null && (
+        <div role="status" style={{ alignSelf: 'center', color: colors.inkMuted }}>
+          검토 지적을 불러오지 못했습니다. 파일은 그대로 내려받을 수 있습니다.
+        </div>
+      )}
     </section>
   )
 }

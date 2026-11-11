@@ -66,12 +66,16 @@ function WorkspacePanel({ run }: Props) {
   // 고른 탭은 주소(&tab=)에 둔다. 완료 화면의 파이프라인 카드가 이 탭으로 바로 연다.
   const [params, setParams] = useSearchParams()
   const tab = workspaceTab(params.get('tab'))
+  // 탭 바꾸기는 기록을 쌓지 않는다(replace). 뒤로가기가 탭을 하나씩 거슬러 가지 않게
   function openTab(next: WorkspaceTab) {
-    setParams((p) => {
-      const q = new URLSearchParams(p)
-      q.set('tab', next)
-      return q
-    })
+    setParams(
+      (p) => {
+        const q = new URLSearchParams(p)
+        q.set('tab', next)
+        return q
+      },
+      { replace: true },
+    )
   }
 
   const names = useMemo(() => nameIndex(data?.design ?? []), [data])

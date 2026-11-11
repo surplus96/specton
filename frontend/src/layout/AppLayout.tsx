@@ -5,8 +5,10 @@ import { colors, weights } from '../theme.ts'
 // 모든 화면이 공유하는 틀: 맨 위 바 + 가운데 본문.
 // <Outlet /> 자리에 주소에 맞는 화면(HomePage, UploadPage, RunPage …)이 들어간다.
 // 첫 화면(/)은 흰 바(남색 글자 + 파랑 「ton」), 그 밖의 화면은 남색 바(아래 파랑 선).
+// 실행 화면도 주소가 /?run=<id>라 경로만으로는 같으므로, run 파라미터가 없을 때만 첫 화면으로 본다.
 function AppLayout() {
-  const home = useLocation().pathname === '/'
+  const { pathname, search } = useLocation()
+  const home = pathname === '/' && !new URLSearchParams(search).has('run')
 
   return (
     <Layout style={{ minHeight: '100vh' }}>

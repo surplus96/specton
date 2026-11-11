@@ -3,6 +3,7 @@
 import type { ArtifactRef, DesignItem } from '../../api/viewItems.ts'
 import type { Tone } from '../../theme.ts'
 import type { ArtifactKind } from './rules.ts'
+import { sqlReview, type SqlReview } from '../review/sqlValidation.ts'
 import { resultCounts } from './summary.ts'
 
 /** 결과 작업공간의 탭 (주소 `&tab=`). 카드를 누르면 이 탭으로 간다. */
@@ -25,11 +26,14 @@ export type PipelineStage = {
   tab: WorkspaceTab
 }
 
-const VALIDATION_BADGE: Record<NonNullable<ArtifactRef['validation']>['status'], StageBadge> = {
+// SQL 검증 상태는 최종 검토 화면과 같은 규칙(review/sqlValidation.ts의 sqlReview)으로 읽는다.
+// 서버가 모르는 상태를 주면 두 화면 모두 「검증 전」으로 보인다
+const VALIDATION_BADGE: Record<SqlReview['status'], StageBadge> = {
   passed: { tone: 'success', text: '검증 통과' },
   failed: { tone: 'danger', text: '검증 실패' },
   error: { tone: 'warning', text: '검증 오류' },
   unverified: { tone: 'neutral', text: '검증 전' },
+  missing: { tone: 'neutral', text: 'SQL 없음' },
 }
 
 /** 산출물 종류 하나의 상태: 파일이 없으면 미완성, 모두 승인본이면 승인본, 아니면 초안 */
@@ -76,7 +80,7 @@ export function pipelineStages(design: readonly DesignItem[], artifacts: readonl
       title: 'DDL (SQL)',
       detail: ddl ? 'PostgreSQL 테이블 생성 SQL' : '아직 만들어지지 않았습니다',
       status: artifactBadge(artifacts, 'ddl'),
-      extra: ddl ? VALIDATION_BADGE[ddl.validation?.status ?? 'unverified'] : null,
+      extra: ddl ? VALIDATION_BADGE[sqlReview(artifacts, ddl.revision).status] : null,
       tab: 'ddl',
     },
     {

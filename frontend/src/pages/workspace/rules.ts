@@ -239,7 +239,7 @@ export const VIEW_LABEL: Record<ResultView, string> = {
   downloads: '다운로드',
 }
 
-// ── 이전 실행 (UI-07 이력) ────────────────────────────────
+// ── 실행 상태 이름 (UI-01 「이전 실행」 등) ────────────────────────────────
 
 export const STATUS_LABEL: Record<RunState, string> = {
   queued: '대기',

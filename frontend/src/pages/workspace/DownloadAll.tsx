@@ -49,7 +49,8 @@ function DownloadAll({ runId, artifacts }: Props) {
         </Typography.Text>
       </Flex>
       {result && result.failed.length === 0 && (
-        <Alert type="success" showIcon title={`${result.saved}개 파일을 저장했습니다.`} />
+        <Alert type="success" showIcon title={`${result.saved}개 파일 저장을 요청했습니다.`}
+          description="브라우저가 여러 파일 받기를 막았다면 주소창의 안내에서 허용해 주세요." />
       )}
       {result && result.failed.length > 0 && (
         <Alert

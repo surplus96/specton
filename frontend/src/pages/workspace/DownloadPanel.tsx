@@ -34,7 +34,8 @@ function DownloadPanel({ run }: Props) {
   const [, setParams] = useSearchParams()
   const [artifacts, setArtifacts] = useState<ArtifactRef[] | null>(null)
   const [design, setDesign] = useState<DesignItem[]>([])
-  const [findings, setFindings] = useState<Finding[]>([])
+  // null: 검토 지적을 불러오지 못함 (요약의 지적 칸만 비우고 다운로드는 그대로)
+  const [findings, setFindings] = useState<Finding[] | null>([])
   const [loadError, setLoadError] = useState<unknown>(null)
   const [reloadKey, setReloadKey] = useState(0)
 
@@ -42,14 +43,17 @@ function DownloadPanel({ run }: Props) {
     let alive = true
     setArtifacts(null)
     setLoadError(null)
-    Promise.all([getView(run.run_id, 'design', run.revision), getView(run.run_id, 'review', run.revision)])
-      .then(([designView, reviewView]) => {
+    // 다운로드에 필요한 것은 design(산출물 목록)뿐이다. review는 요약 카드용이라 따로 받고 실패해도 파일은 받을 수 있다
+    getView(run.run_id, 'design', run.revision)
+      .then((designView) => {
         if (!alive) return
         setDesign(designView.items as DesignItem[])
-        setFindings(reviewView.items as Finding[])
         setArtifacts(toArtifacts(designView.artifacts))
       })
       .catch((err: unknown) => alive && setLoadError(err))
+    getView(run.run_id, 'review', run.revision)
+      .then((reviewView) => alive && setFindings(reviewView.items as Finding[]))
+      .catch(() => alive && setFindings(null))
     return () => {
       alive = false
     }
@@ -99,11 +103,9 @@ function DownloadPanel({ run }: Props) {
       subtitle={`revision ${run.revision} 산출물을 형식별로 내려받습니다.`}
       actions={
         // 끝난 실행에서 바로 다음 문서로. 이 실행은 실행 시작 화면의 「이전 실행」 목록에서 다시 열 수 있다
-        run.status === 'completed' && (
-          <Button type="primary" size="large" onClick={() => navigate('/start')}>
-            새 문서로 시작
-          </Button>
-        )
+        <Button type="primary" size="large" onClick={() => navigate('/start')}>
+          새 문서로 시작
+        </Button>
       }
     >
       <Flex vertical gap={24}>
