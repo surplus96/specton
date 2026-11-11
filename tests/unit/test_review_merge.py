@@ -266,3 +266,31 @@ class TestMerge:
         )
 
         assert len(merged.findings) == 2
+
+
+def test_graph_preserves_rejection_reason_without_promoting_it_to_a_finding() -> None:
+    from specton.contracts.base import TargetStage
+    from specton.graph import REVIEWERS, _apply, _merge, _normalization_failure
+    from specton.review.rework import ReworkAction, ReworkDecision
+
+    invalid = _finding(1, targets=[{"kind": "entity", "id": "ENT-99"}])
+    state = {
+        "design": _state(),
+        "branches": {r: _branch(r, *([invalid] if r == "A05" else [])) for r in REVIEWERS},
+    }
+    update = _merge(state)
+    assert not update["design"].findings
+    assert update["failed_branches"] == ()
+    assert update["rejected_findings"] == (
+        {"finding_id": invalid.id, "reviewer_id": "A05", "reason": "unknown_target"},
+    )
+    # 새로운 revision이나 검토 생략 경로에 이전 제외 진단을 붙이지 않는다.
+    state.update(update)
+    assert (
+        _apply(state, ReworkDecision(ReworkAction.REWORK, TargetStage.DATA_MODEL))[
+            "rejected_findings"
+        ]
+        == ()
+    )
+    state["rule_findings"] = (_rule(1),)
+    assert _normalization_failure(state)["rejected_findings"] == ()

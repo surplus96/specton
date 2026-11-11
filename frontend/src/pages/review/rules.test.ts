@@ -14,6 +14,7 @@ import {
   nameIndex,
   problems,
   reviewNotices,
+  reviewDiagnostics,
   severityGroups,
   sortFindings,
   sourceText,
@@ -245,4 +246,24 @@ describe('검토가 필요한 항목 요약', () => {
     expect(severityGroups([f('F1', 'major')], names)[0].sample).toBe('대상 없음')
     expect(severityGroups([], names)).toEqual([])
   })
+})
+
+
+it('제외 사유·A09 판단은 현재 interrupt만 표시하고 이전 기록에도 대응한다', () => {
+  const ev = (id: number, interruptId: string, payload: Record<string, unknown>): SseEvent => ({
+    id, event: 'interrupt', data: { run_id: 'r', revision: 2, message: '', payload: { kind: 'review', interrupt_id: interruptId, ...payload } },
+  })
+  const events = [ev(1, 'old', { rejected_findings: [{ finding_id: 'old', reason: 'unknown_target' }] }), ev(2, 'now', {
+    rejected_findings: [{ finding_id: 'A07-1', reviewer_id: 'A07', reason: 'quote_not_found' }, null],
+    router_decision: { revision: 1, stage: null, rationale: null, error_code: 'LLM_TIMEOUT' },
+  })]
+  const messages = reviewDiagnostics(events, 'now')
+  expect(messages).toHaveLength(2)
+  expect(messages[0]).toContain('A07-1')
+  expect(messages[0]).toContain('인용')
+  expect(messages[1]).toContain('revision 1')
+  expect(messages[1]).toContain('LLM_TIMEOUT')
+  expect(reviewDiagnostics(events, undefined)).toEqual([])
+  expect(reviewDiagnostics([ev(3, 'legacy', {})], 'legacy')).toEqual([])
+  expect(reviewDiagnostics([ev(4, 'answer', { router_decision: { revision: 2, stage: 'functions', rationale: '기능 책임 누락', error_code: null } })], 'answer')[0]).toContain('기능 책임 누락')
 })

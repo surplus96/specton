@@ -208,3 +208,37 @@ def test_unrouted_finding_goes_through_the_router_to_rework_and_records_versions
     assert design.revision == 1
     assert set(REVIEWERS) | {"A09"} <= set(design.versions.prompt_versions)
     assert design.versions.model_names["A05"] == _settings().review_model
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        a09_rework_router.RouterAnswer(stage=None, rationale="근거가 부족합니다"),
+        a09_rework_router.RouterAnswer(stage=None, error_code="LLM_TIMEOUT"),
+        a09_rework_router.RouterAnswer(
+            stage=a09_rework_router.TargetStage.FUNCTIONS, rationale="기능 책임 누락"
+        ),
+    ],
+)
+def test_router_diagnostics_are_checkpointed_and_available_in_progress(answer) -> None:
+    from unittest.mock import patch
+
+    from specton.node_progress import node_result
+    from specton.nodes.common import NodeRun
+
+    state = initial_state(_design())
+    state.update(revising=True, review_response={"feedback": "수정해주세요"})
+    with patch(
+        "specton.agent_nodes.a09_rework_router.run", return_value=NodeRun(output=answer, calls=())
+    ):
+        update = router_node(lambda: None, _settings())(state)
+    record = update["router_decision"]
+    assert record == {
+        "revision": state["design"].revision,
+        "stage": answer.stage.value if answer.stage else None,
+        "rationale": answer.rationale,
+        "error_code": answer.error_code,
+    }
+    assert node_result("a09", update)["router_decision"] == record
+    state["review_response"] = {"feedback": ""}
+    assert router_node(lambda: None, _settings())(state)["router_decision"] is None

@@ -148,6 +148,8 @@ class GraphState(TypedDict, total=False):
     next_stage: TargetStage | None
     hitl_reason: HitlReason | None
     router_stage: TargetStage | None  # A09 답
+    router_decision: dict[str, Any] | None  # 판단 시점 revision·근거·안전한 오류 코드
+    rejected_findings: tuple[dict[str, str | None], ...]  # 근거 검사 제외 메타데이터
     unrouted: tuple[Finding, ...]  # 코드가 복귀 단계를 정하지 못해 A09에 넘길 지적
     branch_versions: Annotated[dict[str, tuple[str, str]], _merge_versions]  # 합류에서 기록
     tokens_used: Annotated[int, operator.add]  # 이번 실행에 쓴 LLM 토큰 (`max_tokens_per_run`)
@@ -280,6 +282,7 @@ def _validation_failure(state: GraphState) -> dict[str, Any]:
         ),
         "requires_manual_review": True,
         "failed_branches": (),
+        "rejected_findings": (),
         "notes": ({"message": "SQL 검증을 통과하지 못해 사람의 확인이 필요합니다", "payload": {}},),
     }
 
@@ -298,6 +301,7 @@ def _normalization_failure(state: GraphState) -> dict[str, Any]:
     return {
         "design": state["design"].evolve(findings=findings, branch_results={}),
         "failed_branches": (),
+        "rejected_findings": (),
     }
 
 
@@ -496,6 +500,8 @@ def _ask_review(state: GraphState) -> dict[str, Any]:
             "hitl_reason": state.get("hitl_reason"),
             # 실패하거나 빠진 리뷰 가지. 비어 있지 않으면 불완전 검토다 (TC-F14)
             "failed_branches": list(state.get("failed_branches", ())),
+            "rejected_findings": list(state.get("rejected_findings", ())),
+            "router_decision": state.get("router_decision"),
         }
     )
     decision = response.get("decision")
@@ -532,6 +538,10 @@ def _merge(state: GraphState) -> dict[str, Any]:
     return {
         "design": design.evolve(findings=merged.findings, branch_results=joined, versions=versions),
         "failed_branches": merged.failed_branches,
+        "rejected_findings": tuple(
+            {"finding_id": r.finding.id, "reviewer_id": r.finding.reviewer_id, "reason": r.reason}
+            for r in merged.rejected
+        ),
     }
 
 
@@ -585,6 +595,7 @@ def _apply(state: GraphState, decision: ReworkDecision, *, counted: bool = True)
         update["rework_count"] = state.get("rework_count", 0) + (1 if counted else 0)
         update.update(
             normalization_failed=False, requires_manual_review=False, rule_findings=(),
+            rejected_findings=(),
             ddl_validation_status=None,
         )  # fmt: skip
     return update

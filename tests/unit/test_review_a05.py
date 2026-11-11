@@ -67,7 +67,7 @@ def _settings() -> Settings:
 
 def test_a05_reads_relationships_with_their_requirements() -> None:
     assert set(A05.inputs) == {"requirements", "entities", "relationships"}
-    assert A05.prompt_version == "a05-v2"
+    assert A05.prompt_version == "a05-v3"
 
 
 def test_a05_prompt_keeps_the_alternative_expression_guard() -> None:

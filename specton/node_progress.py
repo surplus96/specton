@@ -65,6 +65,8 @@ def node_result(name: str, result: Mapping[str, Any]) -> dict[str, Any]:
             summary["normalization"] = normalization_summary(design)
         summary["normalization_failed"] = bool(result.get("normalization_failed"))
         summary["problem_kinds"] = [f.kind for f in result.get("rule_findings", ())]
+    if name == "a09" and result.get("router_decision") is not None:
+        summary["router_decision"] = result["router_decision"]
     branches = result.get("branches", {})
     if branches:
         summary["reviewers"] = list(branches)

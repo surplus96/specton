@@ -518,6 +518,9 @@ class _Job:
             payload["hitl_reason"] = str(value["hitl_reason"])
         if "failed_branches" in value:
             payload["failed_branches"] = list(value["failed_branches"])  # 불완전 검토 (TC-F14)
+        for key in ("rejected_findings", "router_decision"):
+            if key in value:
+                payload[key] = value[key]
         events = self._status_events(design.status)
         events.append(
             NewEvent(E.INTERRUPT, interrupt.message, stage=design.status.value, payload=payload)

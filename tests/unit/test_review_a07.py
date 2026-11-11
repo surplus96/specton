@@ -87,8 +87,8 @@ def _settings() -> Settings:
 
 
 def test_a07_reads_requirements_functions_and_entities() -> None:
-    assert set(A07.inputs) == {"requirements", "functions", "entities"}
-    assert A07.prompt_version == "a07-v1"
+    assert set(A07.inputs) == {"requirements", "functions", "entities", "relationships"}
+    assert A07.prompt_version == "a07-v2"
 
 
 def test_a07_is_loaded_with_the_other_perspectives() -> None:
@@ -123,11 +123,11 @@ def test_a07_prompt_and_data_reach_the_review_model() -> None:
 
     (request,) = transport.sent
     system, user = request.messages
-    assert (request.stage, request.prompt_version) == ("A07", "a07-v1")
+    assert (request.stage, request.prompt_version) == ("A07", "a07-v2")
     assert "속성이 있다는 사실만으로" in system.content
     assert "사내 체계에 맡긴 것은 지적하지 않는다" in system.content
     sent = json.loads(unwrap_data(user.content))
-    assert set(sent) == {"requirements", "functions", "entities"}
+    assert set(sent) == {"requirements", "functions", "entities", "relationships"}
 
 
 # 정상 응답

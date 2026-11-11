@@ -50,6 +50,8 @@ export function payloadSummary(payload: Record<string, unknown> | undefined): st
   if (payload.file_format) parts.push(`산출물: ${String(payload.kind)}.${String(payload.file_format)}${payload.approved ? ' (승인본)' : ''}`)
   else if (payload.interrupt_id && payload.kind) parts.push(`확인 요청: ${String(payload.kind)}`)
   if (list(payload.failed_branches).length) parts.push(`빠진 관점: ${list(payload.failed_branches).join(', ')}`)
+  if (Array.isArray(payload.rejected_findings) && payload.rejected_findings.length) parts.push(`근거 검사에서 제외: ${payload.rejected_findings.length}건`)
+  if (payload.router_decision) parts.push('재작업 판단 기록 있음')
   if (payload.hitl_reason) parts.push(`멈춘 이유: ${String(payload.hitl_reason)}`)
   if (payload.info === 'skipped_sheets') parts.push(`건너뛴 시트: ${list(payload.sheets).join(', ')}`)
   if (payload.warning === 'excluded_related') parts.push(`제외 경고: ${String(payload.source_id)}`)
