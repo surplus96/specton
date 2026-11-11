@@ -1,0 +1,433 @@
+{
+  "schema_version": 1,
+  "scope": "controlled post-observation exploration; not blind evaluation",
+  "executed_commit": "93bc7113f9b4ce5c28cb6c1b9cae086f14955ac9",
+  "merged_main": "b5f78ba9e0dd7379082dd8dd8581115b3604690f",
+  "code_trees_identical": true,
+  "pack_versions": {
+    "common": "0.1.7",
+    "inventory": "0.1.23"
+  },
+  "models_and_limits": {
+    "design_model": "gpt-6.1-sol",
+    "review_model": "gpt-6-luna",
+    "review_mode": "combined",
+    "design_reasoning_effort": "medium",
+    "review_reasoning_effort": "low",
+    "run_concurrency": 2,
+    "max_rework_iterations": 3,
+    "max_source_blocks": 1000,
+    "llm_concurrency": 4,
+    "llm_api_retries": 3,
+    "max_tokens_per_run": 400000,
+    "run_timeout_seconds": 1800,
+    "llm_timeout_seconds": 300.0,
+    "max_structured_retries": 2,
+    "max_output_tokens": 32000,
+    "enable_erd_pdf": true,
+    "enable_function_spec_pdf": true
+  },
+  "control": "same inputs/naming guidance/approved dictionary/validation; remove only pack data and fewshot from model requests",
+  "selection_approval": "R1 selection-scoped override; R4 did not review",
+  "gold": "approved A01 v0.3 / model v0.2, unchanged; not transmitted to LLM",
+  "a01_matching": "R1 delegated semantic adjudication of preregistered variants, primary scores preserved; unknown/unapproved splits and omitted clauses retained as errors",
+  "conditions": [
+    {
+      "condition": "with_pack",
+      "cases": [
+        {
+          "case": 1,
+          "status": "completed",
+          "complete": true,
+          "critical_kinds": [],
+          "error_code": null,
+          "normalized": true,
+          "sql_validation_diagnostic": "passed",
+          "approved_artifact_count": 8,
+          "calls": 11,
+          "estimated_usd": 0.5144551399999999,
+          "wall_time_ms": 306866
+        },
+        {
+          "case": 2,
+          "status": "awaiting_review",
+          "complete": false,
+          "critical_kinds": [
+            "invalid_fk_binding"
+          ],
+          "error_code": null,
+          "normalized": false,
+          "sql_validation_diagnostic": "not_run",
+          "approved_artifact_count": 0,
+          "calls": 7,
+          "estimated_usd": 0.3925468,
+          "wall_time_ms": 235576
+        },
+        {
+          "case": 3,
+          "status": "completed",
+          "complete": true,
+          "critical_kinds": [],
+          "error_code": null,
+          "normalized": true,
+          "sql_validation_diagnostic": "passed",
+          "approved_artifact_count": 8,
+          "calls": 11,
+          "estimated_usd": 0.44995495999999996,
+          "wall_time_ms": 538505
+        },
+        {
+          "case": 4,
+          "status": "completed",
+          "complete": true,
+          "critical_kinds": [],
+          "error_code": null,
+          "normalized": true,
+          "sql_validation_diagnostic": "passed",
+          "approved_artifact_count": 8,
+          "calls": 12,
+          "estimated_usd": 0.43776811,
+          "wall_time_ms": 576505
+        },
+        {
+          "case": 5,
+          "status": "awaiting_review",
+          "complete": false,
+          "critical_kinds": [
+            "unlinked_fr"
+          ],
+          "error_code": null,
+          "normalized": true,
+          "sql_validation_diagnostic": "passed",
+          "approved_artifact_count": 0,
+          "calls": 11,
+          "estimated_usd": 0.49317391499999996,
+          "wall_time_ms": 795898
+        }
+      ],
+      "completed": 3,
+      "planned": 5,
+      "calls": 52,
+      "estimated_usd": 2.287898925,
+      "unestimated_calls": 0,
+      "a01_scores": {
+        "fixed_primary": {
+          "classification": {
+            "labels": {
+              "FR": {
+                "tp": 79,
+                "fp": 12,
+                "fn": 3,
+                "precision": 0.8681318681318682,
+                "recall": 0.9634146341463414,
+                "f1": 0.9132947976878613
+              },
+              "NFR": {
+                "tp": 33,
+                "fp": 5,
+                "fn": 4,
+                "precision": 0.868421052631579,
+                "recall": 0.8918918918918919,
+                "f1": 0.88
+              }
+            },
+            "macro_f1": 0.8966473988439306,
+            "confusion": {
+              "FR": {
+                "FR": 79,
+                "NFR": 0,
+                "missing": 3
+              },
+              "NFR": {
+                "FR": 3,
+                "NFR": 33,
+                "missing": 1
+              },
+              "extra": {
+                "FR": 9,
+                "NFR": 5,
+                "missing": 0
+              }
+            }
+          },
+          "warnings": {
+            "tp": 13,
+            "fp": 12,
+            "fn": 1,
+            "precision": 0.52,
+            "recall": 0.9285714285714286,
+            "f1": 0.6666666666666666,
+            "permitted": 3,
+            "source_policies": 85
+          },
+          "split": {
+            "correct": 84,
+            "total": 85,
+            "accuracy": 0.9882352941176471
+          }
+        },
+        "approved_variants_semantic": {
+          "classification": {
+            "labels": {
+              "FR": {
+                "tp": 89,
+                "fp": 2,
+                "fn": 1,
+                "precision": 0.978021978021978,
+                "recall": 0.9888888888888889,
+                "f1": 0.9834254143646409
+              },
+              "NFR": {
+                "tp": 37,
+                "fp": 1,
+                "fn": 2,
+                "precision": 0.9736842105263158,
+                "recall": 0.9487179487179487,
+                "f1": 0.961038961038961
+              }
+            },
+            "macro_f1": 0.972232187701801,
+            "confusion": {
+              "FR": {
+                "FR": 89,
+                "NFR": 1,
+                "missing": 0
+              },
+              "NFR": {
+                "FR": 1,
+                "NFR": 37,
+                "missing": 1
+              },
+              "extra": {
+                "FR": 1,
+                "NFR": 0,
+                "missing": 0
+              }
+            }
+          },
+          "warnings": {
+            "tp": 13,
+            "fp": 12,
+            "fn": 1,
+            "precision": 0.52,
+            "recall": 0.9285714285714286,
+            "f1": 0.6666666666666666,
+            "permitted": 3,
+            "source_policies": 85
+          },
+          "split": {
+            "correct": 84,
+            "total": 85,
+            "accuracy": 0.9882352941176471
+          }
+        }
+      },
+      "final_model_semantic_scores": null,
+      "final_model_matching_status": "pending_full_adjudication",
+      "scope": "same frozen code and settings, one trial; A01 before human editing"
+    },
+    {
+      "condition": "without_pack_context",
+      "cases": [
+        {
+          "case": 1,
+          "status": "failed",
+          "complete": false,
+          "critical_kinds": [],
+          "error_code": "LLM_OUTPUT_INVALID",
+          "normalized": false,
+          "sql_validation_diagnostic": "not_run",
+          "approved_artifact_count": 0,
+          "calls": 5,
+          "estimated_usd": 0.2770777,
+          "wall_time_ms": 209573
+        },
+        {
+          "case": 2,
+          "status": "failed",
+          "complete": false,
+          "critical_kinds": [],
+          "error_code": "LLM_OUTPUT_INVALID",
+          "normalized": false,
+          "sql_validation_diagnostic": "not_run",
+          "approved_artifact_count": 0,
+          "calls": 5,
+          "estimated_usd": 0.2879951,
+          "wall_time_ms": 217594
+        },
+        {
+          "case": 3,
+          "status": "failed",
+          "complete": false,
+          "critical_kinds": [],
+          "error_code": "LLM_OUTPUT_INVALID",
+          "normalized": false,
+          "sql_validation_diagnostic": "not_run",
+          "approved_artifact_count": 0,
+          "calls": 5,
+          "estimated_usd": 0.2910517,
+          "wall_time_ms": 417403
+        },
+        {
+          "case": 4,
+          "status": "completed",
+          "complete": true,
+          "critical_kinds": [],
+          "error_code": null,
+          "normalized": true,
+          "sql_validation_diagnostic": "passed",
+          "approved_artifact_count": 8,
+          "calls": 13,
+          "estimated_usd": 0.464511385,
+          "wall_time_ms": 557046
+        },
+        {
+          "case": 5,
+          "status": "failed",
+          "complete": false,
+          "critical_kinds": [],
+          "error_code": "LLM_OUTPUT_INVALID",
+          "normalized": false,
+          "sql_validation_diagnostic": "not_run",
+          "approved_artifact_count": 0,
+          "calls": 5,
+          "estimated_usd": 0.2927487,
+          "wall_time_ms": 630404
+        }
+      ],
+      "completed": 1,
+      "planned": 5,
+      "calls": 33,
+      "estimated_usd": 1.613384585,
+      "unestimated_calls": 0,
+      "a01_scores": {
+        "fixed_primary": {
+          "classification": {
+            "labels": {
+              "FR": {
+                "tp": 81,
+                "fp": 17,
+                "fn": 1,
+                "precision": 0.826530612244898,
+                "recall": 0.9878048780487805,
+                "f1": 0.9
+              },
+              "NFR": {
+                "tp": 34,
+                "fp": 7,
+                "fn": 3,
+                "precision": 0.8292682926829268,
+                "recall": 0.918918918918919,
+                "f1": 0.8717948717948718
+              }
+            },
+            "macro_f1": 0.8858974358974359,
+            "confusion": {
+              "FR": {
+                "FR": 81,
+                "NFR": 1,
+                "missing": 0
+              },
+              "NFR": {
+                "FR": 2,
+                "NFR": 34,
+                "missing": 1
+              },
+              "extra": {
+                "FR": 15,
+                "NFR": 6,
+                "missing": 0
+              }
+            }
+          },
+          "warnings": {
+            "tp": 13,
+            "fp": 17,
+            "fn": 1,
+            "precision": 0.43333333333333335,
+            "recall": 0.9285714285714286,
+            "f1": 0.5909090909090909,
+            "permitted": 5,
+            "source_policies": 85
+          },
+          "split": {
+            "correct": 82,
+            "total": 85,
+            "accuracy": 0.9647058823529412
+          }
+        },
+        "approved_variants_semantic": {
+          "classification": {
+            "labels": {
+              "FR": {
+                "tp": 94,
+                "fp": 4,
+                "fn": 2,
+                "precision": 0.9591836734693877,
+                "recall": 0.9791666666666666,
+                "f1": 0.9690721649484536
+              },
+              "NFR": {
+                "tp": 39,
+                "fp": 2,
+                "fn": 1,
+                "precision": 0.9512195121951219,
+                "recall": 0.975,
+                "f1": 0.9629629629629629
+              }
+            },
+            "macro_f1": 0.9660175639557083,
+            "confusion": {
+              "FR": {
+                "FR": 94,
+                "NFR": 2,
+                "missing": 0
+              },
+              "NFR": {
+                "FR": 0,
+                "NFR": 39,
+                "missing": 1
+              },
+              "extra": {
+                "FR": 4,
+                "NFR": 0,
+                "missing": 0
+              }
+            }
+          },
+          "warnings": {
+            "tp": 13,
+            "fp": 17,
+            "fn": 1,
+            "precision": 0.43333333333333335,
+            "recall": 0.9285714285714286,
+            "f1": 0.5909090909090909,
+            "permitted": 5,
+            "source_policies": 85
+          },
+          "split": {
+            "correct": 82,
+            "total": 85,
+            "accuracy": 0.9647058823529412
+          }
+        }
+      },
+      "final_model_semantic_scores": null,
+      "final_model_matching_status": "pending_full_adjudication",
+      "scope": "same frozen code and settings, one trial; A01 before human editing"
+    }
+  ],
+  "limits": [
+    "one paired trial with 5 documents; no statistical significance or general causal claim",
+    "post-observation naming guidance and R1 gold/pack dual role; not independent evaluation",
+    "source input already includes classification metadata; not text-only classification",
+    "A01 F1 does not validate complete meaning preservation; omission/additional inference retained in private semantic review",
+    "final function/entity/relationship/attribute semantic matching is not complete; null is not a perfect score",
+    "do not combine different code conditions or R1-assisted runs into one 5/5 automatic success"
+  ],
+  "followup": [
+    "final model semantic matching and scoring (#20)",
+    "resolve/accept two blocked cases before release candidate closure (#22)",
+    "AWS redeploy/access deferred by user; final tag and AWS acceptance pending (#23)"
+  ]
+}
