@@ -1,13 +1,13 @@
 import Button from '../ui/Button.tsx'
 import Notice from '../ui/Notice.tsx'
 import { isActive } from './runMeta.ts'
-import SampleDemo from './start/SampleDemo.tsx'
+import HowItWorks from './start/HowItWorks.tsx'
 import UploadPanel from './start/UploadPanel.tsx'
 import { ActiveRunCard } from './start/RunCards.tsx'
 import { useRuns } from './useRuns.ts'
 
 // 새 작업 (/) — F안 시안
-// - 첫 방문(실행 없음): 큰 제목 + 업로드 + 작동 과정 샘플(가상 데이터)
+// - 첫 방문(실행 없음): 큰 제목 + 업로드 + 작동 과정 세 단계 안내
 // - 작업 있음: 새 작업 → 지금 진행 중(끝나지 않은 가장 최근 실행, 실시간)
 // 목록을 불러오지 못해도 업로드는 그대로 쓸 수 있고, 실패는 「없음」과 따로 알린다.
 function StartPage() {
@@ -44,7 +44,7 @@ function StartPage() {
           <ActiveRunCard runId={active.run_id} />
         </section>
       )}
-      {firstVisit && <SampleDemo />}
+      {firstVisit && <HowItWorks />}
     </div>
   )
 }
