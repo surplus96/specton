@@ -1,10 +1,15 @@
 import '@xyflow/react/dist/style.css'
 import './aiWorkspace.css'
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { getView } from '../../api/client.ts'
 import { errorMessage } from '../../api/errors.ts'
 import type { AnalysedRequirement, DesignItem, ExtractionBlock, Finding } from '../../api/viewItems.ts'
+import { useRuns } from '../useRuns.ts'
+import { runTitle } from '../../api/runNames.ts'
+import Button from '../../ui/Button.tsx'
+import Notice from '../../ui/Notice.tsx'
+import ScreenHead from '../../ui/ScreenHead.tsx'
 import { dark } from '../../theme.ts'
 import { nameIndex } from '../review/rules.ts'
 import { sqlReview } from '../review/sqlValidation.ts'
@@ -54,16 +59,30 @@ const cssVars = {
 function AiWorkspacePage() {
   const [params] = useSearchParams()
   const runId = params.get('run')
-  if (!runId) {
-    return (
-      <div className="aiws" style={{ ...cssVars, padding: 32 }}>
-        <p>
-          실행 ID가 없습니다. 실행 화면에서 「작업공간 열기」로 들어오세요. <Link to="/">처음으로</Link>
-        </p>
-      </div>
-    )
-  }
+  if (!runId) return <WorkspaceChooser />
   return <Workspace key={runId} runId={runId} />
+}
+
+/** 개발자 메뉴에서는 먼저 세션 소유 실행을 선택한다. 상태·설계를 수정하지 않는다. */
+function WorkspaceChooser() {
+  const { runs, failed, reload } = useRuns(100)
+  const [selected, setSelected] = useState('')
+  const navigate = useNavigate()
+  const available = runs?.some((run) => run.run_id === selected)
+  return (
+    <section className="workspace-chooser stack">
+      <ScreenHead eyebrow="개발자용" title="AI Workspace" lead="실행 단계·설계·추적·검증 기록을 조회할 작업을 선택하세요." />
+      {failed && <Notice kind="error" title="실행 목록을 불러오지 못했어요." action={<Button onClick={reload}>다시 불러오기</Button>} />}
+      {runs === null && !failed && <p role="status">실행 목록을 불러오는 중이에요.</p>}
+      {runs?.length === 0 && <Notice title="조회할 실행이 없습니다.">새 작업에서 문서를 올린 뒤 확인할 수 있어요.</Notice>}
+      <label htmlFor="workspace-run">실행 선택</label>
+      <select id="workspace-run" className="select" value={selected} onChange={(event) => setSelected(event.target.value)} disabled={!runs?.length}>
+        <option value="">실행을 선택하세요</option>
+        {runs?.map((run) => <option key={run.run_id} value={run.run_id}>{runTitle(run.run_id).title} · {run.run_id.slice(0, 8)} · {STATUS_LABEL[run.status]} · r{run.revision}</option>)}
+      </select>
+      <div><Button disabled={!available} onClick={() => navigate(`/workspace?run=${encodeURIComponent(selected)}`)}>작업공간 열기</Button></div>
+    </section>
+  )
 }
 
 function Workspace({ runId }: { runId: string }) {
@@ -147,6 +166,7 @@ function Workspace({ runId }: { runId: string }) {
   if (loadError) {
     return (
       <div className="aiws" style={{ ...cssVars, padding: 32 }}>
+        <h1>AI Workspace</h1>
         <p role="alert">{errorMessage(loadError)}</p>
         <Link to="/">처음으로</Link>
       </div>
@@ -197,7 +217,7 @@ function Workspace({ runId }: { runId: string }) {
         <Link to={`/?run=${encodeURIComponent(runId)}`} style={{ color: dark.accent }}>
           ← 실행 화면
         </Link>
-        <strong style={{ fontSize: 18 }}>AI Workspace</strong>
+        <h1 style={{ fontSize: 18, margin: 0 }}>AI Workspace</h1>
         <span className="aiws-chip" title={runId}>
           실행 {runId.slice(0, 8)}
         </span>
@@ -222,7 +242,7 @@ function Workspace({ runId }: { runId: string }) {
           </select>
         </label>
         {artifacts.length > 0 && (
-          <span className="aiws-chip" style={{ borderColor: approved ? '#4ade80' : '#fbbf24', color: approved ? '#4ade80' : '#fbbf24' }}>
+          <span className="aiws-chip" style={{ borderColor: approved ? 'var(--darktones-done-fg)' : 'var(--darktones-awaiting-fg)', color: approved ? 'var(--darktones-done-fg)' : 'var(--darktones-awaiting-fg)' }}>
             {approved ? '승인본' : '초안'}
           </span>
         )}

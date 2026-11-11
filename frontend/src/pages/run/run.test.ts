@@ -18,6 +18,7 @@ import {
   recentMessages,
   requirementsCheckSkipped,
   screenFor,
+  screenSteps,
 } from './screens.ts'
 
 const event = (id: number, name: SseEvent['event'], message: string, extra: Partial<SseEvent['data']> = {}): SseEvent => ({
@@ -412,5 +413,38 @@ describe('mock /events 스트림 (백엔드와 같은 규칙)', () => {
     const res = await fetch(eventsUrl(run.run_id), { headers: { 'Last-Event-ID': '999' } })
     expect(res.status).toBe(409)
     expect((await res.json()).code).toBe('EVENT_REPLAY_EXPIRED')
+  })
+})
+
+describe('단계 표시의 실제 근거', () => {
+  const interrupt = (id: number, kind: string) => event(id, 'interrupt', '확인 요청', { payload: {kind} })
+  const ext = interrupt(1, 'extraction'), req = interrupt(3, 'requirements'), rev = interrupt(5, 'review')
+  it('queued·parsing은 확인 화면을 지나간 것으로 표시하지 않는다', () => {
+    for (const status of ['queued', 'parsing', 'failed', 'cancelled'] as const) {
+      const s = screenSteps(status, 'UI-04', [])
+      expect([s['UI-02'], s['UI-03']]).toEqual(['todo', 'todo'])
+    }
+  })
+  it('생략은 분석 진입이나 생략 이벤트가 있을 때만 표시한다', () => {
+    const s = screenSteps('designing', 'UI-04', [event(2, 'status', '분석', {stage:'analysing'}), event(4, 'status', SKIPPED_REQUIREMENTS_MESSAGE, {stage:'designing'})])
+    expect([s['UI-02'], s['UI-03']]).toEqual(['skipped', 'skipped'])
+  })
+  it('재연결 직후 이력이 비면 확인 여부를 추정하지 않는다', () => {
+    const s = screenSteps('awaiting_review', 'UI-06', [])
+    expect([s['UI-02'], s['UI-03'], s['UI-05']]).toEqual(['todo', 'todo', 'available'])
+  })
+  it('수정 요청 뒤에는 이전 확인은 보존하고 최종 검토는 완료로 보이지 않는다', () => {
+    const s = screenSteps('designing', 'UI-04', [ext, req, rev])
+    expect([s['UI-02'],s['UI-03'],s['UI-06']]).toEqual(['done','done','todo'])
+  })
+  it('보류 후 반복되는 최종 검토는 현재 한 곳만 표시한다', () => {
+    const s = screenSteps('awaiting_review', 'UI-06', [ext,req,rev,interrupt(6,'review')])
+    expect(Object.values(s).filter(v=>v==='now')).toHaveLength(1)
+    expect(s['UI-06']).toBe('now')
+  })
+  it('다운로드는 최종 승인 완료를 반영하고 작업공간은 결과 존재로 구분한다', () => {
+    const s = screenSteps('completed','UI-07',[ext,req,rev])
+    expect([s['UI-02'],s['UI-03'],s['UI-06'],s['UI-07']]).toEqual(['done','done','done','now'])
+    expect(s['UI-05']).toBe('available')
   })
 })

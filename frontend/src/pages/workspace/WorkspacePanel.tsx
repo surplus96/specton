@@ -1,6 +1,6 @@
+import RunEyebrow from '../run/RunEyebrow.tsx'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
-import { getView } from '../../api/client.ts'
 import { errorMessage } from '../../api/errors.ts'
 import type { RunStatus } from '../../api/types.ts'
 import type { ArtifactRef, DesignItem, Finding } from '../../api/viewItems.ts'
@@ -12,6 +12,8 @@ import Loading from '../../ui/Loading.tsx'
 import Notice from '../../ui/Notice.tsx'
 import ScreenHead from '../../ui/ScreenHead.tsx'
 import Tabs from '../../ui/Tabs.tsx'
+import { useViewSection } from '../useViewSection.ts'
+import SectionState from '../../ui/SectionState.tsx'
 import DesignTables from '../review/DesignTables.tsx'
 import FindingsTable from '../review/FindingsTable.tsx'
 import { nameIndex } from '../review/rules.ts'
@@ -20,7 +22,7 @@ import ErdView from './ErdView.tsx'
 import { artifactText } from './files.ts'
 import { workspaceTab, type WorkspaceTab } from './pipeline.ts'
 import ResultSummary from './ResultSummary.tsx'
-import { parseRtmCsv, RTM_COLUMNS, type RtmRow } from './rtm.ts'
+import { parseRtmCsv, RtmFormatError, RTM_COLUMNS, type RtmRow } from './rtm.ts'
 import { KIND_LABEL, downloadErrorText, isApproved, isDownloadable, missingKinds, revisionOptions, toArtifacts, type ArtifactKind } from './rules.ts'
 
 // UI-05 결과 작업공간: 기능·ERD·DDL·RTM·검토 탭, revision 고르기, 미완성 가지 표시.
@@ -33,7 +35,6 @@ type Props = {
   onReview?: () => void
 }
 
-type Loaded = { design: DesignItem[]; findings: Finding[]; artifacts: ArtifactRef[] }
 
 const ORIGIN: Record<WorkspaceTab, string> = {
   design: 'AI 판단',
@@ -45,26 +46,14 @@ const ORIGIN: Record<WorkspaceTab, string> = {
 
 function WorkspacePanel({ run, label, onReview }: Props) {
   const [revision, setRevision] = useState(run.revision)
-  const [data, setData] = useState<Loaded | null>(null)
-  const [loadError, setLoadError] = useState<unknown>(null)
-  const [reloadKey, setReloadKey] = useState(0)
-
+  const designSection = useViewSection(run.run_id, revision, 'design')
+  const reviewSection = useViewSection(run.run_id, revision, 'review')
   useEffect(() => setRevision(run.revision), [run.revision])
-
-  useEffect(() => {
-    let alive = true
-    setData(null)
-    setLoadError(null)
-    Promise.all([getView(run.run_id, 'design', revision), getView(run.run_id, 'review', revision)])
-      .then(([design, review]) => {
-        if (!alive) return
-        setData({ design: design.items as DesignItem[], findings: review.items as Finding[], artifacts: toArtifacts(design.artifacts) })
-      })
-      .catch((err: unknown) => alive && setLoadError(err))
-    return () => {
-      alive = false
-    }
-  }, [run.run_id, revision, reloadKey])
+  const data = useMemo(() => designSection.data ? {
+    design: designSection.data.items as DesignItem[],
+    artifacts: toArtifacts(designSection.data.artifacts),
+  } : null, [designSection.data])
+  const findings = reviewSection.data?.items as Finding[] | undefined
 
   // 고른 탭은 주소(&tab=)에 둔다. 다운로드 화면의 파이프라인 카드가 이 탭으로 바로 연다.
   const [params, setParams] = useSearchParams()
@@ -87,7 +76,7 @@ function WorkspacePanel({ run, label, onReview }: Props) {
   return (
     <div className="stack">
       <ScreenHead
-        eyebrow={`결과 작업공간 · ${label}`}
+        eyebrow={<RunEyebrow screen="결과 작업공간" label={label} run={run} />}
         title={
           <>
             <strong>설계 초안</strong>이 준비됐어요
@@ -119,10 +108,12 @@ function WorkspacePanel({ run, label, onReview }: Props) {
         )}
       </div>
 
-      {loadError ? (
-        <Notice kind="error" title={errorMessage(loadError)} action={<Button variant="secondary" size="sm" onClick={() => setReloadKey((k) => k + 1)}>다시 불러오기</Button>} />
-      ) : !data ? (
-        <Loading text="설계 결과를 불러오는 중이에요" />
+      <SectionState title="검토 지적" error={reviewSection.error} loading={!reviewSection.data && !reviewSection.error} reload={reviewSection.reload} />
+      {designSection.error || !data ? (
+        <>
+          <SectionState title="설계 결과" error={designSection.error} loading={!designSection.error} reload={designSection.reload} />
+          {findings && <FindingsTable findings={findings} names={names} />}
+        </>
       ) : (
         <>
           {missing.length > 0 && (
@@ -130,7 +121,7 @@ function WorkspacePanel({ run, label, onReview }: Props) {
               이 revision에서 아직 만들어지지 않았거나 생성에 실패한 산출물이에요.
             </Notice>
           )}
-          <ResultSummary design={data.design} findings={data.findings} />
+          {findings && <ResultSummary design={data.design} findings={findings} />}
           <Tabs<WorkspaceTab>
             label="결과 탭"
             active={tab}
@@ -141,7 +132,7 @@ function WorkspacePanel({ run, label, onReview }: Props) {
               { key: 'erd', label: 'ERD', content: <ErdView runId={run.run_id} artifact={find('erd', 'mmd')} /> },
               { key: 'ddl', label: 'DDL', content: <TextArtifact runId={run.run_id} artifact={find('ddl', 'sql')} kind="ddl" /> },
               { key: 'rtm', label: 'RTM', content: <RtmTab key={`${run.run_id}:${revision}`} runId={run.run_id} artifacts={data.artifacts} /> },
-              { key: 'review', label: `검토 ${data.findings.length}`, content: <FindingsTable findings={data.findings} names={names} /> },
+              { key: 'review', label: `검토 ${findings?.length ?? (reviewSection.error ? '조회 실패' : '조회 중')}`, content: findings ? <FindingsTable findings={findings} names={names} /> : <SectionState title="검토 지적" error={reviewSection.error} loading={!reviewSection.error} reload={reviewSection.reload} /> },
             ]}
           />
         </>
@@ -177,6 +168,7 @@ function TextArtifact({ runId, artifact, kind }: { runId: string; artifact: Arti
         </span>
         <DownloadButton runId={runId} artifact={artifact} />
       </div>
+      {artifact.validation && <p className="subtle">파일 머리말의 validation 값은 생성 시점의 기록입니다. 이후 검증 결과는 위 SQL 검증 표시를 확인해 주세요.</p>}
       {error ? (
         <Notice kind="error" title={error} />
       ) : text === null ? (
@@ -211,7 +203,7 @@ function RtmTab({ runId, artifacts }: { runId: string; artifacts: ArtifactRef[] 
     setError(null)
     artifactText(runId, csv).then(parseRtmCsv)
       .then((data) => { if (alive) setRows(data) })
-      .catch((err: unknown) => { if (alive) setError(errorMessage(err)) })
+      .catch((err: unknown) => { if (alive) setError(err instanceof RtmFormatError ? 'RTM 파일 형식이 예상과 달라 미리보기를 표시하지 못했어요. 원본 파일은 위 버튼으로 내려받을 수 있어요.' : errorMessage(err)) })
     return () => { alive = false }
   }, [runId, csv, attempt])
   return (

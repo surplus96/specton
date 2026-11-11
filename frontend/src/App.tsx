@@ -13,12 +13,12 @@ import Loading from './ui/Loading.tsx'
 const AiWorkspacePage = lazy(() => import('./pages/ai-workspace/AiWorkspacePage.tsx'))
 
 // 주소 → 화면
-//   /                  새 작업(시작 화면). 첫 방문이면 안내, 작업이 있으면 진행 중·이어서 할 작업도 보인다
+//   /                  새 작업(시작 화면). 첫 방문이면 안내, 작업이 있으면 진행 중 작업도 보인다
 //   /?run=<id>         실행 하나의 화면. UI-02~07 중 무엇을 보일지는 실행 상태로 정한다 (새로고침해도 같은 실행)
 //   /history           지난 작업 (/history?search=1 이면 검색 칸에 바로 커서)
 //   /about             서비스 안내 · 팀 소개 (Docs)
 //   /start, /intro     예전 주소 → / , /about
-//   /workspace?run=<id>  AI Workspace (개발용, 어두운 화면이라 공통 틀 밖)
+//   /workspace?run=<id>  AI Workspace (개발용, 공통 왼쪽 메뉴 안에 표시)
 // 주의: /runs·/health로 시작하는 주소는 API용이다(vite.config.ts 프록시·Caddy). 화면 주소에 쓰지 않는다.
 function Home() {
   const [params] = useSearchParams()
@@ -30,17 +30,17 @@ function Home() {
 function App() {
   return (
     <Routes>
-      <Route
-        path="workspace"
-        element={
-          <LazyBoundary>
-            <Suspense fallback={<Loading text="작업공간을 불러오는 중이에요" />}>
-              <AiWorkspacePage />
-            </Suspense>
-          </LazyBoundary>
-        }
-      />
       <Route element={<AppLayout />}>
+        <Route
+          path="workspace"
+          element={
+            <LazyBoundary>
+              <Suspense fallback={<Loading text="작업공간을 불러오는 중이에요" />}>
+                <AiWorkspacePage />
+              </Suspense>
+            </LazyBoundary>
+          }
+        />
         <Route index element={<Home />} />
         <Route path="history" element={<RunsPage />} />
         <Route path="about" element={<AboutPage />} />

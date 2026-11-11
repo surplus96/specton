@@ -3,6 +3,7 @@
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { parseRtmCsv } from '../pages/workspace/rtm.ts'
 import { createMockBackend } from '../mocks/backend.ts'
 import {
   cancelRun,
@@ -326,5 +327,24 @@ describe('세션 쿠키 전달', () => {
       return HttpResponse.json([])
     }))
     expect(await listRuns()).toEqual([])
+  })
+})
+
+describe('목업 RTM·승인 목록 계약', () => {
+  it('RTM CSV는 11열로 읽히고 manifest는 승인 뒤에만 제공한다', async () => {
+    let run = await startAndWait('quick.csv')
+    const before = await getView(run.run_id, 'design', run.revision)
+    expect(before.artifacts?.some(a=>a.kind==='manifest')).toBe(false)
+    const draft = await downloadArtifact(run.run_id,'rtm','csv',run.revision)
+    expect(parseRtmCsv(await draft.blob.text()).length).toBeGreaterThan(0)
+    const blocked = await rejection(downloadArtifact(run.run_id,'manifest','json',run.revision))
+    expect(blocked.code).toBe('ARTIFACT_NOT_READY')
+    run = await resumeRun(run.run_id, {interrupt_id:run.interrupt!.interrupt_id, expected_revision:run.revision,response:{kind:'review',decision:'approve',feedback:''}})
+    later()
+    run = await getRun(run.run_id)
+    const after = await getView(run.run_id,'design',run.revision)
+    expect(after.artifacts?.some(a=>a.kind==='manifest' && a.approved)).toBe(true)
+    const manifest = await downloadArtifact(run.run_id,'manifest','json',run.revision)
+    expect(JSON.parse(await manifest.blob.text())).toMatchObject({run_id:run.run_id,revision:run.revision,approved:true})
   })
 })

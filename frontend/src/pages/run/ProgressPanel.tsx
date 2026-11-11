@@ -1,3 +1,4 @@
+import RunEyebrow from '../run/RunEyebrow.tsx'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { cancelRun } from '../../api/client.ts'
@@ -95,7 +96,7 @@ function ProgressPanel({ run, events, connection, onChanged, label }: Props) {
   return (
     <div className="stack">
       <ScreenHead
-        eyebrow={`설계 진행 · ${label}`}
+        eyebrow={<RunEyebrow screen="설계 진행" label={label} run={run} />}
         title={title}
         actions={
           canCancel(run.status) && (

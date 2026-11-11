@@ -271,3 +271,8 @@ export function shortTime(iso: string): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
+
+/** 현재 실행 상태에서 사용할 수 없는 결과 화면 주소인지 확인한다. */
+export function staleView(status: RunState, param: string | null): boolean {
+  return param !== null && chosenView(status, param) !== param
+}

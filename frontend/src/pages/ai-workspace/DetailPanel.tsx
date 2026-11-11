@@ -20,14 +20,14 @@ export type Selection =
   | { kind: 'pipeline'; id: string }
   | { kind: 'finding'; id: string }
 
-const SEVERITY_COLOR: Record<Severity, string> = { critical: '#f87171', major: '#fbbf24', minor: dark.inkMuted }
+const SEVERITY_COLOR: Record<Severity, string> = { critical: 'var(--darktones-failed-fg)', major: 'var(--darktones-awaiting-fg)', minor: dark.inkMuted }
 
 const SQL_LABEL: Record<SqlReview['status'], { text: string; color: string }> = {
   missing: { text: '없음 (DDL 미생성)', color: dark.inkMuted },
   unverified: { text: '미검증', color: dark.inkMuted },
-  passed: { text: '통과', color: '#4ade80' },
-  failed: { text: '실패', color: '#f87171' },
-  error: { text: '오류', color: '#fbbf24' },
+  passed: { text: '통과', color: 'var(--darktones-done-fg)' },
+  failed: { text: '실패', color: 'var(--darktones-failed-fg)' },
+  error: { text: '오류', color: 'var(--darktones-awaiting-fg)' },
 }
 
 type Props = {
@@ -216,9 +216,9 @@ function DetailPanel(props: Props) {
       </Row>
       <Row label="미완성">
         {missing.length ? (
-          <span style={{ color: '#fbbf24' }}>{missing.map((k) => ARTIFACT_LABEL[k]).join(', ')}</span>
+          <span style={{ color: 'var(--darktones-awaiting-fg)' }}>{missing.map((k) => ARTIFACT_LABEL[k]).join(', ')}</span>
         ) : (
-          <span style={{ color: '#4ade80' }}>없음 (DDL·ERD·RTM 모두 있음)</span>
+          <span style={{ color: 'var(--darktones-done-fg)' }}>없음 (DDL·ERD·RTM 모두 있음)</span>
         )}
       </Row>
 

@@ -1,13 +1,10 @@
-import { useEffect, useState } from 'react'
-import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router'
-import { runFileName, titleFromFile } from '../api/runNames.ts'
-import { runBadge } from '../pages/runMeta.ts'
-import { useRuns } from '../pages/useRuns.ts'
+import { useEffect, useRef, useState } from 'react'
+import { Link, Outlet, useLocation, useSearchParams } from 'react-router'
 import Icon from './Icon.tsx'
 
 // 모든 화면이 공유하는 틀 (F안 시안): 왼쪽 딥 포레스트 사이드바 + 오른쪽 흰 작업 영역.
-// 사이드바: 새 작업 · 작업 검색 · 지난 작업 + 최근 작업 몇 개. 넓은 화면은 접을 수 있고, 좁은 화면은 덮개로 연다.
-// 위쪽 바: Docs(서비스 안내) · Try SpecOn(새 작업)
+// 사이드바: 새 작업 · 작업 검색 · AI Workspace. 좁은 화면은 덮개로 연다.
+// 좁은 화면의 위쪽 바에는 메뉴 열기만 제공한다.
 const COLLAPSE_KEY = 'specton.sidebar.collapsed'
 
 function readCollapsed(): boolean {
@@ -30,6 +27,9 @@ export function Logo() {
 
 function AppLayout() {
   const [collapsed, setCollapsed] = useState(readCollapsed)
+  const sidebar = useRef<HTMLElement>(null)
+  const menuButton = useRef<HTMLButtonElement>(null)
+  const wasOpen = useRef(false)
   const [drawer, setDrawer] = useState(false)
   const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 960px)').matches)
   useEffect(() => {
@@ -39,14 +39,34 @@ function AppLayout() {
     return () => media.removeEventListener('change', change)
   }, [])
   const location = useLocation()
-  const navigate = useNavigate()
   const [params] = useSearchParams()
-  const currentRun = location.pathname === '/' ? params.get('run') : null
-  const { runs } = useRuns(20)
-  const recent = (runs ?? []).slice(0, 6)
+  const currentRun = params.get('run')
+  const isWorkspace = location.pathname === '/workspace'
+  const workspaceUrl = currentRun ? `/workspace?run=${encodeURIComponent(currentRun)}` : '/workspace'
 
   // 화면을 옮기면 좁은 화면의 덮개를 닫는다
   useEffect(() => setDrawer(false), [location.pathname, location.search])
+
+  useEffect(() => {
+    const opened = narrow && drawer
+    if (opened) {
+      sidebar.current?.querySelector<HTMLButtonElement>('button[aria-label="메뉴 닫기"]')?.focus()
+      const onKey = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') { event.preventDefault(); setDrawer(false) }
+        if (event.key === 'Tab') {
+          const controls = sidebar.current?.querySelectorAll<HTMLElement>('a[href], button:not(:disabled)')
+          if (!controls?.length) return
+          const first = controls[0], last = controls[controls.length - 1]
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+        }
+      }
+      document.addEventListener('keydown', onKey)
+      wasOpen.current = true
+      return () => document.removeEventListener('keydown', onKey)
+    }
+    if (wasOpen.current) { menuButton.current?.focus(); wasOpen.current = false }
+  }, [drawer, narrow])
 
   function toggleCollapse() {
     setCollapsed((c) => {
@@ -60,12 +80,12 @@ function AppLayout() {
   }
 
   const isNew = location.pathname === '/' && !currentRun
-  const isRuns = location.pathname === '/history'
-  const searching = isRuns && params.get('search') === '1'
+  const searching = location.pathname === '/history'
 
   return (
-    <div className={`shell${collapsed ? ' shell--collapsed' : ''}${drawer ? ' shell--drawer' : ''}`}>
-      <aside className="sidebar" aria-label="메뉴" inert={narrow && !drawer}>
+    <><a className="skip-link" href="#main">본문으로 건너뛰기</a>
+    <div className={`shell${collapsed ? ' shell--collapsed' : ''}${drawer ? ' shell--drawer' : ''}${isWorkspace ? ' shell--workspace' : ''}`}>
+      <aside ref={sidebar} id="app-menu" className="sidebar" aria-label="메뉴" inert={narrow && !drawer}>
         <div className="sidebar__top">
           <Link to="/" style={{ textDecoration: 'none' }} aria-label="SPECTON 처음 화면">
             <Logo />
@@ -95,57 +115,30 @@ function AppLayout() {
             <Icon name="search" />
             <span className="nav__text">작업 검색</span>
           </Link>
-          <Link to="/history" aria-current={isRuns && !searching ? 'page' : undefined} title="지난 작업">
-            <Icon name="history" />
-            <span className="nav__text">지난 작업</span>
+          <Link to={workspaceUrl} aria-current={isWorkspace ? 'page' : undefined} title="AI Workspace · 개발자용">
+            <Icon name="code" />
+            <span className="nav__text">AI Workspace <small>개발자용</small></span>
           </Link>
         </nav>
-
-        {recent.length > 0 && (
-          <section className="sidebar__section" aria-label="최근 작업">
-            <div className="sidebar__label">최근 작업</div>
-            <div className="recent">
-              {recent.map((r) => {
-                const file = runFileName(r.run_id)
-                return (
-                  <Link
-                    key={r.run_id}
-                    to={`/?run=${encodeURIComponent(r.run_id)}`}
-                    aria-current={currentRun === r.run_id ? 'page' : undefined}
-                  >
-                    <span className="recent__name">{file ? titleFromFile(file) : `실행 ${r.run_id.slice(0, 8)}`}</span>
-                    <small>{runBadge(r.status).text}</small>
-                  </Link>
-                )
-              })}
-            </div>
-          </section>
-        )}
 
         <div className="sidebar__foot">요구사항 문서 → 설계 산출물</div>
       </aside>
 
       {drawer && <div className="scrim" onClick={() => setDrawer(false)} aria-hidden="true" />}
 
-      <div className="main">
-        <header className="topbar">
-          <button type="button" className="icon-btn topbar__menu" onClick={() => setDrawer(true)} aria-label="메뉴 열기">
-            <Icon name="menu" />
-          </button>
-          <Link className="topbar__link" to="/about">
-            <Icon name="book" size={18} />
-            Docs
-          </Link>
-          <button type="button" className="btn" onClick={() => navigate('/')} style={{ minHeight: 46 }}>
-            Try SpecOn
-            <Icon name="arrowRight" size={18} />
-          </button>
-        </header>
-        <main className="content" id="main">
+      <div className="main" inert={narrow && drawer}>
+        {narrow && (
+          <header className="topbar">
+            <button ref={menuButton} type="button" aria-controls="app-menu" aria-expanded={drawer} className="icon-btn topbar__menu" onClick={() => setDrawer(true)} aria-label="메뉴 열기">
+              <Icon name="menu" />
+            </button>
+          </header>
+        )}
+        <main className="content" id="main" tabIndex={-1}>
           <Outlet />
         </main>
       </div>
-    </div>
+    </div></>
   )
 }
 

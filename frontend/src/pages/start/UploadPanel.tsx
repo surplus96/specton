@@ -6,12 +6,10 @@ import type { Pack } from '../../api/types.ts'
 import Icon from '../../layout/Icon.tsx'
 import Button from '../../ui/Button.tsx'
 import Notice from '../../ui/Notice.tsx'
-import Segmented from '../../ui/Segmented.tsx'
 import {
   ACCEPT_ATTR,
   ENABLED_PACKS,
   MAX_UPLOAD_MB,
-  PACK_LABELS,
   PACK_OPTIONS,
   checkFile,
   placeError,
@@ -21,15 +19,8 @@ import {
 // - 고른 파일과 서버에 올라간 것을 구분한다. 파일을 골랐다고 올린 것처럼 보이지 않는다(디자인 시스템 8).
 // - 파일·팩 오류는 그 칸 아래, 나머지 오류는 버튼 위에 보인다 (upload/rules.ts placeError).
 // - 요청 중에는 버튼을 잠근다(빠른 두 번 클릭은 ref로 막는다). 202를 받으면 주소를 /?run=<id>로 바꾼다.
-// - 진행 방식 「바로 진행」은 API가 없어 고를 수 없게 두고 「준비 중」이라고 적는다.
+// - 실행은 기존 확인 흐름을 사용한다. 지원하지 않는 진행 방식은 화면에 노출하지 않는다.
 const FORMAT_TEXT = 'Excel · CSV · HWP · HWPX'
-
-type Mode = 'confirm' | 'direct'
-
-const MODE_TEXT: Record<Mode, string> = {
-  confirm: '확인할 항목이 있을 때만 멈추고, 확인하면 다음으로 넘어가요',
-  direct: '끝까지 진행하고, 마지막에 승인만 받아요',
-}
 
 function sizeText(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`
@@ -42,7 +33,6 @@ function UploadPanel() {
   const input = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File | null>(null)
   const [pack, setPack] = useState<Pack | null>(ENABLED_PACKS.length === 1 ? ENABLED_PACKS[0] : null)
-  const [mode, setMode] = useState<Mode>('confirm')
   const [over, setOver] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
   const [packError, setPackError] = useState<string | null>(null)
@@ -174,9 +164,7 @@ function UploadPanel() {
             </div>
           </>
         )}
-        <p className="subtle" style={{ margin: '6px 0 0', fontSize: 14 }}>
-          한글 문서는 요구사항 상세표를 읽어요. PDF는 Excel이나 CSV로 저장해 올려 주세요.
-        </p>
+
       </div>
 
       <div className="pack-row">
@@ -186,7 +174,7 @@ function UploadPanel() {
           className="select"
           value={pack ?? ''}
           aria-invalid={!!packError}
-          aria-describedby="pack-help"
+          aria-describedby={packError ? 'pack-help' : undefined}
           disabled={submitting}
           onChange={(e) => {
             setPack((e.target.value || null) as Pack | null)
@@ -201,25 +189,11 @@ function UploadPanel() {
             </option>
           ))}
         </select>
-        <span id="pack-help" className={packError ? 'field__error' : undefined}>
-          {packError ?? (pack ? PACK_LABELS[pack].description : '문서의 업무 분야를 고르세요')}
-        </span>
+        {packError && <span id="pack-help" className="field__error" role="alert">{packError}</span>}
       </div>
 
       {formError && <Notice kind="error" title={formError} />}
 
-      <div className="mode-row">
-        <Segmented<Mode>
-          label="진행 방식"
-          value={mode}
-          onChange={setMode}
-          options={[
-            { value: 'confirm', label: '확인 받기' },
-            { value: 'direct', label: '바로 진행 · 준비 중', disabled: true, title: '아직 쓸 수 없는 진행 방식이에요' },
-          ]}
-        />
-        <span>{MODE_TEXT[mode]}</span>
-      </div>
     </div>
   )
 }
