@@ -1,13 +1,13 @@
 """최종 설계의 RULE·SC를 API 그래프에 연결한다. DB 저장·재작업 판단은 기존 경로를 쓴다."""
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 from specton.contracts import DesignState, Finding
 from specton.graph import GraphState, Node
 from specton.packs.build import pack_content_hash
-from specton.packs.loader import load_common
+from specton.packs.loader import Word, load_common
 from specton.packs.provenance import policy_digest
 from specton.review.design_rules import check_design_rules
 from specton.review.normalization_findings import rule_severities
@@ -22,7 +22,12 @@ from specton.review.standard_compliance import (
 )
 
 
-def design_rules_node(*, root: Path, expected_policy_digest: str | None = None) -> Node:
+def design_rules_node(
+    *,
+    root: Path,
+    expected_policy_digest: str | None = None,
+    additional_words: Sequence[Word] = (),
+) -> Node:
     """같은 root의 심각도·처리 정책·선별 적용을 사용한다. 기본 팩으로 우회하지 않는다."""
     severities = rule_severities(root=root)
     common = load_common(root=root)
@@ -54,7 +59,9 @@ def design_rules_node(*, root: Path, expected_policy_digest: str | None = None) 
                 crud_exemption_reasons=common.rules.crud_exemption_reasons,
             )
         ]
-        compliance, manual = _compliance(design, root, common.naming.type_profile, official)
+        compliance, manual = _compliance(
+            design, root, common.naming.type_profile, official, additional_words
+        )
         findings: tuple[Finding, ...] = (
             *state.get("rule_findings", ()),
             *(f for f, _ in routed),
@@ -75,6 +82,7 @@ def _compliance(
     root: Path,
     profile: Profile,
     official: Callable[[], OfficialStandard],
+    additional_words: Sequence[Word] = (),
 ) -> tuple[tuple[Finding, ...], bool]:
     assert design.normalized is not None
     if not any(
@@ -86,7 +94,7 @@ def _compliance(
     result = check_standard_compliance(
         design,
         official=official(),
-        words=pack_words(design.normalized.pack, root=root),
+        words=(*pack_words(design.normalized.pack, root=root), *additional_words),
         severities=compliance_severities(root=root),
         profile=profile,
         root=root,

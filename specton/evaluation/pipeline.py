@@ -333,7 +333,11 @@ def create_evaluation_graph(
         agent_nodes=nodes,
         node_overrides={
             "normalize": normalization_node(mapper, root=root, normalizer=condition.normalize),
-            "rules": design_rules_node(root=root, expected_policy_digest=condition.policy_digest()),
+            "rules": design_rules_node(
+                root=root,
+                expected_policy_digest=condition.policy_digest(),
+                additional_words=tuple(a.word for a in condition.overlay.spec.additions),
+            ),
         },
         node_wrapper=lambda name, node: condition.wrap(settings, name, node),
     )

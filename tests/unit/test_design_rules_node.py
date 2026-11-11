@@ -145,3 +145,31 @@ def test_policy_drift_after_normalization_requires_new_run(tmp_path):
     path.write_text(path.read_text() + "\n# 정책 파일 변경\n")
     with pytest.raises(ValueError, match="새 실행"):
         design_rules_node(root=root)(graph)
+
+
+def test_exploration_words_are_registered_only_in_the_injected_condition() -> None:
+    from specton.packs.loader import Word
+
+    graph = state(used=True)
+    design = graph["design"]
+    entity = design.entities[0]
+    attr = entity.attributes[0].evolve(name="쩨큐시험어코드")
+    assert design.normalized is not None
+    table = design.normalized.tables[0]
+    column = table.columns[0].evolve(name=attr.name, physical_name="zzq_cd", domain=None)
+    graph["design"] = design.evolve(
+        entities=(entity.evolve(attributes=(attr,)),),
+        normalized=design.normalized.evolve(tables=(table.evolve(columns=(column,)),)),
+    )
+    before = design_rules_node(root=DEFAULT_ROOT)(graph)["rule_findings"]
+    assert any(f.rule_code == "SC-01" for f in before)
+    word = Word(
+        word="쩨큐시험어",
+        abbreviation="ZZQ",
+        english="Synthetic",
+        definition="합성 시험",
+        is_classifier=False,
+    )
+    after = design_rules_node(root=DEFAULT_ROOT, additional_words=(word,))(graph)["rule_findings"]
+    assert not any(f.rule_code == "SC-01" for f in after)
+    assert design_rules_node(root=DEFAULT_ROOT)(graph)["rule_findings"] == before
