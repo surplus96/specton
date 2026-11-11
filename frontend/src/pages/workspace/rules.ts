@@ -211,12 +211,18 @@ export function svgSize(svg: string): { width: number; height: number } | null {
   return width > 0 && height > 0 ? { width, height } : null
 }
 
+/** 여백을 제외한 영역에 전체 ERD를 맞춘다. 큰 도면은 10% 미만도 허용한다. */
+export function erdFitScale(size: { width: number; height: number }, width: number, height: number): number {
+  if (![size.width, size.height, width, height].every((value) => Number.isFinite(value) && value > 0)) return 1
+  return Math.min(1, width / size.width, height / size.height)
+}
+
 /** 확대 단계. 너무 작거나 크게는 가지 않는다. */
 const ZOOM_LEVELS = [0.25, 0.33, 0.5, 0.67, 0.8, 1, 1.25, 1.5, 2]
 
 export const zoomSteps = {
   next: (scale: number) => ZOOM_LEVELS.find((z) => z > scale + 0.001) ?? ZOOM_LEVELS[ZOOM_LEVELS.length - 1],
-  prev: (scale: number) => [...ZOOM_LEVELS].reverse().find((z) => z < scale - 0.001) ?? ZOOM_LEVELS[0],
+  prev: (scale: number) => [...ZOOM_LEVELS].reverse().find((z) => z < scale - 0.001) ?? Math.min(scale, ZOOM_LEVELS[0]),
 }
 
 /** revision 고르기 목록. 최신이 먼저. */

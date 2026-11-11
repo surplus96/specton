@@ -89,7 +89,7 @@ function ProgressPanel({ run, events, connection, onChanged, label }: Props) {
       </>
     ) : (
       <>
-        나머지는 <strong>알아서</strong> 진행 중이에요
+        <strong>설계</strong> 진행 중
       </>
     )
 

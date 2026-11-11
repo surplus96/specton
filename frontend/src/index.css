@@ -305,19 +305,11 @@ a {
   white-space: nowrap;
 }
 
-.sidebar__foot {
-  margin-top: auto;
-  font-size: 12px;
-  color: rgba(243, 242, 233, 0.45);
-  padding: 0 14px;
-}
-
 .shell--collapsed .logo span,
 .shell--collapsed .logo b,
 .shell--collapsed .logo i,
 .shell--collapsed .nav__text,
-.shell--collapsed .sidebar__section,
-.shell--collapsed .sidebar__foot {
+.shell--collapsed .sidebar__section {
   display: none;
 }
 
@@ -402,8 +394,7 @@ a {
   .shell--collapsed .logo b,
   .shell--collapsed .logo i,
   .shell--collapsed .nav__text,
-  .shell--collapsed .sidebar__section,
-  .shell--collapsed .sidebar__foot {
+  .shell--collapsed .sidebar__section {
     display: revert;
   }
 

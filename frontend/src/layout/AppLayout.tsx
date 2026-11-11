@@ -121,7 +121,6 @@ function AppLayout() {
           </Link>
         </nav>
 
-        <div className="sidebar__foot">요구사항 정의서 → 설계 문서</div>
       </aside>
 
       {drawer && <div className="scrim" onClick={() => setDrawer(false)} aria-hidden="true" />}

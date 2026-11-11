@@ -111,8 +111,25 @@ export function nameIndex(design: readonly DesignItem[]): Map<string, string> {
 }
 
 export function targetText(target: Finding['targets'][number], names: Map<string, string>): string {
-  const name = names.get(target.id)
-  return name ? `${name} (${target.id})` : target.id
+  if (target.kind === 'requirement') return target.id
+  // 설계 객체의 내부 ID는 이름으로 표시하되 요구사항 번호는 보존한다
+  return names.get(target.id) ?? TARGET_KIND_TEXT[target.kind] ?? '이름 없는 대상'
+}
+
+const TARGET_KIND_TEXT: Record<string, string> = {
+  requirement: '요구사항',
+  function: '기능',
+  entity: '테이블',
+  attribute: '항목',
+  relationship: '테이블 연결',
+}
+
+/** 서버가 생성한 기술 식별자 안내의 접미부만 정리한다. 고객 인용·제안은 그대로 보존한다. */
+export function plainText(text: string, finding: Pick<Finding, 'source' | 'kind' | 'rule_code' | 'targets'>): string {
+  if (finding.source !== 'rule' || finding.rule_code !== 'RULE-05' || finding.kind !== 'technical_identifier') return text
+  const suffix = / \(([^()]+)\): 표준 물리명 미확정\. 기술 식별자 [tc]_[0-9a-f]{24} 사용\.$/.exec(text)
+  if (!suffix || !finding.targets.some((target) => target.id === suffix[1])) return text
+  return text.slice(0, suffix.index) + ': 표준 영문 이름을 아직 정하지 못했어요. 기술용 영문 이름을 썼어요.'
 }
 
 /** 자동 재작업을 멈추고 사람에게 넘긴 이유 (review/rework.py HitlReason) */

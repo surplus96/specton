@@ -24,6 +24,7 @@ import {
   shortTime,
   svgDataUri,
   svgSize,
+  erdFitScale,
   toArtifacts,
   zoomSteps,
 } from './rules.ts'
@@ -147,6 +148,15 @@ describe('ERD 보기', () => {
   it('SVG 원래 크기는 viewBox에서 읽는다', () => {
     expect(svgSize('<svg viewBox="0 0 1760.5 840" width="100%">')).toEqual({ width: 1760.5, height: 840 })
     expect(svgSize('<svg width="10">')).toBeNull()
+  })
+
+  it('큰 ERD도 가로·세로 영역에 맞추며 축소 버튼이 확대하지 않는다', () => {
+    const size = { width: 20000, height: 16000 }
+    const scale = erdFitScale(size, 800, 500)
+    expect(size.width * scale).toBeLessThanOrEqual(800)
+    expect(size.height * scale).toBeLessThanOrEqual(500)
+    expect(zoomSteps.prev(scale)).toBeLessThanOrEqual(scale)
+    expect(erdFitScale({ width: 100, height: 100 }, 800, 500)).toBe(1)
   })
 
   it('확대·축소는 정한 단계 안에서만', () => {

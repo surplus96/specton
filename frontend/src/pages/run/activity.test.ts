@@ -9,6 +9,16 @@ const ev = (id: number, event: SseEvent['event'], message: string, stage?: strin
 })
 
 describe('서버 작업 패널 기록', () => {
+  it('단계마다의 시작·끝 기록(a01 시작·parse 종료)은 진행 기록에 보이지 않는다', () => {
+    const node = (id: number, message: string, name: string): SseEvent => ({
+      id,
+      event: 'status',
+      data: { run_id: 'r', revision: 1, stage: 'parsing', message, payload: { node: name, phase: 'started' } },
+    })
+    const items = activityItems([node(1, 'parse 시작', 'parse'), ev(2, 'status', '문서를 읽고 있습니다', 'parsing'), node(3, 'a01 시작', 'a01')])
+    expect(items.map((i) => i.message)).toEqual(['문서를 읽고 있습니다'])
+  })
+
   it('최신 기록이 맨 위다', () => {
     const items = activityItems([ev(1, 'status', '접수', 'queued'), ev(2, 'status', '문서를 읽습니다', 'parsing')])
     expect(items.map((i) => i.message)).toEqual(['문서를 읽습니다', '접수'])
