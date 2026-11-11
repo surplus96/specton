@@ -1,0 +1,66 @@
+{
+  "date_kst": "2026-11-11",
+  "scope": "R1-confirmed post-observation synthetic diagnostic; not independent final evaluation",
+  "code_commit": "abf4a71ab9e6557f5d080bb97c60c70d311be66f",
+  "input_version": "fixed-review-input-v2",
+  "primary_cases": 21,
+  "context_variants_not_run": 10,
+  "quarantined_not_run": 1,
+  "production_A08_prompt": "a08-v2",
+  "original_gold_changed": false,
+  "calls": 21,
+  "input_tokens": 77284,
+  "output_tokens": 2303,
+  "structured_retries": 0,
+  "estimated_cost_usd": 0.006520695,
+  "cost_basis": "OpenAI Standard text rates on 2026-11-11; estimate, not invoice",
+  "price_source": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+  "wall_time_ms": 51807,
+  "strict_target_results": {
+    "A05": {
+      "cases": 9,
+      "failed_cases": 0,
+      "expected_total": 4,
+      "expected_found": 4,
+      "findings_total": 4,
+      "findings_matched": 4,
+      "normal_false_positives": 0,
+      "input_tokens": 25994,
+      "output_tokens": 818,
+      "call_duration_ms": 21974,
+      "retries": 0,
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "A08": {
+      "cases": 12,
+      "failed_cases": 0,
+      "expected_total": 6,
+      "expected_found": 5,
+      "findings_total": 6,
+      "findings_matched": 5,
+      "normal_false_positives": 0,
+      "input_tokens": 51290,
+      "output_tokens": 1485,
+      "call_duration_ms": 26131,
+      "retries": 0,
+      "recall": 0.8333333333333334,
+      "precision": 0.8333333333333334
+    }
+  },
+  "semantic_adjudication": "R1 confirmed 10 actual correspondences after reviewing the workbook; strict results preserved",
+  "independent_final_dataset_ready": false,
+  "semantic_results": {
+    "A05": {
+      "tp": 4,
+      "fp": 0,
+      "fn": 0
+    },
+    "A08": {
+      "tp": 6,
+      "fp": 0,
+      "fn": 0
+    }
+  },
+  "semantic_scorer": "specton.evaluation.metrics.matching_counts"
+}
