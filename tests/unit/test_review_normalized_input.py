@@ -272,3 +272,33 @@ def test_combined_mode_sends_normalized_once_for_all_perspectives() -> None:
     )
 
     assert list(_sent_data(transport)) == ["requirements", "entities", "normalized"]
+
+
+@pytest.mark.parametrize("reviewer", ["A05", "A06"])
+def test_relationship_review_receives_actual_derived_fk_pairs(reviewer):
+    from specton.review.perspective import PERSPECTIVES_DIR, load_perspective
+
+    state = _normalized_state()
+    client, transport = stub_client(reply(ReviewOutput(findings=())))
+    review_perspective(
+        client,
+        load_perspective(PERSPECTIVES_DIR / f"{reviewer}.yaml"),
+        state,
+        Settings(_env_file=None),
+    )
+    data = _sent_data(transport)
+    assert state.normalized is not None
+    assert data["normalized"] == normalized_view(state.normalized)
+    # 모델에서 파생한 FK 컬럼도 빠짐없이 전달한다. A03 속성 목록에 없어도 추적 가능하다.
+    for fk in state.normalized.foreign_keys:
+        sent = next(f for f in data["normalized"]["foreign_keys"] if f["id"] == fk.id)
+        assert sent["columns"] == list(fk.columns)
+        assert sent["parent_columns"] == list(fk.parent_columns)
+
+
+def test_relation_only_review_before_normalization_does_not_claim_normalized_input():
+    client, transport = stub_client(reply(ReviewOutput(findings=())))
+    review_perspective(
+        client, _perspective("requirements", "relationships"), _design(), Settings(_env_file=None)
+    )
+    assert "normalized" not in _sent_data(transport)
