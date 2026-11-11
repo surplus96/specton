@@ -2126,3 +2126,8 @@ dialog.confirm p {
 .shell--workspace .aiws-body { height: auto; min-height: 0; overflow: auto; }
 .workspace-chooser { padding: clamp(16px, 4vw, 48px); width: 100%; max-width: 900px; margin: auto; }
 .nav__text small { display: block; font-size: 12px; opacity: 0.7; }
+
+/* 분석 확인은 요약 행을 기본으로, 원문·질문은 행 상세에서 펼쳐 본다. */
+.requirement-preview { margin: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
+.requirement-details { padding: 8px; }
+.requirement-detail-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }

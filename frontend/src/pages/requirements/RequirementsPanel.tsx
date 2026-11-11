@@ -87,46 +87,25 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
     },
     {
       key: 'text',
-      title: '요구사항',
-      render: (r) => (
-        <div className="stack-sm" style={{ gap: 4 }}>
-          <span>{r.text}</span>
-          {split.has(r.id) && (
-            <span className="subtle" style={{ fontSize: 13 }}>
-              같은 원문에서 자동 분할됐어요. 의미가 유지됐으면 그대로 진행하세요.
-            </span>
-          )}
-          {r.source_text && r.source_text !== r.text && (
-            <span className="subtle" style={{ fontSize: 13 }}>
-              원문: {r.source_text}
-            </span>
-          )}
-        </div>
-      ),
+      title: '요구사항 요약',
+      render: (r) => <p className="requirement-preview">{r.text}</p>,
     },
-    { key: 'type', title: '유형', width: 130, render: (r) => typeText(r) },
+    { key: 'type', title: '유형', width: 110, render: (r) => typeText(r) },
     {
       key: 'issues',
       title: '품질 경고 · 질문',
-      width: 240,
-      render: (r) =>
-        r.quality_issues.length === 0 ? (
-          <span className="subtle">{split.has(r.id) ? '자동 분할됨 · 진행 가능' : '경고 없음'}</span>
-        ) : (
-          <div className="stack-sm">
-            {r.quality_issues.map((issue, i) => (
-              <div key={i}>
-                <StatusTag tone="warning">경고</StatusTag> {issue.message}
-                {issue.question && <div className="muted" style={{ marginTop: 4 }}>질문: {issue.question}</div>}
-              </div>
-            ))}
-          </div>
-        ),
+      width: 180,
+      render: (r) => r.quality_issues.length === 0
+        ? <span className="subtle">{split.has(r.id) ? '자동 분할됨 · 진행 가능' : '경고 없음'}</span>
+        : <div className="stack-sm">
+            <StatusTag tone="warning">경고 {r.quality_issues.length}건 · 질문 {r.quality_issues.filter((q) => q.question).length}건</StatusTag>
+            <span className="subtle">상세 보기에서 확인</span>
+          </div>,
     },
     {
       key: 'answer',
       title: '답',
-      width: 290,
+      width: 270,
       render: (r) => {
         const a = answers[r.id] ?? { action: 'keep', texts: [] }
         return (
@@ -181,6 +160,19 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
     },
   ]
 
+  const details = (req: AnalysedRequirement) => (
+    <section className="requirement-details stack-sm" aria-label={`${req.source_id ?? req.id} 상세`}>
+      <h3 className="h3">요구사항 전체</h3>
+      <p className="requirement-detail-text">{req.text}</p>
+      {split.has(req.id) && <Notice title="같은 원문에서 자동 분할된 요구사항입니다.">원문의 조건·대상이 유지됐으면 ‘유지’로 진행하세요.</Notice>}
+      {req.source_text && req.source_text !== req.text && <div className="stack-sm"><h3 className="h3">원문 전체</h3><p className="requirement-detail-text">{req.source_text}</p></div>}
+      {req.quality_issues.length > 0 && <div className="stack-sm"><h3 className="h3">품질 경고 · 질문</h3>
+        {req.quality_issues.map((issue, i) => <div key={i} className="stack-sm"><strong className="requirement-detail-text">{issue.message}</strong>{issue.question && <p className="requirement-detail-text">확인 질문: {issue.question}</p>}</div>)}
+      </div>}
+    </section>
+  )
+  const detailLabel = (req: AnalysedRequirement, opened: boolean) => `${req.source_id ?? req.id} ${opened ? '상세 접기' : '상세 보기'}`
+
   return (
     <div className="stack">
       <ScreenHead
@@ -206,7 +198,7 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
             <h2 className="section-title" style={{ margin: 0 }}>
               품질 경고 · 질문 {toCheck.length}건
             </h2>
-            <DataTable label="품질 경고·질문" rows={toCheck} rowKey={(r) => r.id} columns={columns} minWidth={1000} empty="품질 경고·질문이 없어요." />
+            <DataTable label="품질 경고·질문" rows={toCheck} rowKey={(r) => r.id} columns={columns} expand={details} expandLabel={detailLabel} expandText="상세 보기" minWidth={1000} empty="품질 경고·질문이 없어요." />
           </section>
           {splitOnly.length > 0 && (
             <section aria-label="자동 분할 결과" className="stack-sm">
@@ -216,14 +208,14 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
               <p className="muted" style={{ margin: 0 }}>
                 분할 자체는 오류가 아니에요. 원문의 조건·대상이 유지됐으면 ‘유지’로 진행하세요.
               </p>
-              <DataTable label="자동 분할 결과" rows={splitOnly} rowKey={(r) => r.id} columns={columns} minWidth={1000} />
+              <DataTable label="자동 분할 결과" rows={splitOnly} rowKey={(r) => r.id} columns={columns} expand={details} expandLabel={detailLabel} expandText="상세 보기" minWidth={1000} />
             </section>
           )}
           {others.length > 0 && (
             <details className="more card card--soft" style={{ padding: '14px 18px' }}>
               <summary>문제가 없는 요구사항 {others.length}건 (바꿀 때만 펼치세요)</summary>
               <div style={{ marginTop: 12 }}>
-                <DataTable label="문제가 없는 요구사항" rows={others} rowKey={(r) => r.id} columns={columns} pageSize={20} minWidth={1000} />
+                <DataTable label="문제가 없는 요구사항" rows={others} rowKey={(r) => r.id} columns={columns} expand={details} expandLabel={detailLabel} expandText="상세 보기" pageSize={20} minWidth={1000} />
               </div>
             </details>
           )}

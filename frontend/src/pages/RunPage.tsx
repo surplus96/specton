@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { ApiError, errorMessage } from '../api/errors.ts'
 import { runFileName } from '../api/runNames.ts'
@@ -22,7 +22,7 @@ import { VIEW_LABEL, chosenView, staleView, resultViews, type ResultView } from 
 // 상태를 조회하고 이벤트(SSE)로 따라가며, 상태에 맞는 화면(UI-02~07)을 고른다 (run/screens.ts).
 // 결과가 있으면(최종 검토 대기·완료) 위쪽에서 결과 작업공간(UI-05)으로 바꿔 볼 수 있다 (&view=workspace).
 // 새로고침해도 상태 조회와 주소로 같은 화면에 돌아온다.
-// 서버 작업 패널은 설계 진행(UI-04)에서는 오른쪽에, 표가 넓은 확인·결과 화면에서는 본문 아래에 둔다.
+// 서버 작업 패널은 넓은 화면의 설계 진행(UI-04)에서만 오른쪽에 둔다. 하단 패널은 표시하지 않는다.
 const SCREEN_OF_VIEW: Record<ResultView, ScreenId> = {
   review: 'UI-06',
   workspace: 'UI-05',
@@ -31,6 +31,13 @@ const SCREEN_OF_VIEW: Record<ResultView, ScreenId> = {
 
 
 function RunPage({ runId }: { runId: string }) {
+  const [wide, setWide] = useState(() => window.matchMedia('(min-width: 1100px)').matches)
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 1100px)')
+    const changed = () => setWide(media.matches)
+    media.addEventListener('change', changed)
+    return () => media.removeEventListener('change', changed)
+  }, [])
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const { run, events, receivedAt, connection, loadError, refresh } = useRunStatus(runId)
@@ -105,6 +112,7 @@ function RunPage({ runId }: { runId: string }) {
 
   const view = chosenView(run.status, params.get('view'))
   const screen = view ? SCREEN_OF_VIEW[view] : screenFor(run.status, run.interrupt?.kind)
+  const showActivity = screen === 'UI-04' && wide
   const steps = screenSteps(run.status, screen, events)
 
   function chooseView(next: ResultView) {
@@ -131,7 +139,7 @@ function RunPage({ runId }: { runId: string }) {
         )}
 
       </div>
-      <div className={`run-layout${screen === 'UI-04' ? ' run-layout--side' : ''}`}>
+      <div className={`run-layout${showActivity ? ' run-layout--side' : ''}`}>
         <div className="screen" key={screen} style={{ minWidth: 0 }}>
           {screen === 'UI-04' ? (
             <ProgressPanel run={run} events={events} connection={connection} onChanged={refresh} label={label} />
@@ -147,9 +155,9 @@ function RunPage({ runId }: { runId: string }) {
             <DownloadPanel run={run} label={label} />
           )}
         </div>
-        <aside className="run-layout__side">
+        {showActivity && <aside className="run-layout__side">
           <ActivityPanel events={events} receivedAt={receivedAt} connection={connection} status={run.status} />
-        </aside>
+        </aside>}
       </div>
     </div>
   )
