@@ -28,3 +28,6 @@
 - 좋아지는 점: 오탐이 자동 루프를 지배하지 않는다.
 - 감수할 점: LLM이 찾은 중대 결함이 `major`로 남을 수 있다.
 - 관련 문서: [04 에이전트](../04-agents.md), `domain_packs/common/rules.yaml`
+
+
+2026-11-11 R1: RULE-05 technical_identifier는 안전한 물리명 생성에 성공한 안내로 minor/informational이다. 실제 명명 실패의 critical/manual 정책은 유지한다. ADR-0009 참조.

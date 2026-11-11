@@ -343,6 +343,7 @@ def _node() -> Any:
     ],
     ids=["automatic", "manual"],
 )
+@pytest.mark.usefixtures("strict_naming")
 def test_node_returns_the_mapped_findings_for_a_real_failure(
     design: DesignState, manual: bool, rule: str
 ) -> None:
@@ -355,6 +356,7 @@ def test_node_returns_the_mapped_findings_for_a_real_failure(
 
 
 @pytest.mark.parametrize("manual", [False, True], ids=["automatic", "manual"])
+@pytest.mark.usefixtures("strict_naming")
 def test_real_failure_reaches_the_graph_branch(manual: bool) -> None:
     """실제 변환기를 넣은 정리 노드로 그래프를 돌려, 자동 재작업과 사람 확인 분기에 도착하는지 본다.
 
@@ -503,3 +505,17 @@ def test_parent_without_key_maps_to_a_relationship_rework() -> None:
     assert finding.target_stage is TargetStage.DATA_MODEL
     assert finding.severity is Severity.CRITICAL
     assert review["requires_manual_review"] is False
+
+
+@pytest.fixture
+def strict_naming(monkeypatch):
+    from dataclasses import replace
+
+    from specton.codegen import normalize_step
+
+    original = normalize_step.load_naming_rules
+    monkeypatch.setattr(
+        normalize_step,
+        "load_naming_rules",
+        lambda root: replace(original(root), unresolved="error"),
+    )

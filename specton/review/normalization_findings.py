@@ -336,3 +336,45 @@ def _makes_junction(rel: Relationship) -> bool:
         and not rel.identifying
         and rel.parent != rel.child
     )
+
+
+def technical_name_findings(design: DesignState) -> tuple[Finding, ...]:
+    """성공한 기술 식별자 사용 안내. 정리 실패 RULE-05의 차단 정책과 구분한다."""
+    model = design.normalized
+    if model is None or not model.technical_names:
+        return ()
+    objects: dict[str, tuple[FindingTarget, str]] = {}
+    for table in model.tables:
+        if table.entity_id:
+            objects[table.id] = (
+                FindingTarget(kind="entity", id=table.entity_id),
+                table.physical_name,
+            )
+        for column in table.columns:
+            if column.attribute_id:
+                objects[column.id] = (
+                    FindingTarget(kind="attribute", id=column.attribute_id),
+                    column.physical_name,
+                )
+    findings = []
+    for number, (object_id, logical) in enumerate(sorted(model.technical_names.items()), 1):
+        target, physical = objects[object_id]
+        targets = (target,)
+        findings.append(
+            Finding(
+                id=f"NAME-{design.iteration}-{number}",
+                source=FindingSource.RULE,
+                rule_code="RULE-05",
+                kind="technical_identifier",
+                severity=Severity.MINOR,
+                targets=targets,
+                evidence=(
+                    {"quote": f"{logical}: 표준 물리명 미확정. 기술 식별자 {physical} 사용."},
+                ),
+                suggestion="논리명은 보존했습니다. 표준 물리명이 필요하면 명명 매핑을 검토합니다.",
+                target_stage=None,
+                fingerprint=fingerprint("RULE-05", "technical_identifier", targets),
+                iteration=design.iteration,
+            )
+        )
+    return tuple(findings)

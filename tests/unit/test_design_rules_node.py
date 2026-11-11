@@ -173,3 +173,22 @@ def test_exploration_words_are_registered_only_in_the_injected_condition() -> No
     after = design_rules_node(root=DEFAULT_ROOT, additional_words=(word,))(graph)["rule_findings"]
     assert not any(f.rule_code == "SC-01" for f in after)
     assert design_rules_node(root=DEFAULT_ROOT)(graph)["rule_findings"] == before
+
+
+def test_technical_identifier_notices_do_not_block_or_duplicate_sc01():
+    graph = state(used=True)
+    design = graph["design"]
+    entity = design.entities[0]
+    entity = entity.evolve(
+        name="미등록업무", attributes=(entity.attributes[0].evolve(name="미등록업무번호"),)
+    )
+    design = design.evolve(entities=(entity,), normalized=None)
+    result = normalize_from_state({"design": design})
+    assert isinstance(result, Normalized)
+    graph["design"] = design.evolve(normalized=result.model)
+    checked = design_rules_node(root=DEFAULT_ROOT)(graph)
+    notices = [f for f in checked["rule_findings"] if f.kind == "technical_identifier"]
+    assert len(notices) == 2
+    assert all(f.severity == "minor" for f in notices)
+    assert not checked["requires_manual_review"]
+    assert not any(f.rule_code == "SC-01" for f in checked["rule_findings"])

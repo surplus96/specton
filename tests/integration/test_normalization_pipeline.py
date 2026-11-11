@@ -198,7 +198,14 @@ def pipeline(
     unregister = register_serde_event_listener(events.append)
     with ExitStack() as stack:
 
-        def make(design: Node, *, previous: _Pipeline | None = None) -> _Pipeline:
+        def make(
+            design: Node, *, previous: _Pipeline | None = None, strict: bool = False
+        ) -> _Pipeline:
+            if strict:
+                naming = root / "common/naming.yaml"
+                naming.write_text(
+                    naming.read_text().replace("unresolved: technical_id", "unresolved: error")
+                )
             client = stack.enter_context(TestClient(create_app(settings, pool)))
             if previous is not None:
                 previous.runner.stop()
@@ -372,7 +379,7 @@ def test_actual_unknown_name_blocks_approval_after_restart(
         attempts.append(state["design"].revision)
         return {"design": state["design"].evolve(entities=(_entity(name="사전미등록XYZ"),))}
 
-    first = pipeline(design)
+    first = pipeline(design, strict=True)
     run_id = first.create()
     first.runner.run_pending()
     before = first.status(run_id)
@@ -425,7 +432,7 @@ def test_manual_problem_takes_precedence_over_automatic_rework(
         )
         return {"design": current.evolve(entities=(_entity(keyed=False), unknown))}
 
-    world = pipeline(design)
+    world = pipeline(design, strict=True)
     run_id = world.create()
     world.runner.run_pending()
 
@@ -619,3 +626,33 @@ def test_pack_execution_failure_does_not_become_a_rule_or_an_approval(
             conn.execute("SELECT 1 FROM approval WHERE run_id = %s", (UUID(run_id),)).fetchone()
             is None
         )
+
+
+def test_unknown_business_name_reaches_review_and_survives_restart(pipeline):
+    def design(state):
+        return {"design": state["design"].evolve(entities=(_entity(name="사전미등록XYZ"),))}
+
+    first = pipeline(design)
+    run_id = first.create()
+    first.runner.run_pending()
+    assert (first.status(run_id).status, first.status(run_id).revision) == ("awaiting_review", 0)
+    assert any(name == "erd" for name, _ in first.visited)
+    [snapshot] = first.models(run_id)
+    normalized = snapshot["normalized_model"]["normalized"]
+    assert len(normalized["technical_names"]) == 1
+    restarted = pipeline(design, previous=first)
+    checkpoint = restarted.graph.get_state({"configurable": {"thread_id": run_id}})
+    assert checkpoint.values["design"].normalized.technical_names == normalized["technical_names"]
+    from specton.codegen.ddl import generate_ddl
+
+    sql = generate_ddl(checkpoint.values["design"].normalized, max_bytes=63).sql
+    # 테스트 전용 스키마에서 실제 PostgreSQL 실행 후 롤백한다.
+    with restarted.pool.connection() as conn, conn.transaction(force_rollback=True):
+        conn.execute(sql)
+
+    review = restarted.client.get(f"/runs/{run_id}/view", params={"section": "review"})
+    items = review.json()["items"]
+    assert [(f["kind"], f["severity"]) for f in items] == [("technical_identifier", "minor")]
+    assert restarted.answer(run_id, "approve").status_code == 202
+    restarted.runner.run_pending()
+    assert restarted.status(run_id).status == "completed"

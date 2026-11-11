@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from specton.contracts import Finding
-from specton.packs.loader import ComplianceCheck, RulePolicy, load_common
+from specton.packs.loader import ComplianceCheck, Rule, RulePolicy, load_common
 
 
 def load_policies(*, root: Path) -> dict[str, RulePolicy]:
@@ -16,7 +16,7 @@ def apply_policy(
     finding: Finding, policies: Mapping[str, RulePolicy], *, inferred_manual: bool = False
 ) -> tuple[Finding, bool]:
     policy = policies.get(finding.rule_code or "")
-    if isinstance(policy, ComplianceCheck):
+    if isinstance(policy, (ComplianceCheck, Rule)):
         policy = policy.subtypes.get(finding.kind.split(":", 1)[0], policy)
     if policy is None or policy.resolved_handling is None:
         return finding, inferred_manual  # 이전 draft 설정: 검사기가 계산한 경로 유지

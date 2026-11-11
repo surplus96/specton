@@ -634,4 +634,4 @@ def test_type_parameter_at_postgres_upper_bound_passes(
 def test_header_does_not_claim_a_validation_state() -> None:
     """파일은 검증 전에 해시가 정해져 검증 뒤에 고칠 수 없다. 상태는 API·승인 기록에 둔다."""
     assert "validation" not in _sql().splitlines()[0]
-    assert DDL_GENERATOR_VERSION == "ddl-v1"
+    assert DDL_GENERATOR_VERSION == "ddl-v2"

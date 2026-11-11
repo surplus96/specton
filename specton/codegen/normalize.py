@@ -23,6 +23,7 @@
 이 모듈은 LLM client를 import하지 않는다.
 """
 
+import hashlib
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
@@ -69,6 +70,7 @@ class _Run:
     tables: dict[str, Table]  # 엔티티 ID 또는 `rel:<관계 ID>`(연결 테이블) → 테이블
     problems: list[Problem] = field(default_factory=list)
     foreign_keys: list[ForeignKey] = field(default_factory=list)
+    technical_names: dict[str, str] = field(default_factory=dict)
     blocked: set[str] = field(default_factory=set)  # 앞선 원인으로 PK를 정할 수 없는 엔티티
     qualified_relationships: set[str] = field(default_factory=set)
 
@@ -104,6 +106,7 @@ def normalize(
         pack_version=pack.version,
         rules_version=RULES_VERSION,
         lexicon_digest=lexicon.digest,
+        technical_names=dict(sorted(run.technical_names.items())) or None,
         tables=tuple(sorted(run.tables.values(), key=lambda t: t.id)),
         foreign_keys=tuple(sorted(run.foreign_keys, key=lambda f: f.id)),
     )
@@ -267,6 +270,11 @@ def _entity_table(entity: Entity, run: _Run) -> Table:
 
 def _named(logical: str, target: str, run: _Run) -> str:
     name = physical_name(logical, run.lexicon)
+    if name is None and run.rules.unresolved == "technical_id":
+        # 객체 ID는 코드가 부여한다. 업무 번역이나 표준 약어를 추측하지 않는다.
+        prefix = "t" if target.startswith("TBL-") else "c"
+        name = f"{prefix}_{hashlib.sha256(target.encode()).hexdigest()[:24]}"
+        run.technical_names[target] = logical
     if name is None:
         run.problems.append(unresolved(logical, target))
         return ""  # 결과는 실패로 끝나므로 빈 이름이 밖으로 나가지 않는다

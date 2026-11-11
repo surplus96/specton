@@ -106,6 +106,7 @@ class Domain(_Strict):
 
 
 class _PhysicalNameRule(_Strict):
+    unresolved: Literal["error", "technical_id"] = "error"
     dictionary_case: NonEmpty
     ddl_case: NonEmpty
     word_separator: NonEmpty
@@ -182,6 +183,7 @@ class Rule(RulePolicy):
 
     id: NonEmpty
     name: NonEmpty
+    subtypes: dict[NonEmpty, RulePolicy] = Field(default_factory=dict)
 
 
 class ComplianceCheck(RulePolicy):
@@ -408,6 +410,8 @@ def _naming_blanks(naming: Naming) -> list[str]:
 def _rules_blanks(rules: Rules) -> list[str]:
     """심각도와 처리 방식의 미정값만 거절한다. 의도적으로 비운 복귀 단계는 허용한다."""
     policies: list[tuple[str, RulePolicy]] = [(f"rules.{r.id}", r) for r in rules.rules]
+    for rule in rules.rules:
+        policies.extend((f"rules.{rule.id}.subtypes.{k}", p) for k, p in rule.subtypes.items())
     for check in rules.standard_compliance.checks:
         prefix = f"standard_compliance.{check.id}"
         policies.append((prefix, check))

@@ -10,7 +10,7 @@ from specton.packs.build import pack_content_hash
 from specton.packs.loader import Word, load_common
 from specton.packs.provenance import policy_digest
 from specton.review.design_rules import check_design_rules
-from specton.review.normalization_findings import rule_severities
+from specton.review.normalization_findings import rule_severities, technical_name_findings
 from specton.review.rule_policy import apply_policy, load_policies
 from specton.review.standard_compliance import (
     OfficialStandard,
@@ -62,7 +62,22 @@ def design_rules_node(
         compliance, manual = _compliance(
             design, root, common.naming.type_profile, official, additional_words
         )
+        naming_routed = [apply_policy(f, policies) for f in technical_name_findings(design)]
+        naming = tuple(f for f, _ in naming_routed)
+        named_targets = {t.id for f in naming for t in f.targets}
+        # 같은 미등록 사실은 기술 식별자 안내에서 한 번만 표시한다. 다른 SC 진단은 보존한다.
+        compliance = tuple(
+            f
+            for f in compliance
+            if not (
+                f.rule_code == "SC-01"
+                and f.severity == "minor"
+                and f.target_stage is None
+                and all(t.id in named_targets for t in f.targets)
+            )
+        )
         findings: tuple[Finding, ...] = (
+            *naming,
             *state.get("rule_findings", ()),
             *(f for f, _ in routed),
             *compliance,
@@ -70,7 +85,9 @@ def design_rules_node(
         return {
             "rule_findings": findings,
             "requires_manual_review": (
-                state.get("requires_manual_review", False) or manual or any(m for _, m in routed)
+                state.get("requires_manual_review", False)
+                or manual
+                or any(m for _, m in (*routed, *naming_routed))
             ),
         }
 

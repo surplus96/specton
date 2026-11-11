@@ -98,6 +98,7 @@ def test_success_returns_tables_and_fk_with_recorded_pack() -> None:
     assert fk.relationship_id == "REL-01" and fk.req_ids == ("REQ-01",)
 
 
+@pytest.mark.usefixtures("strict_naming")
 def test_failure_returns_problems_only() -> None:
     """R1이 실패 때 받는 값: `NormalizeFailed(problems=...)`. 결과 모델은 없다."""
     result = normalize_from_state({"design": _design(receipt_name="수불문서")})
@@ -109,6 +110,7 @@ def test_failure_returns_problems_only() -> None:
 
 
 @pytest.mark.parametrize("receipt_name", ["고장접수", "수불문서"], ids=["success", "failure"])
+@pytest.mark.usefixtures("strict_naming")
 def test_result_survives_checkpoint_save_and_restore(receipt_name: str) -> None:
     """그래프 체크포인트 직렬화로 저장했다 꺼내도 같은 값·같은 타입이다 (tuple 유지)."""
     result = normalize_from_state({"design": _design(receipt_name=receipt_name)})
@@ -203,3 +205,17 @@ def test_self_reference_prefix_is_read_from_pack_files_on_the_graph_path(tmp_pat
 def test_state_without_design_state_is_rejected() -> None:
     with pytest.raises(TypeError, match="DesignState"):
         normalize_from_state({"design": {"run_id": "run-1"}})
+
+
+@pytest.fixture
+def strict_naming(monkeypatch):
+    from dataclasses import replace
+
+    from specton.codegen import normalize_step
+
+    original = normalize_step.load_naming_rules
+    monkeypatch.setattr(
+        normalize_step,
+        "load_naming_rules",
+        lambda root: replace(original(root), unresolved="error"),
+    )

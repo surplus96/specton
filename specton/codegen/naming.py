@@ -34,6 +34,7 @@ _RESERVED_SOURCES = {"postgresql_18_sql_key_words": 18}
 #   같은 허용 값 목록이 팩 로더 모델(specton/packs/loader.py `_TermRule`·`_TableRule`·
 #   `_ColumnRule`, 파일 모양 검사)에도 있다. 값 이름을 바꾸면 두 곳을 함께 고친다.
 _KNOWN_NAMING_VALUES: dict[tuple[str, str], frozenset[str]] = {
+    ("physical_name", "unresolved"): frozenset({"error", "technical_id"}),
     ("table", "prefix"): frozenset({"none"}),  # 테이블 접두어 없음
     ("table", "form"): frozenset({"as_dictionary"}),  # 사전 약어 그대로, 단수·복수 변환 없음
     ("table", "junction_name"): frozenset({"parent_child"}),  # 부모 물리명 + 자식 물리명
@@ -46,6 +47,7 @@ _KNOWN_NAMING_VALUES: dict[tuple[str, str], frozenset[str]] = {
 # #11에서 새로 더한 키. 팩 파일에 아직 없을 수 있어 키가 없어도 미정으로 본다 (_naming_value).
 _NEW_NAMING_KEYS = frozenset(
     {
+        ("physical_name", "unresolved"),
         ("table", "junction_name"),
         ("column", "self_reference_prefix"),
         ("column", "repeated_foreign_key"),
@@ -94,6 +96,7 @@ class NamingRules:
 
     max_bytes: int
     reserved_words: frozenset[str]  # 소문자
+    unresolved: str = "error"
     separator: str = "_"
     self_reference_prefix: str | None = None
     junction_name: str | None = None
@@ -236,6 +239,8 @@ def load_naming_rules(root: Path = DEFAULT_PACK_ROOT) -> NamingRules:
         raise ValueError(
             f"naming.yaml 명명 규칙에 모르는 값이 있음: {unknown} (빈칸 또는 다음 값만: {allowed})"
         )
+    if physical.get("unresolved", "error") not in {"error", "technical_id"}:
+        raise ValueError("physical_name.unresolved는 error 또는 technical_id여야 합니다")
     prefix = _naming_value(naming, "column", "self_reference_prefix")
     if prefix is not None and not isinstance(prefix, str):
         raise ValueError(f"naming.yaml column.self_reference_prefix는 사전 단어여야 함: {prefix!r}")
@@ -243,6 +248,7 @@ def load_naming_rules(root: Path = DEFAULT_PACK_ROOT) -> NamingRules:
         prefix = prefix.strip() or None
     return NamingRules(
         max_bytes=physical["max_bytes"],
+        unresolved=physical.get("unresolved", "error"),
         reserved_words=reserved_words(naming["reserved_words_source"]),
         separator=physical["word_separator"],
         self_reference_prefix=prefix,

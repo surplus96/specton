@@ -17,6 +17,7 @@
 
 | PR | 내용 |
 |---|---|
+| #326 | `NormalizedModel.technical_names?`: 정리 객체 ID와 미등록 논리명 대응. 스냅샷·체크포인트·모델 해시에 포함하고, 값이 없는 이전 모델의 해시 형식은 유지 |
 | #289 | `status.payload`에 선택적 노드 task ID·시작/종료·UTC 시각·소요·호출 메타데이터. `RunView.normalization`에 선택적 정리 수치·팩 버전 요약. 모델·해시·승인 계약은 유지 |
 | #292 (#290) | EntityDraft.unique_keys(속성 이름 묶음) → Entity.unique_keys(속성 ID 묶음), RelationshipDraft.fk_bindings(속성 이름 쌍) → Relationship.fk_bindings(속성 ID 쌍). 없거나 빈 선언은 이전 모델 해시에서 제외. 명시적 직접 PK 재사용만 허용하며 invalid_fk_binding은 RULE-04·설계 재작업 |
 | #252 | 정리 결과에 선택적 common_version·policy_digest. 새 실행의 팩·표준 정책 근거를 보존하며, 두 값이 없는 옛 스냅샷의 모델 해시에는 null 키를 추가하지 않음 |
@@ -69,7 +70,7 @@
 자동 변경하지 않고 상속 키까지 포함한 실제 FK 구성은 정리에서 최종 검사한다.
 
 | Finding | `id`, `severity`, `kind`, `source`, `targets`, `evidence`, `suggestion`, `target_stage`, `fingerprint`, `iteration` | `reviewer_id`, 근거 위치, 필터 결과 |
-| NormalizedModel | `pack`, `pack_version`, `rules_version`, `lexicon_digest`, `common_version?`, `policy_digest?`, `tables`(`Table`: 컬럼·PK·UNIQUE), `foreign_keys`(`ForeignKey`) | 모델 정리(#12) 성공 결과(`specton/contracts/normalized.py`). PK·FK·UNIQUE는 컬럼 ID 묶음(순서 있음). 실패는 `NormalizeFailed`(`problems`)로 따로 돌려주며 상태에 두지 않는다. ID 기준은 ADR-0016 |
+| NormalizedModel | `pack`, `pack_version`, `rules_version`, `lexicon_digest`, `common_version?`, `policy_digest?`, `technical_names?`, `tables`(`Table`: 컬럼·PK·UNIQUE), `foreign_keys`(`ForeignKey`) | 모델 정리(#12) 성공 결과(`specton/contracts/normalized.py`). PK·FK·UNIQUE는 컬럼 ID 묶음(순서 있음). 실패는 `NormalizeFailed`(`problems`)로 따로 돌려주며 상태에 두지 않는다. ID 기준은 ADR-0016 |
 | SqlValidation | `status`, `artifact_hash`, `validator_version`, `policy_version`, `postgres_version`, `steps`(`ValidationStep`: `name`·`status`·`issues`) | SQL 파일 하나의 검증 결과(`specton/contracts/validation.py`, #167). 단계는 `parse` → `allowed_statements` → `execute` → `rollback` → `cleanup`이 순서대로 한 번씩 있고, 실행하지 않은 단계는 `not_run`이다. 단계 상태 `failed`는 SQL 결함, `error`는 검증 환경·정리 장애이며(`rollback`·`cleanup`에는 `failed`가 없다) 둘 다 `issues`(`ValidationIssue`: `code`·`message`·`statement_index`·`sqlstate`)가 1건 이상이다. 전체 `status`는 `error` > `failed` > `unverified`(실패 없이 `not_run`이 있음) > `passed` 순으로 단계에서 정해지고 계약이 일치를 검사한다. 파싱·허용 문장 검사를 통과하지 않으면 `execute`는 `not_run`이다. `postgres_version`은 대상 DB이며 DDL 생성기의 `DDL_TARGET`과 같은 값(`postgresql-18`)이다. `message`에는 보여도 되는 문장만 넣는다. run·revision·`model_hash`·검증 시도 ID는 검증기가 모르며 실행기·저장 쪽이 붙인다. 최종 승인 근거는 `passed`뿐이다 |
 | DesignState | `source_requirements`, `requirements`, `functions`, `entities`, `relationships`, `normalized`, `artifacts`, `findings`, `iteration` | `normalized`는 모델 정리 성공 결과이며 설계가 바뀌면 비우고 다시 채운다(ADR-0016). `run_id`, `revision`, `status`, `interrupt_id`, 문서·팩·프롬프트·모델 버전, 병렬 가지 결과 |
 
@@ -195,3 +196,11 @@ DDL은 `specton/persistence/schema.sql`이고 이 표와 같아야 한다. 보�
 가짜 manifest를 만들지 않는다. 기존 승인 기록과 이미 최종 검토에 도달한 체크포인트에는
 manifest를 소급 추가하지 않는다. 기존 DB는 artifact의 종류·형식 CHECK만 넓히며 기록을 보존한다.
 - 실행 삭제는 DB 레코드·파일·체크포인트를 함께 처리하고, 정리 실패는 기록 후 재시도한다. 보존 기간은 미정 (ADR-0011).
+
+
+### 미등록 업무 이름의 기술 식별자 기록 (2026-11-11)
+
+`NormalizedModel.technical_names`는 선택적 `dict[str, str]`이며 정리 객체 ID를 원래 논리명에
+대응시킨다. 객체의 `physical_name`과 함께 스냅샷·체크포인트·모델 해시에 보존한다.
+기존 기록에서 값이 없으면 null 키를 모델 해시에 추가하지 않는다. 파생 FK는 기존
+`references`로 부모 컬럼의 명명 출처를 추적한다. 정책은 `policy_digest`와 common 버전에 포함한다.

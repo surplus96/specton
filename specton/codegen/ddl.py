@@ -20,6 +20,7 @@ SQL로 내보낼 수 없는 값은 고쳐 쓰지 않고 `ValueError`로 멈춘�
 이 모듈은 LLM client를 import하지 않는다.
 """
 
+import json
 import unicodedata
 from collections.abc import Iterable
 from typing import Literal
@@ -31,7 +32,7 @@ from specton.contracts.base import SqlType
 from specton.type_limits import MAX_CHAR_LENGTH, MAX_NUMERIC_PRECISION
 
 # 생성기 버전. 출력 모양(문장 종류·순서·타입 표기)이 바뀌면 올린다. 임시 값이다.
-DDL_GENERATOR_VERSION = "ddl-v1"
+DDL_GENERATOR_VERSION = "ddl-v2"
 # 대상 DB. 프로젝트 대상 버전(docs/10, naming.yaml 예약어 목록 postgresql_18)과 같다.
 DDL_TARGET = "postgresql-18"
 # PostgreSQL 18 식별자 한도(NAMEDATALEN - 1). 팩의 max_bytes는 이 값을 넘을 수 없다.
@@ -90,7 +91,18 @@ def generate_ddl(model: NormalizedModel, *, max_bytes: int) -> DdlResult:
     statements += [
         _add_foreign_key(fk, tables) for fk in sorted(model.foreign_keys, key=lambda fk: fk.id)
     ]
-    sql = "\n\n".join([_header(model), *statements]) + "\n"
+    mapping = []
+    for table in model.tables:
+        named_objects: tuple[Table | Column, ...] = (table, *table.columns)
+        for obj in named_objects:
+            if obj.id in (model.technical_names or {}):
+                mapping.append(
+                    "-- technical identifier: "
+                    + json.dumps(
+                        {"logical": obj.name, "physical": obj.physical_name}, ensure_ascii=True
+                    )
+                )
+    sql = "\n\n".join([_header(model), *mapping, *statements]) + "\n"
     return DdlResult(
         sql=sql,
         target=DDL_TARGET,

@@ -1007,3 +1007,122 @@ def test_relationships_are_ordered_by_number_not_text() -> None:
     receipt = _table(model, "ENT-rc")
     sources = [_col(receipt, c).relationship_id for c in receipt.primary_key]
     assert sources[:2] == ["REL-9", "REL-10"]
+
+
+def test_technical_names_preserve_business_model_and_are_deterministic() -> None:
+    from specton.codegen.ddl import generate_ddl
+    from specton.model_hash import model_hash
+    from specton.review.normalization_findings import technical_name_findings
+
+    entity = _entity("ENT-OPEN", "미등록업무", _attr("ATTR-OPEN", "미등록업무번호", is_key=True))
+    design = _design([entity], [])
+    strict = normalize(design, pack=PACK, lexicon=FixtureLexicon(), rules=RULES)
+    assert isinstance(strict, NormalizeFailed)
+    assert any(p.code is ProblemCode.UNRESOLVED_NAME for p in strict.problems)
+    rules = replace(RULES, unresolved="technical_id")
+    result = normalize(design, pack=PACK, lexicon=FixtureLexicon(), rules=rules)
+    assert isinstance(result, Normalized)
+    assert result == normalize(design, pack=PACK, lexicon=FixtureLexicon(), rules=rules)
+    table = result.model.tables[0]
+    assert table.name == entity.name
+    assert table.physical_name.startswith("t_")
+    assert table.columns[0].physical_name.startswith("c_")
+    assert table.primary_key == (table.columns[0].id,)
+    assert len(result.model.technical_names or {}) == 2
+    state = design.evolve(normalized=result.model)
+    findings = technical_name_findings(state)
+    assert len(findings) == 2
+    assert all(f.severity.value == "minor" and f.target_stage is None for f in findings)
+    sql = generate_ddl(result.model, max_bytes=63).sql
+    from pglast import parse_sql
+
+    assert parse_sql(sql)
+    assert "-- technical identifier:" in sql
+    assert model_hash(state) != model_hash(
+        design.evolve(normalized=result.model.evolve(technical_names=None))
+    )
+    # Legacy snapshots must keep their payload shape when metadata is absent.
+    from specton.model_hash import model_payload
+
+    assert (
+        "technical_names"
+        not in model_payload(design.evolve(normalized=result.model.evolve(technical_names=None)))[
+            "normalized"
+        ]
+    )
+
+
+def test_technical_names_do_not_bypass_missing_primary_key() -> None:
+    entity = _entity("ENT-OPEN", "미등록업무", _attr("ATTR-OPEN", "미등록업무값"))
+    result = normalize(
+        _design([entity], []),
+        pack=PACK,
+        lexicon=FixtureLexicon(),
+        rules=replace(RULES, unresolved="technical_id"),
+    )
+    assert isinstance(result, NormalizeFailed)
+    assert any(p.code is ProblemCode.NO_PRIMARY_KEY for p in result.problems)
+    assert not any(p.code is ProblemCode.UNRESOLVED_NAME for p in result.problems)
+
+
+def test_technical_names_keep_distinct_repeated_foreign_keys():
+    parent = _entity("ENT-parent", "미등록위치", _attr("ATTR-p", "미등록위치번호", is_key=True))
+    child = _entity("ENT-child", "미등록이동", _attr("ATTR-c", "미등록이동번호", is_key=True))
+    design = _design(
+        [parent, child],
+        [
+            _rel("REL-05", parent.id, child.id),
+            _rel("REL-06", parent.id, child.id),
+        ],
+    )
+    result = normalize(
+        design,
+        pack=PACK,
+        lexicon=FixtureLexicon(),
+        rules=replace(RULES, unresolved="technical_id", repeated_foreign_key="relationship_id"),
+    )
+    assert isinstance(result, Normalized)
+    assert len(result.model.foreign_keys) == 2
+    first, second = result.model.foreign_keys
+    assert first.columns != second.columns
+    assert first.parent_columns == second.parent_columns
+    table = _table(result.model, child.id)
+    assert len({c.physical_name for c in table.columns}) == len(table.columns)
+
+
+def test_technical_ddl_mapping_cannot_inject_sql_from_logical_name():
+    from pglast import parse_sql
+
+    from specton.codegen.ddl import generate_ddl
+
+    entity = _entity(
+        "ENT-unsafe",
+        "미등록\nDROP TABLE victim;",
+        _attr(
+            "ATTR-unsafe",
+            "미등록키",
+            is_key=True,
+        ),
+    )
+    result = normalize(
+        _design([entity], []),
+        pack=PACK,
+        lexicon=FixtureLexicon(),
+        rules=replace(RULES, unresolved="technical_id"),
+    )
+    assert isinstance(result, Normalized)
+    sql = generate_ddl(result.model, max_bytes=63).sql
+    assert len(parse_sql(sql)) == 1
+    assert "\\nDROP TABLE victim" in sql
+
+
+def test_technical_identifier_still_respects_maximum_identifier_length():
+    entity = _entity("ENT-open", "미등록업무", _attr("ATTR-open", "미등록키", is_key=True))
+    result = normalize(
+        _design([entity], []),
+        pack=PACK,
+        lexicon=FixtureLexicon(),
+        rules=replace(RULES, unresolved="technical_id", max_bytes=10),
+    )
+    assert isinstance(result, NormalizeFailed)
+    assert all(p.code is ProblemCode.NAME_TOO_LONG for p in result.problems)

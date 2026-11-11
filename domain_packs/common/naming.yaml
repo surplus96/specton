@@ -1,5 +1,6 @@
 # 명명 규칙. 근거 등급: official(고시·공식 데이터) / observed(공식 데이터 전수 관찰) / project(국가 규칙 없음, 팀 결정)
 physical_name:
+  unresolved: technical_id       # project: 업무 논리명 보존, 미등록 이름은 객체 ID로 생성
   dictionary_case: upper_snake   # observed: 공식 영문약어는 모두 대문자, 단어는 "_"로 연결 (예: REG_YMD)
   ddl_case: lower                # project: PostgreSQL은 따옴표 없는 식별자를 소문자로 접는다
   word_separator: "_"            # observed
