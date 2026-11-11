@@ -249,3 +249,11 @@ data: {"run_id":"example","revision":2,"stage":"review","message":"최종 검토
 - 요청 revision의 객체 존재·접근 권한을 확인한 뒤 `Content-Disposition`으로 안전한 파일명을 지정한다.
 - 파일명은 `specton-<kind>-r<revision>.<file_format>`, 승인 전이면 `-draft`를 붙인다. `ETag`는 산출물 해시다.
 - 쿼리 이름은 `ArtifactRef`와 같은 `file_format`이다 (#94 이름 정리, #16).
+
+
+### 실행 정책 변경 시 재개 (2026-11-11)
+
+업로드 때 고정한 공통 팩 버전·정책 해시가 현재 파일과 다르거나 이전 API 실행에 고정 근거가
+없으면 `/runs/{id}/resume`은 422 `INVALID_RESPONSE`와 새 실행 안내를 반환한다.
+승인·상태·산출물은 변경하지 않는다. 실행기 시작 시 발견하면 안전한 안내와
+`retryable=false`로 실패를 기록한다. 이전 승인본의 조회·다운로드는 차단하지 않는다.

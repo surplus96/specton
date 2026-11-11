@@ -217,7 +217,7 @@ def test_maintenance_example_passes_the_checks_for_its_own_input() -> None:
 # 출력 검증: 검사는 모두 코드가 한다. 어기면 공통 client가 재요청한다.
 
 
-def _checked() -> type[A03Output]:
+def _checked(required_fk_attributes=()) -> type[A03Output]:
     example = load_examples("inventory", "A03", A03Output)[0]
     terms = [PackTerm.model_validate(t) for t in example.input["pack"]["terms"]]
     return _checked_against(
@@ -225,6 +225,7 @@ def _checked() -> type[A03Output]:
         {r["id"] for r in example.input["requirements"]},
         terms,
         _reasons(example.input["pack"]),
+        required_fk_attributes,
     )
 
 
@@ -238,7 +239,7 @@ def test_example_passes_the_checks_for_its_own_input() -> None:
 
 
 def test_prompt_version_is_fixed() -> None:
-    assert PROMPT_VERSION == "a03-v7"
+    assert PROMPT_VERSION == "a03-v8"
     assert SYSTEM_PROMPT.strip()
 
 
@@ -1136,3 +1137,17 @@ def test_open_vocabulary_preserves_names_without_extra_llm_call():
     result = run(client, _a02_state(), _settings(), pack="inventory")
     assert "가나다라" in [a.name for a in result.output.entities[0].attributes]
     assert len(transport.sent) == 1
+
+
+def test_rework_rejects_nullable_regression_of_required_fk():
+    data = _output()
+    entity, attribute = next(
+        (e, a) for e in data["entities"] for a in e["attributes"] if not a["is_key"]
+    )
+    required = {(entity["name"], attribute["name"])}
+    attribute["nullable"] = True
+    with pytest.raises(ValidationError, match="기존 필수 FK 재사용 속성") as error:
+        _checked(required).model_validate(data)
+    assert entity["name"] in str(error.value) and attribute["name"] in str(error.value)
+    attribute["nullable"] = False
+    _checked(required).model_validate(data)

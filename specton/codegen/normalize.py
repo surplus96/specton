@@ -101,6 +101,9 @@ def normalize(
             _derive_non_identifying(rel, run)
     run.problems.extend(_duplicate_table_names(run.tables.values()))
 
+    if not run.problems:
+        run.problems.extend(_required_reference_cycles(supported))
+
     model = NormalizedModel(
         pack=pack.name,
         pack_version=pack.version,
@@ -787,3 +790,38 @@ def _req_problems(target: str, ids: Sequence[str], known: frozenset[str]) -> Ite
 def _failed(problems: Iterable[Problem]) -> NormalizeFailed:
     ordered = sorted(set(problems), key=lambda p: (p.code.value, p.target, p.detail))
     return NormalizeFailed(problems=tuple(ordered))
+
+
+def _required_reference_cycles(relationships: Sequence[Relationship]) -> Iterator[Problem]:
+    """即시 FK의 필수 참조 강연결 성분. N:M은 연결 테이블만 부모를 참조한다."""
+    edges = [r for r in relationships if not r.optional and r.cardinality != "N:M"]
+    graph: dict[str, set[str]] = {}
+    for r in edges:
+        graph.setdefault(r.child, set()).add(r.parent)
+        graph.setdefault(r.parent, set())
+    reachable: dict[str, set[str]] = {}
+    for node in graph:
+        seen: set[str] = set()
+        pending = [node]
+        while pending:
+            current = pending.pop()
+            if current not in seen:
+                seen.add(current)
+                pending.extend(graph[current] - seen)
+        reachable[node] = seen
+    handled: set[str] = set()
+    for node in sorted(graph):
+        if node in handled:
+            continue
+        component = {other for other in reachable[node] if node in reachable[other]}
+        handled.update(component)
+        if len(component) < 2:
+            continue
+        involved = sorted(r.id for r in edges if r.child in component and r.parent in component)
+        yield problem(
+            ProblemCode.REQUIRED_REFERENCE_CYCLE,
+            ",".join(involved),
+            "필수 FK 순환으로 최초 행을 입력할 수 없음: "
+            + ", ".join(involved)
+            + ". 현재 FK는 즉시 검사하며 지연 검사를 지원하지 않음",
+        )

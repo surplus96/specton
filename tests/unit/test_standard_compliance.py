@@ -678,3 +678,28 @@ def test_critical_sc_severity_is_rejected_when_read(tmp_path: Path) -> None:
     rules.write_text(changed, encoding="utf-8")
     with pytest.raises(ValueError, match=r"critical을 쓰지 않습니다.*SC-01"):
         compliance_severities(root=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "name,kind",
+    [
+        ("쨔쨔미등록 패스 코드", "forbidden_word:패스"),
+        ("쨔쨔미등록 루트 코드", "synonym:루트"),
+    ],
+)
+def test_partial_unknown_name_retains_explicit_word_diagnostics(name, kind):
+    review = _check(_col("C1", name, "c_technical", SqlType.VARCHAR, 10))
+    assert "SC-01" in _codes(review)
+    assert any(f.kind == kind for f in review["findings"])
+    assert review["requires_manual_review"] is kind.startswith("forbidden")
+
+
+def test_partial_unknown_name_does_not_guess_forbidden_substrings():
+    review = _check(_col("C1", "쨔쨔패스미등록 코드", "c_technical", SqlType.VARCHAR, 10))
+    assert not any(f.rule_code == "SC-04" for f in review["findings"])
+    assert _item(review, "SC-04")[1] == 0
+
+
+def test_partial_unknown_name_keeps_explicit_pack_exemption():
+    review = _check(_col("C1", "쨔쨔미등록 장부 코드", "c_technical", SqlType.VARCHAR, 10))
+    assert not any(f.rule_code == "SC-04" for f in review["findings"])

@@ -52,6 +52,7 @@ from specton.graph import (
 from specton.llm.errors import LLMError
 from specton.llm.types import CallRecord
 from specton.node_progress import NODES, STAGES, node_result
+from specton.packs.provenance import ExecutionPolicyError, verify_policy
 from specton.persistence import lease, runs, snapshots
 from specton.persistence.artifacts import publish_artifacts
 from specton.persistence.db import Pool
@@ -431,7 +432,23 @@ class _Job:
 
         체크포인트가 앱 저장보다 앞서 있으면 그 지점의 앱 저장을 먼저 다시 한다 (시작 시 대조).
         """
+        with self.runner.pool.connection() as conn:
+            pinned = runs.load_versions(conn, self.run_id)
+        if pinned.pack_id is not None:
+            verify_policy(
+                self.runner.settings.pack_root,
+                pinned.pack_id,
+                pinned.common_version,
+                pinned.policy_digest,
+            )
         snapshot = self.runner.graph.get_state(self.config)
+        if snapshot.values and pinned.policy_digest:
+            recorded = snapshot.values["design"].versions
+            if (recorded.common_version, recorded.policy_digest) != (
+                pinned.common_version,
+                pinned.policy_digest,
+            ):
+                raise ExecutionPolicyError("체크포인트 정책 불일치: 새 실행이 필요합니다.")
         if not snapshot.values:
             with self.runner.pool.connection() as conn:
                 versions = runs.load_versions(conn, self.run_id)
@@ -585,10 +602,16 @@ class _Job:
         extraction = exc if isinstance(exc, ExtractionFailedError) else None
         error = Error(
             code=code.value,
-            message=extraction.notice if extraction else _ERROR_MESSAGES[code],
+            message=(
+                str(exc)
+                if isinstance(exc, ExecutionPolicyError)
+                else extraction.notice
+                if extraction
+                else _ERROR_MESSAGES[code]
+            ),
             detail=(extraction.detail.strip() or None) if extraction else None,
             run_id=str(self.run_id),
-            retryable=code in _RETRYABLE,
+            retryable=code in _RETRYABLE and not isinstance(exc, ExecutionPolicyError),
         )
         payload: dict[str, Any] = {"code": code.value, "retryable": error.retryable}
         if error.detail is not None:

@@ -39,6 +39,8 @@ class VersionInfo(Contract):
     document_hash: str | None = None
     pack_id: str | None = None
     pack_version: str | None = None
+    common_version: str | None = None
+    policy_digest: str | None = None
     prompt_versions: dict[str, str] = Field(default_factory=dict)  # 에이전트 ID → 프롬프트 버전
     model_names: dict[str, str] = Field(default_factory=dict)  # 에이전트 ID → 모델
 

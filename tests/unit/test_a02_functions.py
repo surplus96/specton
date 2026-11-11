@@ -318,7 +318,8 @@ def test_prompt_does_not_promise_unimplemented_unlinked_marking() -> None:
 
 
 def test_prompt_attaches_nfr_to_business_functions() -> None:
-    assert "비기능 요구는 따로 모아 기능을 만들지 않는다" in SYSTEM_PROMPT
+    assert "NFR 분류만으로 기능화를 제외하지 않는다" in SYSTEM_PROMPT
+    assert "품질 기준만 있는 비기능 요구는 독립 기능을 만들지 않고" in SYSTEM_PROMPT
 
 
 # few-shot 예시

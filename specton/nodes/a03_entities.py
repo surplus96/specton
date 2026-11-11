@@ -52,7 +52,7 @@ from specton.type_limits import type_limit_problems
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "a03-v7"
+PROMPT_VERSION = "a03-v8"
 SYSTEM_PROMPT = """\
 너는 업무 시스템의 데이터 모델 설계자다.
 요구사항과 기능으로 저장할 엔티티·속성과 기능별 CRUD를 정한다.
@@ -228,6 +228,7 @@ def _checked_against(
     req_ids: Collection[str],
     terms: Sequence[PackTerm],
     exemption_reasons: Mapping[str, Collection[Crud]],
+    required_fk_attributes: Collection[tuple[str, str]] = (),
 ) -> type[A03Output]:
     """이번 입력으로 검사하는 출력 모델. 어기면 형식 오류처럼 재요청 대상이 된다.
 
@@ -243,6 +244,18 @@ def _checked_against(
     class CheckedA03Output(A03Output):
         @model_validator(mode="after")
         def _check_against_input(self) -> Self:
+            nullable_fk = [
+                f"{e.name}.{a.name}"
+                for e in self.entities
+                for a in e.attributes
+                if (_nfc(e.name), _nfc(a.name)) in required_fk_attributes and a.nullable
+            ]
+            if nullable_fk:
+                raise ValueError(
+                    "기존 필수 FK 재사용 속성은 NOT NULL을 유지해야 합니다: "
+                    + ", ".join(nullable_fk)
+                    + ". 타입·표준 보완 때문에 nullable을 true로 되돌리지 마세요."
+                )
             unknown_functions = sorted(
                 {op.function_id for op in self.entity_ops} - set(function_ids)
             )
@@ -412,6 +425,7 @@ def run(
     if not state.functions:
         raise ValueError("A03: 엔티티를 설계할 기능이 없습니다")
     context = load_pack_context(pack, root=settings.pack_root)
+    required_fk_attributes = _required_fk_attributes(state)
     data = with_user_request(
         with_design_rework(
             input_data(state, terms=context.terms, exemption_reasons=context.exemption_reasons),
@@ -419,6 +433,11 @@ def run(
         ),
         feedback,
     )
+    if required_fk_attributes:
+        data["required_fk_attributes"] = [
+            {"entity": e, "attribute": a, "nullable": False}
+            for e, a in sorted(required_fk_attributes)
+        ]
     examples = load_examples(pack, "A03", A03Output, root=settings.pack_root)
     if naming_lexicon is not None:
         data["evaluation_naming"] = {
@@ -446,6 +465,7 @@ def run(
         {r.id for r in state.requirements},
         context.terms,
         context.exemption_reasons,
+        required_fk_attributes,
     )
     result = ask(data, token_budget)
     draft, calls = result.output, result.calls
@@ -565,3 +585,18 @@ def _check_unique(ids: Sequence[str], kind: str) -> None:
     duplicated = sorted({i for i in ids if ids.count(i) > 1})
     if duplicated:
         raise ValueError(f"A03: {kind} ID가 충돌합니다: {', '.join(duplicated)}")
+
+
+def _required_fk_attributes(state: DesignState) -> frozenset[tuple[str, str]]:
+    """재작업 시 기존 필수 관계의 명시적 FK 속성 NULL 조건을 전달한다."""
+    entities = {e.id: e for e in state.entities}
+    required: set[tuple[str, str]] = set()
+    for relation in state.relationships:
+        if relation.optional and not relation.identifying:
+            continue
+        child = entities.get(relation.child)
+        if child is None:
+            continue
+        bound = {b.child_attribute_id for b in relation.fk_bindings or ()}
+        required.update((_nfc(child.name), _nfc(a.name)) for a in child.attributes if a.id in bound)
+    return frozenset(required)

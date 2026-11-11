@@ -26,7 +26,7 @@ from specton.nodes.common import (
 )
 from specton.packs.examples import load_examples
 
-PROMPT_VERSION = "a02-v2"
+PROMPT_VERSION = "a02-v3"
 SYSTEM_PROMPT = """\
 너는 업무 시스템의 기능 설계자다. 확인된 요구사항을 사용자가 수행하는 기능 단위로 정리한다.
 
@@ -36,8 +36,11 @@ SYSTEM_PROMPT = """\
 - 기능마다 name(짧은 명사형), description(무엇을 어떤 조건으로 하는지 1~2문장), req_ids를 쓴다.
 - req_ids에는 그 기능이 충족하는 요구사항의 id만 입력에서 골라 적는다.
 - 기능에 연결할 수 없는 요구사항은 억지로 기능을 만들어 붙이지 않는다.
-- 권한·감사·보존 같은 비기능 요구는 따로 모아 기능을 만들지 않는다. 그 요구가 제약하는 업무 기능의
+- NFR 분류만으로 기능화를 제외하지 않는다. 원문에 저장·검사·횟수 기록·상태 변경 같은 실행 동작이
+  명시돼 있으면 이를 담당할 기능을 만들거나 기존 기능에 포함하고 req_ids를 연결한다.
+- 응답시간·가동률 등 품질 기준만 있는 비기능 요구는 독립 기능을 만들지 않고, 해당 업무 기능의
   description에 조건을 쓰고 req_ids에 함께 적는다.
+- 원문에 없는 계정 등록·삭제 등의 기능은 만들지 않는다.
 
 우선순위(MoSCoW: Must, Should, Could, Won't):
 - 요구사항 문장에 우선순위가 명시돼 있으면 그 값을 priority에, priority_source는 explicit로 쓴다.

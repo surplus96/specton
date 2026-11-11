@@ -53,6 +53,7 @@ _RULES: dict[ProblemCode, tuple[str, bool]] = {
     ProblemCode.OPTIONAL_IDENTIFYING: ("RULE-04", False),
     ProblemCode.IDENTIFYING_CYCLE: ("RULE-04", False),
     ProblemCode.REQUIRED_SELF_REFERENCE: ("RULE-04", False),
+    ProblemCode.REQUIRED_REFERENCE_CYCLE: ("RULE-04", False),
     ProblemCode.UNRESOLVED_NAME: ("RULE-05", True),
     ProblemCode.NAMING_RULE_MISSING: ("RULE-05", True),
     ProblemCode.NAME_TOO_LONG: ("RULE-05", True),
@@ -85,11 +86,20 @@ _STAGE_BY_KIND: dict[str, TargetStage] = {
     "relationship": TargetStage.DATA_MODEL,
 }
 _SUGGESTIONS: dict[str, str] = {
-    "invalid_fk_binding": "FK 재사용의 부모 키·자식 속성·타입·NULL 조건을 확인해 선언을 고친다.",
+    "invalid_fk_binding": (
+        "원문 요구사항으로 관계의 필수·선택 여부를 확인하고, 부모 키·자식 재사용 속성의 "
+        "타입·NULL 조건을 함께 맞춘다. 필수·식별 FK는 모두 NOT NULL, 선택 FK는 한 칸 이상 "
+        "NULL 가능해야 한다. 통과를 위해 관계 의미를 바꾸거나 재사용 선언을 제거하지 않는다."
+    ),
     "no_primary_key": "행을 구분하는 키 속성을 두거나, 부모 키를 물려받는 식별 관계로 바꾼다.",
     "domain_type_mismatch": "속성 타입·길이를 같은 이름 팩 용어의 도메인에 맞추거나 이름을 바꾼다.",
     "parent_without_key": "부모 엔티티에 키 속성을 먼저 둔다.",
     "optional_identifying_conflict": "식별 관계를 필수로 바꾸거나 비식별 관계로 바꾼다.",
+    "required_reference_cycle": (
+        "원문 의미와 최초 등록 순서를 확인해 필수 순환 없는 설계로 수정한다. "
+        "기본·대표 선택은 자식의 선택 표시 등으로 표현할 수 있는지 검토한다. "
+        "통과를 위해 관계를 삭제하거나 필수 조건을 임의로 선택으로 바꾸지 않는다."
+    ),
     "identifying_cycle": "식별 관계의 순환을 끊는다.",
     "required_self_reference": "자기참조를 선택 관계로 바꿔 최상위 행이 들어갈 수 있게 한다.",
     "unsupported_relationship:D8": "자기참조·N:M 관계는 비식별 관계로 바꾼다 (A04 규칙).",
@@ -242,6 +252,7 @@ _TARGET_SPACES: dict[ProblemCode, tuple[str, ...]] = {
     ProblemCode.PARENT_WITHOUT_KEY: ("relationship",),
     ProblemCode.OPTIONAL_IDENTIFYING: ("relationship",),
     ProblemCode.REQUIRED_SELF_REFERENCE: ("relationship",),
+    ProblemCode.REQUIRED_REFERENCE_CYCLE: ("relationship",),
     ProblemCode.UNSUPPORTED_RELATIONSHIP: ("relationship",),
     ProblemCode.NAMING_RULE_MISSING: ("relationship",),
     ProblemCode.FK_COLUMN_CONFLICT: ("relationship",),

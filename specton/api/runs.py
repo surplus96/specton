@@ -31,6 +31,7 @@ from specton.contracts import (
     SseEvent,
 )
 from specton.packs.build import discover_packs
+from specton.packs.provenance import ExecutionPolicyError, capture_policy, verify_policy
 from specton.persistence import runs, snapshots
 from specton.persistence.db import Pool
 from specton.persistence.lease import FINAL_STATES
@@ -102,6 +103,7 @@ def create_run(
             413, ErrorCode.UPLOAD_TOO_LARGE, f"파일이 {settings.max_upload_mb}MB를 넘습니다."
         )
     pack_version = _pack_version(settings, pack)
+    execution_policy = capture_policy(settings.pack_root, pack)
     run_id, document_id = uuid4(), uuid4()
     stored = save_upload(
         file, settings.storage_dir, run_id, document_id, max_bytes,
@@ -114,7 +116,7 @@ def create_run(
                 owner,
                 pack,
                 pack_version=pack_version,
-                model_config=_model_config(settings),
+                model_config={**_model_config(settings), "execution_policy": execution_policy},
                 run_id=run_id,
             )
             runs.add_document(
@@ -154,6 +156,15 @@ def resume_run(
     run_id: RunId, owner: OwnerRef, conn: ConnDep, settings: SettingsDep, body: ResumeRequest
 ) -> RunStatus:
     """사람 확인 응답. 같은 요청에 두 번 답하거나 오래된 요청에 답하면 409."""
+    runs.get_run(conn, run_id, owner)  # 정책 조회 전 소유자 확인
+    try:
+        pinned = runs.load_versions(conn, run_id)
+        if pinned.pack_id is not None:
+            verify_policy(
+                settings.pack_root, pinned.pack_id, pinned.common_version, pinned.policy_digest
+            )
+    except ExecutionPolicyError as exc:
+        raise ApiError(422, ErrorCode.INVALID_RESPONSE, str(exc)) from exc
     runs.answer_interrupt(
         conn, run_id, owner, body, require_sql_validation=settings.require_sql_validation
     )

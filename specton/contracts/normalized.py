@@ -32,6 +32,7 @@ class ProblemCode(StrEnum):
     RESERVED_WORD = "reserved_word"  # 예약어와 같은 단독 이름
     DUPLICATE_NAME = "duplicate_name"  # 같은 물리명이 둘 이상
     UNSUPPORTED_RELATIONSHIP = "unsupported_relationship"  # 처리하지 않는 관계 유형
+    REQUIRED_REFERENCE_CYCLE = "required_reference_cycle"  # 즉시 검사 필수 FK의 순환
     REQUIRED_SELF_REFERENCE = "required_self_reference"  # 필수 자기참조: 최상위 행을 못 넣음
     DOMAIN_TYPE_MISMATCH = "domain_type_mismatch"  # 속성 타입 ≠ 같은 이름 팩 용어의 도메인 타입
     OUTPUT_TRACE = "output_trace"  # 결과 모델의 참조·ID·추적 위반 (코드 오류 방어)
