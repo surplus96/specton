@@ -288,3 +288,32 @@ def test_long_text_is_kept_whole_in_the_long_text_sheet() -> None:
     assert all(len(str(c.value or "")) <= 32_767 for ws in book for r in ws.iter_rows() for c in r)
     csv_text = render_rtm_csv(design).decode("utf-8-sig")
     assert long_text in csv_text  # CSV는 한도가 없어 그대로 둔다
+
+
+def test_unlinked_nfr_keeps_status_and_explains_application_evidence_gap() -> None:
+    design = _design(functions=())
+    rows = build_rtm(design)
+    nfr = next(r for r in rows if r.req_id == "REQ-03")
+    assert nfr.status == UNLINKED
+    assert "시스템 적용 위치·검증 근거" in nfr.note
+    assert "충족 판정 아님" in nfr.note
+    assert counts(rows)[UNLINKED] == 3
+
+
+def test_analysis_question_is_preserved_in_rtm_csv_and_xlsx() -> None:
+    from specton.contracts.requirements import QualityIssue
+
+    design = _design()
+    req = design.requirements[0].model_copy(
+        update={
+            "quality_issues": (
+                QualityIssue(
+                    kind="ambiguous", message="기준일 확인", question="시작일은 언제입니까?"
+                ),
+            )
+        }
+    )
+    design = design.evolve(requirements=(req, *design.requirements[1:]))
+    assert "시작일은 언제입니까?" in render_rtm_csv(design).decode("utf-8-sig")
+    sheet = load_workbook(io.BytesIO(render_rtm_xlsx(design)))["RTM"]
+    assert "시작일은 언제입니까?" in sheet.cell(2, len(COLUMNS)).value

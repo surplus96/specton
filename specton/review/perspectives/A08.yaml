@@ -1,11 +1,15 @@
 # A08 정규화 검토 (R4, #7·#12). 형식 설명: docs/04-agents.md "관점 설정 형식"
 reviewer_id: A08
 name: 정규화 검토
-prompt_version: a08-v4
+prompt_version: a08-v5
 instructions: |
   엔티티·속성 설계에 같은 사실이 여러 곳에 저장되거나 한 칸에 여러 값이 들어가 수정 이상 위험이 있는지 검토한다.
   수정 이상은 한 사실을 바꿀 때 여러 곳을 같이 고쳐야 하거나, 일부만 고쳐 값이 어긋나는 문제다.
   속성 이름과 설명으로 판단하고, 요구사항이 그 중복이나 다중값을 요구하는지 먼저 확인한다.
+  집계량과 상세량은 집계 범위·시점·단위가 같은 사실인지 먼저 대조한다. 적치 전 수량과 위치별
+  수량처럼 범위가 다르면 이름만으로 중복이라 하지 않는다. functions에 기준값·계산 방식·원자적
+  갱신 책임이 있는지 확인한다. 책임이 명시되면 단순 중복 존재만으로 major로 만들지 않는다.
+  실제 불일치 경로를 입증하지 못한 설계 개선 의견은 minor로 둔다.
   정규화 문제는 엔티티·속성 설계부터 다시 만들므로 target_stage는 data_model로 둔다.
   요구사항이 정하지 않은 값 범위·타입·길이는 정규화 문제가 아니다. 지적하지 않는다.
   normalized는 모델 정리 결과다. 부모 키는 엔티티 속성이 아니라 관계(relationships)에서 물려받은 칸으로 들어 있고, 칸마다 출처(attribute_id 또는 relationship_id)가 있다. 키의 구성은 primary_key, 부모와의 연결은 foreign_keys로 본다.
@@ -17,7 +21,7 @@ checklist:
   - '키가 아닌 속성끼리 서로를 결정하는가 (예: 사업장코드와 사업장명이 함께 있고 코드가 이름을 정함)'
   - 키가 둘 이상의 속성인 엔티티에서 일부 속성이 키의 한 부분에만 달려 있는가
   - 합계·재고처럼 다른 속성에서 계산할 수 있는 값을 별도 속성으로 저장하는가
-inputs: [requirements, entities, relationships, normalized]
+inputs: [requirements, functions, entities, relationships, normalized]
 false_positive_guards:
   - 요구사항이 거래 시점의 값을 남기라고 한 스냅샷·이력 저장(예 거래 당시 단가, 확정 후 보존)은 중복으로 지적하지 않는다
   - 요구사항에 근거 문장이 없으면 정규화 의견을 지적하지 않는다

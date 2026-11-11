@@ -176,3 +176,19 @@ def test_negative_retry_count_is_rejected() -> None:
 def test_each_error_maps_to_an_api_error_code(error: type[LLMError], code: str) -> None:
     assert error.code == code
     assert code in {c.value for c in ErrorCode}
+
+
+def test_multiple_retries_keep_only_latest_failure_and_original_request(caplog):
+    client, transport = stub_client(
+        reply('{"label":"private-first"}'),
+        reply('{"label":"private-second"}'),
+        reply(Answer(label="FR", score=1)),
+    )
+    result = client.complete(make_request(), Answer)
+    assert len(result.calls) == 3
+    assert len(transport.sent[2].messages) == 3
+    assert transport.sent[2].messages[0] == make_request().messages[0]
+    assert "private-second" in transport.sent[2].messages[-2].content
+    assert "private-first" not in str(transport.sent[2].messages)
+    assert "missing" in caplog.text and "score" in caplog.text
+    assert "private-first" not in caplog.text and "private-second" not in caplog.text

@@ -85,14 +85,24 @@ def _state(**extra: Any) -> GraphState:
 
 
 def test_parallel_reviewer_node_reviews_its_own_perspective() -> None:
-    client, transport = stub_client(reply(ReviewOutput(findings=(_draft(),))))
+    client, transport = stub_client(
+        reply(ReviewOutput(findings=(_draft(),))),
+        reply(
+            '{"decisions":[{"candidate_id":"A06-0-1","verdict":"missing",'
+            '"required_behavior":"등록","checked_design_ids":["REQ-01"],'
+            '"remaining_gap":"등록 동작 누락","rationale":"전체 설계 대조"}]}'
+        ),
+    )
     nodes = review_nodes(lambda: client, _settings())
 
     update = nodes["A06"](_state())
 
     result = update["branches"]["A06"]
     assert (result.ok, [f.id for f in result.findings]) == (True, ["A06-0-1"])
-    assert [(r.stage, r.model) for r in transport.sent] == [("A06", _settings().review_model)]
+    assert [(r.stage, r.model) for r in transport.sent] == [
+        ("A06", _settings().review_model),
+        ("A06_CONFIRM", _settings().review_model),
+    ]
     assert "design" not in update  # 병렬 가지는 design을 쓰지 않는다 (합류에서 버전을 남긴다)
 
 
@@ -176,14 +186,38 @@ def test_revision_without_feedback_asks_a_person_without_calling_the_router() ->
 
 def test_unrouted_finding_goes_through_the_router_to_rework_and_records_versions() -> None:
     """A06 지적에 단계가 없으면 A09가 정한 단계로 재작업한다. 두 번째 검토는 지적이 없다."""
-    client, _ = stub_client(
-        reply(ReviewOutput(findings=())),  # A05
-        reply(ReviewOutput(findings=(_draft(),))),  # A06: 단계 없는 major
-        reply(ReviewOutput(findings=())),  # A07
-        reply(ReviewOutput(findings=())),  # A08
-        reply(A09Output(decision="functions", rationale="기능에 취소 사유가 없다")),
-        *(reply(ReviewOutput(findings=())) for _ in REVIEWERS),
-    )
+    from specton.llm.client import LLMClient
+
+    class Transport:
+        a06_count = 0
+
+        def send(self, request, output_model):
+            if request.stage == "A06_CONFIRM":
+                return reply(
+                    json.dumps(
+                        {
+                            "decisions": [
+                                {
+                                    "candidate_id": "A06-0-1",
+                                    "verdict": "missing",
+                                    "required_behavior": "취소 사유 기록",
+                                    "checked_design_ids": ["REQ-01"],
+                                    "remaining_gap": "사유 누락",
+                                    "rationale": "기능 설계 대조",
+                                }
+                            ]
+                        }
+                    )
+                )
+            if request.stage == "A09":
+                return reply(A09Output(decision="functions", rationale="기능에 취소 사유가 없다"))
+            if request.stage == "A06":
+                self.a06_count += 1
+                if self.a06_count == 1:
+                    return reply(ReviewOutput(findings=(_draft(),)))
+            return reply(ReviewOutput(findings=()))
+
+    client = LLMClient(Transport(), max_structured_retries=2)
     visited: list[str] = []
 
     def a02(state: GraphState) -> Mapping[str, Any]:

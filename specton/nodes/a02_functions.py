@@ -26,14 +26,15 @@ from specton.nodes.common import (
 )
 from specton.packs.examples import load_examples
 
-PROMPT_VERSION = "a02-v3"
+PROMPT_VERSION = "a02-v4"
 SYSTEM_PROMPT = """\
 너는 업무 시스템의 기능 설계자다. 확인된 요구사항을 사용자가 수행하는 기능 단위로 정리한다.
 
 할 일:
 - 같은 사용자가 같은 대상에 대해 함께 수행하는 요구사항은 한 기능으로 묶는다.
 - 성격이 다른 작업(예: 등록과 취소, 처리와 조회)은 기능을 나눈다.
-- 기능마다 name(짧은 명사형), description(무엇을 어떤 조건으로 하는지 1~2문장), req_ids를 쓴다.
+- 기능마다 name(짧은 명사형), description, req_ids를 쓴다.
+  description에는 행위자·입력·처리 조건·변경 결과·거절 조건을 포함한다.
 - req_ids에는 그 기능이 충족하는 요구사항의 id만 입력에서 골라 적는다.
 - 기능에 연결할 수 없는 요구사항은 억지로 기능을 만들어 붙이지 않는다.
 - NFR 분류만으로 기능화를 제외하지 않는다. 원문에 저장·검사·횟수 기록·상태 변경 같은 실행 동작이
@@ -41,6 +42,14 @@ SYSTEM_PROMPT = """\
 - 응답시간·가동률 등 품질 기준만 있는 비기능 요구는 독립 기능을 만들지 않고, 해당 업무 기능의
   description에 조건을 쓰고 req_ids에 함께 적는다.
 - 원문에 없는 계정 등록·삭제 등의 기능은 만들지 않는다.
+- 수량·상태·소유자·승인 조건은 단순히 값을 저장하는 것과 구별하여 검사 책임을 description에 쓴다.
+  허용 상태, 음수 금지, 조건부 필수값, 승인 전 변경 금지는 입력 근거 범위에서 보존한다.
+- 수량을 읽어 검사한 뒤 변경해야 하는 기능은 검사와 변경의 원자성 책임을 설명한다.
+  재고가 위치별이면 차감 대상을 식별할 위치·배정 근거가 필요하다. 원문에 없는 FIFO 등 정책은
+  정하지 않고 확인 필요 사항으로 남긴다. API 경로·상태 코드도 원문 없이 만들어 넣지 않는다.
+- source_metadata가 있으면 원문 수용 기준·데이터 항목을 처리 조건에 함께 반영한다.
+  원문 우선순위의 상·중·하를 MoSCoW로 임의 변환하지 않는다. 원문 표기는 코드가 따로 보존한다.
+- quality_issues의 미확정 기준은 임의로 결정하지 말고 해당 기능 설명에 확인 필요로 남긴다.
 
 우선순위(MoSCoW: Must, Should, Could, Won't):
 - 요구사항 문장에 우선순위가 명시돼 있으면 그 값을 priority에, priority_source는 explicit로 쓴다.
@@ -102,7 +111,9 @@ def run(
     drafts = result.output.functions
     ids = assign_ids("FUNC", len(drafts))
     functions = tuple(
-        Function.model_validate({**d.model_dump(), "id": i})
+        Function.model_validate(
+            {**d.model_dump(), "id": i, "priority_rationale": _priority_rationale(state, d)}
+        )
         for d, i in zip(drafts, ids, strict=True)
     )
     return NodeRun(output=functions, calls=result.calls)
@@ -113,12 +124,63 @@ def input_data(state: DesignState) -> dict[str, Any]:
 
     few-shot 예시의 `input`도 이 모양으로 쓴다.
     """
-    return {
+    data: dict[str, Any] = {
         "requirements": [
             {"id": r.id, "type": r.type.value, "nfr_category": r.nfr_category, "text": r.text}
             for r in state.requirements
         ]
     }
+    metadata = _source_metadata(state)
+    if metadata:
+        data["source_metadata"] = metadata
+    questions = {
+        r.id: [q.model_dump(mode="json") for q in r.quality_issues]
+        for r in state.requirements
+        if r.quality_issues
+    }
+    if questions:
+        data["quality_issues"] = questions
+    return data
+
+
+def _source_metadata(state: DesignState) -> dict[str, list[dict[str, str]]]:
+    """원문 ID만으로 조인하지 않는다. 같은 ID라도 다른 행의 메타데이터는 섞지 않는다."""
+    result: dict[str, list[dict[str, str]]] = {}
+    for req in state.requirements:
+        entries = []
+        for source in state.source_requirements:
+            if (
+                source.analysable
+                and source.source_ref == req.source_ref
+                and source.source_id == req.source_id
+            ):
+                entry = {
+                    k: v
+                    for k, v in source.source_extra.items()
+                    if k in {"우선순위", "수용 기준", "데이터 항목"} and v.strip()
+                }
+                if entry:
+                    entries.append(entry)
+        if entries:
+            result[req.id] = entries
+    return result
+
+
+def _priority_rationale(state: DesignState, draft: FunctionDraft) -> str | None:
+    """MoSCoW 결정과 원문 등급을 구별해 저장한다. 이 값은 기존 모델 해시에 포함된다."""
+    metadata = _source_metadata(state)
+    raw = list(
+        dict.fromkeys(
+            f"{req_id} 우선순위: {entry['우선순위']}"
+            for req_id in draft.req_ids
+            for entry in metadata.get(req_id, [])
+            if "우선순위" in entry
+        )
+    )
+    parts = [draft.priority_rationale] if draft.priority_rationale else []
+    if raw:
+        parts.append("원문 표기 (MoSCoW 변환 아님): " + "; ".join(raw))
+    return " / ".join(parts) or None
 
 
 def _checked_against(texts: Mapping[str, str]) -> type[A02Output]:

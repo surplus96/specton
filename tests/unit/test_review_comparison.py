@@ -62,6 +62,12 @@ class ConcurrentTransport:
 
     def send(self, request: LLMRequest, output_model: type[BaseModel]) -> RawReply:
         # 순차 실행이면 첫 호출이 barrier에서 실패한다. 네 가지가 실제로 동시에 진입해야 한다.
+        if request.stage == "A06_CONFIRM":
+            return reply(
+                '{"decisions":[{"candidate_id":"A06-0-1","verdict":"missing",'
+                '"required_behavior":"등록","checked_design_ids":["REQ-01"],'
+                '"remaining_gap":"등록 동작 누락","rationale":"전체 설계 대조"}]}'
+            )
         self.barrier.wait()
         if request.stage == self.failed:
             sleep(0.05)
@@ -84,12 +90,12 @@ def test_four_branches_really_overlap_and_failures_survive(
     result = run_comparison_condition(
         lambda: client, Settings(_env_file=None, review_mode="parallel"), design
     )
-    assert len(result.calls) == 4
+    assert len(result.calls) == 5
     assert len(result.merge.findings) == 1
     assert result.merge.findings[0].reviewer_id == "A06"
     assert result.merge.complete is (failed is None)
     assert result.merge.failed_branches == (() if failed is None else ("A08",))
-    assert sum(c.outcome == "ok" for c in result.calls) == (4 if failed is None else 3)
+    assert sum(c.outcome == "ok" for c in result.calls) == (5 if failed is None else 4)
     spans = list(result.branch_times.values())
     assert max(s["start_ms"] for s in spans) <= min(s["end_ms"] for s in spans)
     assert result.provenance["pack_version"] == "0.1.23"

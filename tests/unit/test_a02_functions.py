@@ -346,3 +346,62 @@ def test_pack_examples_never_make_an_nfr_only_function(pack: str) -> None:
         types = {r["id"]: r["type"] for r in example.input["requirements"]}
         for function in example.output.functions:
             assert any(types[r] == "FR" for r in function.req_ids), function.name
+
+
+def test_source_metadata_preserved_without_inventing_moscow_priority() -> None:
+    from specton.contracts import SourceRequirement
+    from specton.model_hash import model_hash
+
+    state = _state()
+    req = state.requirements[0]
+    source = SourceRequirement(
+        document_id="doc",
+        block_id="b1",
+        source_id=req.source_id,
+        source_ref=req.source_ref,
+        source_text=req.text,
+        extraction_status="pass",
+        source_extra={"우선순위": "상", "수용 기준": "등록 후 조회 가능", "비공개 기타": "제외"},
+    )
+    other = source.model_copy(
+        update={
+            "block_id": "b2",
+            "source_ref": req.source_ref.model_copy(update={"row": 100}),
+            "source_extra": {"우선순위": "하"},
+        }
+    )
+    state = state.evolve(source_requirements=(source, other))
+    client, _ = stub_client(reply(_valid_output()))
+    result = run(client, state, _settings(), pack="inventory")
+    data = input_data(state)
+    assert data["source_metadata"] == {
+        req.id: [{"우선순위": "상", "수용 기준": "등록 후 조회 가능"}]
+    }
+    function = result.output[0]
+    assert function.priority is None
+    assert function.priority_source.value == "unspecified"
+    assert "REQ-01 우선순위: 상" in function.priority_rationale
+    assert "하" not in function.priority_rationale
+    assert model_hash(state.evolve(functions=result.output)) != model_hash(
+        state.evolve(
+            functions=(function.model_copy(update={"priority_rationale": None}), *result.output[1:])
+        )
+    )
+
+
+def test_analysis_questions_reach_function_designer_without_changing_requirement_text() -> None:
+    from specton.contracts.requirements import QualityIssue
+
+    state = _state()
+    req = state.requirements[0].model_copy(
+        update={
+            "quality_issues": (
+                QualityIssue(
+                    kind="ambiguous", message="기준일 불명확", question="어느 날짜부터 계산합니까?"
+                ),
+            )
+        }
+    )
+    data = input_data(state.evolve(requirements=(req,)))
+    assert data["requirements"][0]["text"] == req.text
+    assert data["quality_issues"][req.id][0]["question"] == "어느 날짜부터 계산합니까?"

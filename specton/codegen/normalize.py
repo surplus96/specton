@@ -273,7 +273,10 @@ def _entity_table(entity: Entity, run: _Run) -> Table:
 
 def _named(logical: str, target: str, run: _Run) -> str:
     name = physical_name(logical, run.lexicon)
-    if name is None and run.rules.unresolved == "technical_id":
+    if (name is None or name.lower() in run.rules.reserved_words) and (
+        run.rules.unresolved == "technical_id"
+    ):
+        # 사전 이름도 예약어이면 인용 없이 사용할 수 없다. 논리명과 표준 사전은 보존한다.
         # 객체 ID는 코드가 부여한다. 업무 번역이나 표준 약어를 추측하지 않는다.
         prefix = "t" if target.startswith("TBL-") else "c"
         name = f"{prefix}_{hashlib.sha256(target.encode()).hexdigest()[:24]}"

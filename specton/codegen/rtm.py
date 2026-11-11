@@ -21,7 +21,7 @@ from openpyxl.styles import Alignment, Font  # type: ignore[import-untyped]
 
 from specton.codegen.function_spec import DOCUMENT_INFO, document_info
 from specton.contracts import DesignState, Requirement, SourceRequirement
-from specton.contracts.base import ExtractionStatus, UserDecision
+from specton.contracts.base import ExtractionStatus, RequirementType, UserDecision
 
 LINKED, UNLINKED, EXCLUDED, NO_TEXT = "연결", "미연결", "제외", "확인(원문 없음)"
 COLUMNS = (
@@ -160,8 +160,19 @@ def _requirement_row(design: DesignState, req: Requirement) -> RtmRow:
         entities="; ".join(entities),
         relationships="; ".join(relationships),
         status=LINKED if functions else UNLINKED,
-        note="",
+        note=_requirement_note(req, bool(functions)),
     )
+
+
+def _requirement_note(req: Requirement, linked: bool) -> str:
+    notes = []
+    if not linked and req.type is RequirementType.NFR:
+        notes.append("기능 미연결: 시스템 적용 위치·검증 근거 확인 필요 (충족 판정 아님)")
+    for issue in req.quality_issues:
+        notes.append("분석 시 확인사항: " + issue.message)
+        if issue.question:
+            notes.append("확인 질문: " + issue.question)
+    return "; ".join(notes)
 
 
 def _source_row(source: SourceRequirement) -> RtmRow:

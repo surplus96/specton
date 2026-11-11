@@ -12,9 +12,9 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from specton.config import Settings
 from specton.contracts import BranchResult, DesignState, Finding, FindingDraft, FindingSource
@@ -147,7 +147,7 @@ def review_perspective(
             results=(_failed(perspective.reviewer_id, state, exc.code),), calls=exc.calls
         )
     branch = _succeeded(perspective.reviewer_id, state, result.output.findings)
-    return ReviewRun(results=(branch,), calls=result.calls)
+    return _confirm_major(client, state, settings, (branch,), result.calls, token_budget)
 
 
 def review_combined(
@@ -194,7 +194,129 @@ def review_combined(
         _succeeded(i, state, by_id[i]) if i in by_id else _failed(i, state, "LLM_OUTPUT_INVALID")
         for i in ids
     )
-    return ReviewRun(results=results, calls=result.calls)
+    return _confirm_major(client, state, settings, results, result.calls, token_budget)
+
+
+class _MajorDecision(_Output):
+    candidate_id: str
+    verdict: Literal["missing", "covered", "uncertain"]
+    required_behavior: str = Field(min_length=1)
+    checked_design_ids: tuple[str, ...] = Field(min_length=1)
+    remaining_gap: str = Field(min_length=1)
+    rationale: str = Field(min_length=1)
+
+
+class _MajorDecisions(_Output):
+    decisions: tuple[_MajorDecision, ...]
+
+
+def _confirm_major(
+    client: LLMClient,
+    state: DesignState,
+    settings: Settings,
+    branches: tuple[BranchResult, ...],
+    calls: tuple[CallRecord, ...],
+    token_budget: int | None,
+) -> ReviewRun:
+    """major를 재확인한다. 판단 실패는 원 지적을 보존한 불완전 검토다."""
+    candidates = tuple(
+        f
+        for b in branches
+        if b.branch in {"A06", "A07"} and b.ok
+        for f in b.findings
+        if f.severity.value == "major"
+    )
+    if not candidates:
+        return ReviewRun(results=branches, calls=calls)
+    reviewers = {f.reviewer_id for f in candidates if f.reviewer_id is not None}
+    stage = next(iter(reviewers)) + "_CONFIRM" if len(reviewers) == 1 else "REVIEW_CONFIRM"
+    expected = {f.id for f in candidates}
+    known = {
+        x.id
+        for section in (state.requirements, state.functions, state.entities, state.relationships)
+        for x in section
+    }
+    known.update(a.id for e in state.entities for a in e.attributes)
+
+    class CheckedDecisions(_MajorDecisions):
+        @model_validator(mode="after")
+        def check_ids(self) -> Self:
+            ids = [d.candidate_id for d in self.decisions]
+            if set(ids) != expected or len(ids) != len(expected):
+                raise ValueError("후보마다 정확히 한 번 판단해야 합니다")
+            if any(set(d.checked_design_ids) - known for d in self.decisions):
+                raise ValueError("대조한 ID는 현재 설계에 있어야 합니다")
+            return self
+
+    request = build_request(
+        settings,
+        role="review",
+        stage=stage,
+        prompt_version="review-confirm-v2",
+        system=REVIEW_RULES
+        + """
+기존 A06·A07 major 후보를 독립적으로 재확인한다. 새 지적은 만들지 않는다.
+각 후보의 required_behavior, checked_design_ids, remaining_gap, rationale를 기록한다.
+missing은 원문에 명시된 동작·정보가 전체 설계에 실제로 없을 때만이다.
+기능 설명에 동작이 있으면 원문에 없는 구현 방식·API·알림 채널이 없다는 이유로
+missing이라 하지 않는다.
+후보 설명이 '이미 있다/지적하지 않아야 한다'면서 누락이라고 하면 자기모순을 확인한다.
+이미 충족하면 covered, 정책·시작 시점이 미확정이거나 증거가 부족하면 uncertain이다.
+단순 req_ids 연결만으로 충족을 인정하지 말고 실제 설명·속성·관계 경로를 대조한다.
+A07의 감사·보존·권한 지적은 원문이 명시한 기록 항목·시점·역할과 대조한다.
+원문이 요청자·승인자·전후 수량·사유만 요구하면 추가 일시 속성이 없다는 이유로
+major를 유지하지 않는다.
+원문이 명시적으로 시각 기록·보존을 요구하고 설계에서 빠졌다면 missing을 유지한다.
+암호화 방식·보존 연한·생성 후 상태 변경 정책을 원문 없이 새 필수 요구로 확대하지 않는다.
+covered의 remaining_gap에는 없음을 명시한다. 불확실한 사항을 임의로 확정하지 않는다.
+""",
+        data={
+            "design": _review_data(state, SECTION_ORDER[:-1], include_fk_names=True),
+            "candidates": [f.model_dump(mode="json") for f in candidates],
+        },
+    )
+    remaining = (
+        None
+        if token_budget is None
+        else max(0, token_budget - sum(c.input_tokens + c.output_tokens for c in calls))
+    )
+    try:
+        result = client.complete(request, CheckedDecisions, token_budget=remaining)
+    except LLMError as exc:
+        return ReviewRun(
+            results=tuple(
+                b.model_copy(update={"ok": False, "error_code": exc.code})
+                if b.branch in reviewers
+                else b
+                for b in branches
+            ),
+            calls=(*calls, *exc.calls),
+        )
+    decisions = {d.candidate_id: d for d in result.output.decisions}
+
+    def revised(f: Finding) -> Finding:
+        if f.id not in decisions:
+            return f
+        d = decisions[f.id]
+        record = (
+            f"{f.reviewer_id} 재확인 [{d.verdict}] 요구: {d.required_behavior}; "
+            f"대조: {', '.join(d.checked_design_ids)}; 잔여: {d.remaining_gap}; "
+            f"판단: {d.rationale} / 최초 의견: {f.suggestion}"
+        )
+        update: dict[str, Any] = {"suggestion": record}
+        if d.verdict != "missing":
+            update.update(severity="minor", target_stage=None)
+        return Finding.model_validate({**f.model_dump(), **update})
+
+    return ReviewRun(
+        results=tuple(
+            b.model_copy(update={"findings": tuple(revised(f) for f in b.findings)})
+            if b.branch in reviewers
+            else b
+            for b in branches
+        ),
+        calls=(*calls, *result.calls),
+    )
 
 
 def _group_by_reviewer(

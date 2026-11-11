@@ -239,7 +239,7 @@ def test_example_passes_the_checks_for_its_own_input() -> None:
 
 
 def test_prompt_version_is_fixed() -> None:
-    assert PROMPT_VERSION == "a03-v8"
+    assert PROMPT_VERSION == "a03-v9"
     assert SYSTEM_PROMPT.strip()
 
 

@@ -29,7 +29,7 @@ export function typeText(req: Pick<AnalysedRequirement, 'type' | 'nfr_category'>
 
 /** 같은 원문에서 2건 이상 나온 요구사항 (docs/09 UI-03 「분할」). 원문 ID가 없으면 원문 위치로 묶는다. */
 export function splitFromSameSource(reqs: readonly AnalysedRequirement[]): Set<string> {
-  const keyOf = (r: AnalysedRequirement) => r.source_id ?? JSON.stringify(r.source_ref)
+  const keyOf = (r: AnalysedRequirement) => JSON.stringify([r.source_id ?? null, r.source_ref])
   const counts = new Map<string, number>()
   for (const r of reqs) counts.set(keyOf(r), (counts.get(keyOf(r)) ?? 0) + 1)
   return new Set(reqs.filter((r) => (counts.get(keyOf(r)) ?? 0) > 1).map((r) => r.id))

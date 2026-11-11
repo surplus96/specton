@@ -167,3 +167,30 @@ def test_artifact_is_saved_as_a_functions_markdown_draft(tmp_path: Path) -> None
     assert generated["model_hash"] == model_hash(design)
     # 같은 내용을 다시 저장해도 같은 결과
     assert create_function_spec_artifact(design, storage_dir=tmp_path) == generated
+
+
+def test_spec_hands_off_unlinked_constraints_and_analysis_questions() -> None:
+    from specton.contracts import Requirement
+
+    req = Requirement.model_validate(
+        {
+            "id": "REQ-90",
+            "source_ref": {"file_format": "xlsx", "sheet": "입력", "row": 2},
+            "text": "90일 이상 미처리 항목을 알린다",
+            "draft_text": "90일 이상 미처리 항목을 알린다",
+            "type": "NFR",
+            "nfr_category": "other",
+            "analysis_version": 1,
+            "quality_issues": [
+                {"kind": "ambiguous", "message": "기준일 확인", "question": "접수일 | 수정일?"}
+            ],
+        }
+    )
+    design = _design(requirements=(req,))
+    text = render_function_spec(design)
+    assert "REQ-90 구현 조건" in text
+    assert "90일 이상 미처리 항목을 알린다" in text
+    assert "시스템 적용 위치·검증 근거 확인 필요" in text
+    assert "접수일 | 수정일?" in text
+    assert "SQL 실행 검증은 업무 조건의 구현·시험 완료를 뜻하지 않습니다" in text
+    assert text == render_function_spec(design)

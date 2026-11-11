@@ -101,7 +101,9 @@ class TestParallel:
         assert run.complete
 
     def test_failed_perspective_keeps_other_results(self) -> None:
-        client, _ = stub_client(refusal(), reply(ReviewOutput(findings=(_draft(),))))
+        client, _ = stub_client(
+            refusal(), reply(ReviewOutput(findings=(_draft(),))), _confirmation()
+        )
 
         run = run_review(client, [A05, A06], _state(), _settings("parallel"))
 
@@ -111,7 +113,7 @@ class TestParallel:
         ]
         assert len(run.results[1].findings) == 1
         assert not run.complete
-        assert len(run.calls) == 2
+        assert len(run.calls) == 3
 
     def test_prompt_uses_only_the_selected_inputs(self) -> None:
         client, transport = stub_client(reply(ReviewOutput(findings=())))
@@ -152,11 +154,11 @@ class TestCombined:
                 PerspectiveFindings(reviewer_id="A05", findings=()),
             )
         )
-        client, transport = stub_client(reply(output))
+        client, transport = stub_client(reply(output), _confirmation())
 
         run = run_review(client, [A05, A06], _state(), _settings("combined"))
 
-        assert len(transport.sent) == 1
+        assert len(transport.sent) == 2
         assert transport.sent[0].prompt_version == "A05=a05-v1,A06=a06-v1"
         assert [(r.branch, r.ok, len(r.findings)) for r in run.results] == [
             ("A05", True, 0),
@@ -378,3 +380,53 @@ class TestGroundingProblems:
         assert _grounding_problems({"entities": self.DATA["entities"]}, [finding]) == [
             "없는 요구사항 REQ-01"
         ]
+
+
+def _confirmation(verdict="missing", candidate_id="A06-1-1", design_id="ENT-01"):
+    return reply(
+        json.dumps(
+            {
+                "decisions": [
+                    {
+                        "candidate_id": candidate_id,
+                        "verdict": verdict,
+                        "required_behavior": "요구된 동작",
+                        "checked_design_ids": [design_id],
+                        "remaining_gap": "단가 누락"
+                        if verdict == "missing"
+                        else "없음 또는 기준 확인 필요",
+                        "rationale": "전체 설계를 대조한 결과",
+                    }
+                ]
+            }
+        )
+    )
+
+
+def test_a06_a07_major_candidates_share_one_confirmation_call():
+    a07 = _perspective("A07", "requirements", "functions")
+    output = CombinedReviewOutput(
+        perspectives=(
+            PerspectiveFindings(reviewer_id="A06", findings=(_draft(),)),
+            PerspectiveFindings(reviewer_id="A07", findings=(_draft(),)),
+        )
+    )
+    decisions = {
+        "decisions": [
+            {
+                "candidate_id": f"{name}-1-1",
+                "verdict": verdict,
+                "required_behavior": "요구 동작",
+                "checked_design_ids": ["REQ-01", "FUNC-01"],
+                "remaining_gap": "설계 대조",
+                "rationale": "원문 범위 확인",
+            }
+            for name, verdict in (("A06", "missing"), ("A07", "uncertain"))
+        ]
+    }
+    client, transport = stub_client(reply(output), reply(json.dumps(decisions)))
+    run = run_review(client, [A06, a07], _state(), _settings("combined"))
+    assert len(transport.sent) == 2 and transport.sent[1].stage == "REVIEW_CONFIRM"
+    assert run.results[0].findings[0].severity == "major"
+    assert run.results[1].findings[0].severity == "minor"
+    assert "A07 재확인" in run.results[1].findings[0].suggestion

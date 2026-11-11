@@ -29,7 +29,7 @@ from specton.nodes.common import (
 )
 from specton.packs.examples import load_examples
 
-PROMPT_VERSION = "a04-v8"
+PROMPT_VERSION = "a04-v9"
 SYSTEM_PROMPT = """\
 너는 데이터 모델 관계 설계자다. 주어진 엔티티 사이의 관계를 요구사항에 근거해 판단한다.
 - parent_name·child_name에는 입력 엔티티의 name을 그대로 쓴다.
@@ -39,6 +39,10 @@ SYSTEM_PROMPT = """\
 - optional: 자식이 부모 없이 존재할 수 있으면 true.
 - identifying: 자식이 부모 없이는 식별되지 않으면 true. 자기참조와 N:M에는 쓰지 않는다.
 - FK 속성이나 키 컬럼을 만들지 않는다.
+- 거래가 갱신할 잔액·재고가 복합 키로 식별되면 전체 키를 따라 변경 대상을 식별할 수 있는지 본다.
+  상위 품목·로트만 가리키는 것으로 하위 위치별 잔액까지 식별됐다고 가정하지 않는다.
+  다른 관계 경로로 전체 대상을 식별할 수 있으면 중복 관계를 강요하지 않는다.
+  입력 속성이 부족하면 rationale에 한계를 밝히고 존재하지 않는 속성·배정 정책을 지어내지 않는다.
 - fk_bindings는 부모의 키 속성과 같은 사실을 표현하는 자식의 기존 업무 속성에만 쓴다.
   parent_attribute_name·child_attribute_name에 각각 입력 속성 name을 적는다. 이름·타입이
   같다는 이유만으로 선언하지 않는다. 선언하지 않은 FK 칸은 정리 코드가 새로 만든다.
