@@ -58,9 +58,23 @@ class Review(Strict):
     reference: Text
 
 
+class R1ScopedOverride(Strict):
+    """R4 확인을 받은 것으로 기록하지 않는, 선정 해시 한 건의 명시적 R1 결정."""
+
+    subject_sha256: Sha256
+    authorized_role: Literal["R1"]
+    authorized_by: Text
+    replaces_role: Literal["R4"]
+    scope: Literal["this_selection_only"]
+    reason: Text
+    directive_reference: Text
+
+
 class Reviews(Strict):
     subject_sha256: Sha256
     reviews: tuple[Review, ...]
+    approval_mode: Literal["r1_r4", "r1_scoped_override"] = "r1_r4"
+    r1_override: R1ScopedOverride | None = None
 
 
 class Manifest(Strict):
@@ -168,8 +182,24 @@ def _reviews(folder: Path, subject: str, *, required: bool) -> Reviews | None:
             raise ValueError("탐색 실행에는 사전의 해시에 연결된 R1·R4 승인이 필요합니다")
         return None
     record = Reviews.model_validate_json(path.read_text(encoding="utf-8"))
-    if record.subject_sha256 != subject or sorted(r.role for r in record.reviews) != ["R1", "R4"]:
+    if record.subject_sha256 != subject:
         raise ValueError("R1·R4 승인 대상 해시 또는 역할이 일치하지 않습니다")
+    if record.approval_mode == "r1_r4":
+        if record.r1_override is not None or sorted(r.role for r in record.reviews) != ["R1", "R4"]:
+            raise ValueError("R1·R4 승인 대상 해시 또는 역할이 일치하지 않습니다")
+    else:
+        override = record.r1_override
+        if (
+            override is None
+            or override.subject_sha256 != subject
+            or len(record.reviews) != 1
+            or record.reviews[0].role != "R1"
+            or record.reviews[0].reviewer != override.authorized_by
+            or record.reviews[0].reference != override.directive_reference
+        ):
+            raise ValueError(
+                "R1 단독 확정은 동일 선정 해시·지시 근거·확정자와 R1 기록 하나가 필요합니다"
+            )
     return record
 
 
@@ -192,6 +222,10 @@ class LexiconOverlay:
             "dictionary_version": self.spec.dictionary_version,
             "base_policy_digest": self.spec.base_policy_digest,
             "overlay_subject_sha256": self.subject_sha256,
+            "overlay_approval_mode": self.reviews.approval_mode if self.reviews else "pending",
+            "overlay_r1_override_ref": self.reviews.r1_override.directive_reference
+            if self.reviews and self.reviews.r1_override
+            else "",
             "overlay_review_refs": json.dumps(
                 {r.role: r.reference for r in self.reviews.reviews} if self.reviews else {},
                 ensure_ascii=False,
@@ -220,14 +254,16 @@ class LexiconOverlay:
         if not isinstance(result, Normalized):
             detail = ", ".join(f"{p.code.value}:{p.target}" for p in result.problems)
             raise ValueError(f"탐색 조건 정리에 실패했습니다 ({detail})")
-        policy = _digest(
-            {
-                "scope": "evaluation_exploration",
-                "base": self.spec.base_policy_digest,
-                "overlay": self.subject_sha256,
-                "reviews": {r.role: r.model_dump(mode="json") for r in self.reviews.reviews},
-            }
-        )
+        policy_record: dict[str, object] = {
+            "scope": "evaluation_exploration",
+            "base": self.spec.base_policy_digest,
+            "overlay": self.subject_sha256,
+            "reviews": {r.role: r.model_dump(mode="json") for r in self.reviews.reviews},
+        }
+        if self.reviews.r1_override is not None:
+            policy_record["approval_mode"] = self.reviews.approval_mode
+            policy_record["r1_override"] = self.reviews.r1_override.model_dump(mode="json")
+        policy = _digest(policy_record)
         return versioned.evolve(
             normalized=result.model.evolve(
                 common_version=self.spec.base_common_version,

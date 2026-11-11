@@ -402,3 +402,99 @@ def test_in_memory_dictionary_change_is_not_covered_by_the_original_approval(
     fixture = _fixture()
     with pytest.raises(ValueError, match="로드 후"):
         forged.normalize(case_state(fixture, fixture.cases[0]))
+
+
+def _r1_override(spec_path: Path, subject: str) -> Path:
+    path = spec_path.parent / "r1-scoped-reviews.json"
+    path.write_text(
+        json.dumps(
+            {
+                "subject_sha256": subject,
+                "approval_mode": "r1_scoped_override",
+                "reviews": [
+                    {
+                        "role": "R1",
+                        "reviewer": "synthetic-R1",
+                        "decision": "approved",
+                        "reference": "unit-test-only:explicit-R1-directive",
+                    }
+                ],
+                "r1_override": {
+                    "subject_sha256": subject,
+                    "authorized_role": "R1",
+                    "authorized_by": "synthetic-R1",
+                    "replaces_role": "R4",
+                    "scope": "this_selection_only",
+                    "reason": "synthetic explicit replacement, not an R4 review",
+                    "directive_reference": "unit-test-only:explicit-R1-directive",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_explicit_r1_override_is_selection_scoped_and_never_claims_r4(spec_path: Path) -> None:
+    draft = compose_overlay(ROOT, spec_path, spec_path.parent / "r1-draft")
+    record = _r1_override(spec_path, draft.subject_sha256)
+    ready = compose_overlay(ROOT, spec_path, spec_path.parent / "r1-ready", reviews=record)
+    assert ready.reviews is not None
+    assert [r.role for r in ready.reviews.reviews] == ["R1"]
+    assert ready.provenance()["overlay_approval_mode"] == "r1_scoped_override"
+    assert "R4" not in json.loads(ready.provenance()["overlay_review_refs"])
+    fixtures = _fixture()
+    state = case_state(fixtures, fixtures.cases[0])
+    result = ready.normalize(state)
+    assert result.normalized is not None
+    stored = json.loads(record.read_text())
+    stored["r1_override"]["subject_sha256"] = "0" * 64
+    (ready.folder / "reviews.json").write_text(json.dumps(stored))
+    with pytest.raises(ValueError):
+        ready.normalize(state)
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "missing",
+        "wrong_hash",
+        "wrong_reviewer",
+        "wrong_ref",
+        "r4_claim",
+        "global_scope",
+        "missing_reason",
+        "unmarked_override",
+    ],
+)
+def test_r1_override_requires_explicit_matching_directive(spec_path: Path, defect: str) -> None:
+    draft = compose_overlay(ROOT, spec_path, spec_path.parent / "draft")
+    path = _r1_override(spec_path, draft.subject_sha256)
+    record = json.loads(path.read_text())
+    if defect == "missing":
+        record.pop("r1_override")
+    elif defect == "wrong_hash":
+        record["r1_override"]["subject_sha256"] = "0" * 64
+    elif defect == "wrong_reviewer":
+        record["r1_override"]["authorized_by"] = "other"
+    elif defect == "wrong_ref":
+        record["r1_override"]["directive_reference"] = "other"
+    elif defect == "r4_claim":
+        record["reviews"].append(
+            {
+                "role": "R4",
+                "reviewer": "fictional-R4",
+                "decision": "approved",
+                "reference": "not-actually-reviewed",
+            }
+        )
+    elif defect == "global_scope":
+        record["r1_override"]["scope"] = "all_selections"
+    elif defect == "missing_reason":
+        record["r1_override"]["reason"] = " "
+    elif defect == "unmarked_override":
+        record.pop("approval_mode")
+    path.write_text(json.dumps(record))
+    with pytest.raises(ValueError):
+        compose_overlay(ROOT, spec_path, spec_path.parent / "rejected", reviews=path)
+    assert not (spec_path.parent / "rejected").exists()
