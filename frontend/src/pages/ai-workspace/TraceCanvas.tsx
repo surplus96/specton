@@ -28,7 +28,7 @@ const ROW_HEIGHT = 86
 /** 처음 화면·「0」 키로 맞출 줄 수. 항목이 많아도 글자를 읽을 수 있게 위쪽부터 보인다 */
 const FIRST_ROWS = 7
 
-const MARK_COLOR = { unlinked: '#f87171', excluded: '#a3b3cc', 'no-source': '#fbbf24' } as const
+const MARK_COLOR = { unlinked: 'var(--darktones-failed-fg)', excluded: 'var(--darktones-skipped-fg)', 'no-source': 'var(--darktones-awaiting-fg)' } as const
 
 function ItemCard({ data }: NodeProps<ItemNode>) {
   const { item, dimmed, lit } = data
@@ -179,7 +179,7 @@ function Canvas({ graph, selected, onSelect }: Props) {
       >
         <Background color={dark.border} gap={24} />
         <Controls showInteractive={false} />
-        <MiniMap pannable zoomable nodeColor={dark.card} maskColor="rgba(2,6,23,0.35)" style={MINIMAP_STYLE} />
+        <MiniMap pannable zoomable nodeColor={dark.card} maskColor="var(--dark-mask)" style={MINIMAP_STYLE} />
       </ReactFlow>
     </div>
   )

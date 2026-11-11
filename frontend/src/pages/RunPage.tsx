@@ -1,8 +1,7 @@
 import { useEffect, useRef } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { ApiError, errorMessage } from '../api/errors.ts'
 import { runFileName } from '../api/runNames.ts'
-import Icon from '../layout/Icon.tsx'
 import StageSteps, { type ScreenId } from '../layout/StageSteps.tsx'
 import Button from '../ui/Button.tsx'
 import Loading from '../ui/Loading.tsx'
@@ -13,11 +12,11 @@ import RequirementsPanel from './requirements/RequirementsPanel.tsx'
 import ReviewPanel from './review/ReviewPanel.tsx'
 import ActivityPanel from './run/ActivityPanel.tsx'
 import ProgressPanel from './run/ProgressPanel.tsx'
-import { displayStage, screenFor, unreachedScreens } from './run/screens.ts'
+import { screenFor, screenSteps } from './run/screens.ts'
 import { useRunStatus } from './run/useRunStatus.ts'
 import DownloadPanel from './workspace/DownloadPanel.tsx'
 import WorkspacePanel from './workspace/WorkspacePanel.tsx'
-import { VIEW_LABEL, chosenView, resultViews, type ResultView } from './workspace/rules.ts'
+import { VIEW_LABEL, chosenView, staleView, resultViews, type ResultView } from './workspace/rules.ts'
 
 // 실행 하나의 화면 (/?run=<runId>).
 // 상태를 조회하고 이벤트(SSE)로 따라가며, 상태에 맞는 화면(UI-02~07)을 고른다 (run/screens.ts).
@@ -30,7 +29,6 @@ const SCREEN_OF_VIEW: Record<ResultView, ScreenId> = {
   downloads: 'UI-07',
 }
 
-const WORKSPACE_NEW_TAB = import.meta.env.MODE !== 'mock'
 
 function RunPage({ runId }: { runId: string }) {
   const navigate = useNavigate()
@@ -54,6 +52,16 @@ function RunPage({ runId }: { runId: string }) {
   }, [currentScreen])
 
   const label = file ?? '이름 없는 작업'
+
+  useEffect(() => {
+    if (!run || !staleView(run.status, params.get('view'))) return
+    setParams((previous) => {
+      const next = new URLSearchParams(previous)
+      next.delete('view')
+      next.delete('tab')
+      return next
+    }, { replace: true })
+  }, [run, params, setParams])
 
   if (loadError) {
     const notFound = loadError instanceof ApiError && loadError.status === 404
@@ -97,7 +105,7 @@ function RunPage({ runId }: { runId: string }) {
 
   const view = chosenView(run.status, params.get('view'))
   const screen = view ? SCREEN_OF_VIEW[view] : screenFor(run.status, run.interrupt?.kind)
-  const unreached = unreachedScreens(run.status, displayStage(run.stage, events))
+  const steps = screenSteps(run.status, screen, events)
 
   function chooseView(next: ResultView) {
     setParams((p) => {
@@ -109,7 +117,7 @@ function RunPage({ runId }: { runId: string }) {
 
   return (
     <div>
-      <StageSteps current={screen} unreached={unreached} />
+      <StageSteps steps={steps} />
       <div className="row row--between" style={{ marginBottom: 20 }}>
         {view ? (
           <Segmented<ResultView>
@@ -121,16 +129,7 @@ function RunPage({ runId }: { runId: string }) {
         ) : (
           <span />
         )}
-        {/* 개발용 AI Workspace (#281). mock은 실행을 탭 메모리에만 두므로 같은 탭에서 연다 */}
-        <Link
-          className="topbar__link"
-          style={{ fontSize: 14 }}
-          to={`/workspace?run=${encodeURIComponent(run.run_id)}`}
-          {...(WORKSPACE_NEW_TAB ? { target: '_blank', rel: 'noopener' } : {})}
-        >
-          작업공간 열기 (개발용)
-          {WORKSPACE_NEW_TAB && <Icon name="external" size={14} />}
-        </Link>
+
       </div>
       <div className={`run-layout${screen === 'UI-04' ? ' run-layout--side' : ''}`}>
         <div className="screen" key={screen} style={{ minWidth: 0 }}>

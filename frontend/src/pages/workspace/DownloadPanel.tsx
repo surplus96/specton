@@ -1,3 +1,4 @@
+import RunEyebrow from '../run/RunEyebrow.tsx'
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { getView } from '../../api/client.ts'
@@ -14,7 +15,6 @@ import DownloadAll from './DownloadAll.tsx'
 import DownloadButton from './DownloadButton.tsx'
 import Pipeline from './Pipeline.tsx'
 import type { WorkspaceTab } from './pipeline.ts'
-import { revisionText } from '../runMeta.ts'
 import ResultSummary from './ResultSummary.tsx'
 import { FORMAT_LABEL, KIND_LABEL, downloadRows, isApproved, toArtifacts, type DownloadRow } from './rules.ts'
 
@@ -69,10 +69,10 @@ function DownloadPanel({ run, label }: Props) {
   return (
     <div className="stack">
       <ScreenHead
-        eyebrow={`다운로드 · ${label} · ${revisionText(run.revision)}`}
+        eyebrow={<RunEyebrow screen="다운로드" label={label} run={run} />}
         title={
           <>
-            <strong>설계 초안</strong>, {approved ? '완성.' : '내려받기'}
+            <strong>{approved ? '승인 산출물' : '산출물 내려받기'}</strong>
           </>
         }
         actions={
@@ -90,7 +90,7 @@ function DownloadPanel({ run, label }: Props) {
           <div className="decide">
             <div className={`decision-card${approved ? ' decision-card--done' : ''}`}>
               <span style={{ fontSize: 14, opacity: 0.8 }}>{approved ? '승인 완료' : '초안 · 승인 전'}</span>
-              <h3>{approved ? '설계 초안, 완성.' : '승인 전 초안이에요.'}</h3>
+              <h3>{approved ? '다운로드 준비 완료' : '승인 전 초안이에요.'}</h3>
               <span style={{ opacity: 0.8 }}>
                 {approved ? '형식별로 내려받을 수 있어요.' : '파일 이름 끝에 -draft가 붙고, PDF는 승인한 뒤에 만들어져요.'}
               </span>

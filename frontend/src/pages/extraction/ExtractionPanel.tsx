@@ -1,3 +1,4 @@
+import RunEyebrow from '../run/RunEyebrow.tsx'
 import { useEffect, useMemo, useState } from 'react'
 import { getView } from '../../api/client.ts'
 import { errorMessage } from '../../api/errors.ts'
@@ -171,7 +172,7 @@ function ExtractionPanel({ run, events, onChanged, label }: Props) {
   return (
     <div className="stack">
       <ScreenHead
-        eyebrow={`추출 확인 · ${label}`}
+        eyebrow={<RunEyebrow screen="추출 확인" label={label} run={run} />}
         title={
           <>
             확인할 <strong>원문 {blocks ? toCheck.length : ''}건</strong>
