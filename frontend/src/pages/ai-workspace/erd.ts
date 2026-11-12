@@ -1,6 +1,6 @@
 // AI Workspace 「ERD 캔버스」 규칙 (#281). 화면 코드와 분리해 시험한다.
 //
-// Mermaid 그림이 아니라 view design의 entity·relationship으로 카드와 선을 직접 만든다.
+// 최종 Mermaid 산출물이 있으면 전체 테이블·관계를 사용하고, 없으면 설계 단계 모델을 사용한다.
 // 배치는 ELK(layered)로, 서버 PDF ERD 개요(#273)와 같이 위→아래 방향이다. 이 파일은 ELK 입력·출력만 바꾸고
 // elkjs는 부르지 않는다(화면에서 필요할 때 불러온다).
 import type { DesignAttribute, DesignEntity, DesignItem, DesignRelationship, Finding } from '../../api/viewItems.ts'
@@ -18,28 +18,41 @@ export type AttributeRow = {
 /** 최종 ERD 한 테이블의 속성 줄 (specton/codegen/erd.py `타입 이름 키 "설명"`) */
 export type FinalRow = Pick<AttributeRow, 'name' | 'type' | 'keys' | 'note'>
 
-/**
- * 서버가 만든 ERD 원문(.mmd)에서 테이블별 속성 줄을 읽는다. 키는 테이블 표시 이름.
- * 원문 형식은 생성 코드가 정한다. 읽지 못한 줄은 건너뛴다.
- */
-export function parseFinalErd(text: string): Map<string, FinalRow[]> {
-  const tables = new Map<string, FinalRow[]>()
+export type FinalErd = {
+  tables: { id: string; name: string; rows: FinalRow[] }[]
+  edges: { source: string; target: string; parent: string; child: string; identifying: boolean; relation: string }[]
+}
+
+/** 서버 render_erd의 문법만 받는다. 부분 파싱 결과를 최종 모델로 표시하지 않는다. */
+export function parseFinalErd(text: string): FinalErd {
+  const result: FinalErd = { tables: [], edges: [] }
   let rows: FinalRow[] | null = null
-  for (const line of text.split('\n')) {
-    const head = /^\s*[^\s"]+\["(.*)"\]\s*\{\s*$/.exec(line)
+  if (text.trim().split('\n')[0].trim() !== 'erDiagram') throw new Error('ERD 머리글이 올바르지 않습니다')
+  for (const raw of text.trim().split('\n').slice(1)) {
+    const line = raw.trim()
+    if (!line || line.startsWith('%%') || /^direction (TB|BT|LR|RL)$/.test(line)) continue
+    if (rows) {
+      if (line === '}') { rows = null; continue }
+      const attr = /^(\S+)\s+(\S+)(?:\s+((?:PK|FK|UK)(?:,(?:PK|FK|UK))*))?\s+"(.*)"$/.exec(line)
+      if (!attr) throw new Error('ERD 속성을 읽을 수 없습니다')
+      rows.push({ type: attr[1], name: attr[2], keys: attr[3] ?? '', note: attr[4] })
+      continue
+    }
+    const head = /^(\w+)\["(.*)"\]\s*\{$/.exec(line)
     if (head) {
+      if (result.tables.some((t) => t.id === head[1])) throw new Error('ERD 테이블 식별자가 중복됩니다')
       rows = []
-      tables.set(head[1], rows)
+      result.tables.push({ id: head[1], name: head[2], rows })
       continue
     }
-    if (/^\s*\}\s*$/.test(line)) {
-      rows = null
-      continue
-    }
-    const attr = rows && /^\s*(\S+)\s+(\S+)(?:\s+((?:PK|FK|UK)(?:,(?:PK|FK|UK))*))?\s+"(.*)"\s*$/.exec(line)
-    if (rows && attr) rows.push({ type: attr[1], name: attr[2], keys: attr[3] ?? '', note: attr[4] })
+    const edge = /^(\w+)\s+(\|\||\|o)(--|\.\.)(o\{|o\|)\s+(\w+)\s*:\s*"(.*)"$/.exec(line)
+    if (!edge) throw new Error('ERD 관계를 읽을 수 없습니다')
+    result.edges.push({ source: edge[1], parent: edge[2], identifying: edge[3] === '--', child: edge[4], target: edge[5], relation: edge[6] })
   }
-  return tables
+  if (rows) throw new Error('ERD 테이블이 닫히지 않았습니다')
+  const ids = new Set(result.tables.map((t) => t.id))
+  if (result.edges.some((e) => !ids.has(e.source) || !ids.has(e.target))) throw new Error('ERD 관계 대상이 없습니다')
+  return result
 }
 
 export type EntityCard = {
@@ -111,13 +124,13 @@ export function findingEntities(design: readonly DesignItem[]): (f: Finding) => 
 }
 
 /**
- * 카드와 선. `final`(최종 ERD 원문을 읽은 것)에 같은 이름의 테이블이 있으면 그 속성 줄을 그대로 쓴다.
+ * 카드와 선. `final`이 있으면 최종 산출물의 전체 테이블과 관계를 사용한다.
  * 최종 ERD가 아직 없으면 설계 결과의 속성으로 같은 칸을 채운다.
  */
 export function erdModel(
   design: readonly DesignItem[],
   findings: readonly Finding[],
-  final?: ReadonlyMap<string, readonly FinalRow[]>,
+  final?: FinalErd,
 ): { cards: EntityCard[]; lines: RelationshipLine[] } {
   const entities = design.filter((d): d is DesignEntity => d.type === 'entity')
   const rels = design.filter((d): d is DesignRelationship => d.type === 'relationship')
@@ -125,25 +138,38 @@ export function erdModel(
   const of = findingEntities(design)
   const counts = new Map<string, number>()
   for (const f of findings) for (const e of of(f)) counts.set(e, (counts.get(e) ?? 0) + 1)
+  if (final) return finalModel(final, entities, counts)
   const cards = entities.map((e): EntityCard => {
-    const finalRows = final?.get(e.name)
-    const attributes = finalRows
-      ? finalRows.map((r, i): AttributeRow => ({ id: `${e.id}:${i}`, ...r }))
-      : e.attributes.map(
-          (a): AttributeRow => ({
-            id: a.id,
-            name: a.name,
-            type: typeText(a),
-            keys: [a.is_key && 'PK', a.is_unique && 'UK'].filter(Boolean).join(','),
-            note: '',
-          }),
-        )
+    const attributes = e.attributes.map((a): AttributeRow => ({
+      id: a.id, name: a.name, type: typeText(a),
+      keys: [a.is_key && 'PK', a.is_unique && 'UK'].filter(Boolean).join(','), note: '',
+    }))
     return { id: e.id, name: e.name, description: e.description, attributes, reqIds: e.req_ids, findingCount: counts.get(e.id) ?? 0, ...cardSize(e.name, attributes) }
   })
   // 양 끝 엔티티가 있는 관계만 그린다 (없는 대상을 메우지 않음)
   const lines = rels
     .filter((r) => ids.has(r.parent) && ids.has(r.child))
     .map((r): RelationshipLine => ({ id: r.id, source: r.parent, target: r.child, label: relationshipLabel(r), identifying: r.identifying, optional: r.optional }))
+  return { cards, lines }
+}
+
+// 이름 대응은 추적 메타데이터에만 사용한다. 카드·관계의 구성은 최종 ERD가 결정한다.
+function finalModel(final: FinalErd, entities: DesignEntity[], counts: Map<string, number>) {
+  const alias = (name: string) => name.replace(/[\p{C}\p{Zl}\p{Zp}]/gu, ' ').replace(/%{2,}/g, '%').replace(/"/g, "'")
+  const cards = final.tables.map((t): EntityCard => {
+    const matches = entities.filter((e) => alias(e.name) === t.name)
+    const entity = matches.length === 1 && final.tables.filter((other) => other.name === t.name).length === 1 ? matches[0] : undefined
+    const id = entity?.id ?? `final:${t.id}`
+    const attributes = t.rows.map((row, i) => ({ ...row, id: `${id}:${i}` }))
+    return { id, name: t.name, description: entity?.description ?? '최종 ERD에서 생성된 테이블',
+      attributes, reqIds: entity?.req_ids ?? [], findingCount: counts.get(id) ?? 0, ...cardSize(t.name, attributes) }
+  })
+  const ids = new Map(final.tables.map((t, i) => [t.id, cards[i].id]))
+  const lines: RelationshipLine[] = final.edges.map((e, i) => ({
+    id: `final-edge:${i}`, source: ids.get(e.source)!, target: ids.get(e.target)!,
+    label: `${e.relation} · ${e.parent}${e.identifying ? '--' : '..'}${e.child}`,
+    identifying: e.identifying, optional: e.parent === '|o',
+  }))
   return { cards, lines }
 }
 

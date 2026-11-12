@@ -17,7 +17,7 @@ import { needsAttention, sortRequirements, splitFromSameSource, typeText } from 
 
 // UI-03 분석 확인 (docs/09). 보기 전용: 요구사항을 보여 주고, 버튼 하나로 모두 유지(빈 answers)로 보내 설계를 시작한다.
 // 수정·분할 입력은 쓰지 않는다. 서버 계약(빈 answers = 모두 keep)은 그대로다.
-// 상세 보기의 유지·제외는 화면에서만 표시한다. 서버로 보내지 않는다.
+// 상세 보기의 미확인·확인함은 화면의 검토 표시다. 서버로 보내지 않는다.
 // 품질 경고·질문이 있거나 같은 원문에서 나뉜 요구사항을 먼저 보인다. 질문을 「자동으로 고쳤다」고 표시하지 않는다.
 type Props = {
   run: RunStatus
@@ -29,7 +29,7 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
   const interruptId = run.interrupt?.interrupt_id
   const [reqs, setReqs] = useState<AnalysedRequirement[] | null>(null)
   const [loadError, setLoadError] = useState<unknown>(null)
-  const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set())
+  const [reviewed, setReviewed] = useState<ReadonlySet<string>>(new Set())
   const { send, sending, error, notice, reloadKey, reload, canAnswer } = useResume(run, onChanged)
 
   useEffect(() => {
@@ -41,7 +41,7 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
         if (!alive) return
         const items = view.items as AnalysedRequirement[]
         setReqs(items)
-        setExcluded(new Set())
+        setReviewed(new Set())
       })
       .catch((err: unknown) => alive && setLoadError(err))
     return () => {
@@ -80,8 +80,8 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
       key: 'issues',
       title: '확인 사항',
       width: 180,
-      render: (r) => excluded.has(r.id)
-        ? <StatusTag tone="neutral">제외</StatusTag>
+      render: (r) => reviewed.has(r.id)
+        ? <StatusTag tone="neutral">확인함</StatusTag>
         : r.quality_issues.length === 0
         ? <span className="subtle">{split.has(r.id) ? '자동 분할됨 · 진행 가능' : '경고 없음'}</span>
         : <div className="stack-sm">
@@ -93,17 +93,18 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
 
   const details = (req: AnalysedRequirement) => (
     <section className="requirement-details stack-sm" aria-label={`${req.source_id ?? req.id} 상세`}>
+      <p className="muted">이 선택은 검토 표시입니다. 설계에는 모든 요구사항이 포함되며, 새로고침하면 표시가 초기화됩니다.</p>
       <Segmented<'keep' | 'exclude'>
         variant="choice"
-        label={`${req.source_id ?? req.id} 유지 또는 제외`}
-        value={excluded.has(req.id) ? 'exclude' : 'keep'}
-        onChange={(v) => setExcluded((prev) => {
+        label={`${req.source_id ?? req.id} 검토 표시`}
+        value={reviewed.has(req.id) ? 'exclude' : 'keep'}
+        onChange={(v) => setReviewed((prev) => {
           const next = new Set(prev)
           if (v === 'exclude') next.add(req.id)
           else next.delete(req.id)
           return next
         })}
-        options={[{ value: 'keep', label: '유지' }, { value: 'exclude', label: '제외' }]}
+        options={[{ value: 'keep', label: '미확인' }, { value: 'exclude', label: '확인함' }]}
       />
       <h3 className="h3">요구사항 전체</h3>
       <p className="requirement-detail-text">{req.text}</p>
@@ -134,7 +135,7 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
       ) : (
         <>
           <div className="muted" style={{ fontSize: 15 }}>
-            요구사항 {reqs.length}건 · 확인 사항 {toCheck.length}건{excluded.size > 0 ? ` · 제외 ${excluded.size}건` : ''}
+            요구사항 {reqs.length}건 · 확인 사항 {toCheck.length}건{reviewed.size > 0 ? ` · 확인함 ${reviewed.size}건` : ''}
           </div>
           {notice && <Notice kind="warning" title={notice} />}
           <section aria-label="품질 경고·질문" className="stack-sm">

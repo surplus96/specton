@@ -22,7 +22,7 @@ import DetailPanel, { type Selection } from './DetailPanel.tsx'
 import ErdCanvas from './ErdCanvas.tsx'
 import PipelineGraph from './PipelineGraph.tsx'
 import TraceCanvas from './TraceCanvas.tsx'
-import { erdModel, findingEntities, parseFinalErd, type FinalRow } from './erd.ts'
+import { erdModel, findingEntities, parseFinalErd, type FinalErd } from './erd.ts'
 import { artifactText } from '../workspace/files.ts'
 import { pipelineNodes, pipelineProgress } from './pipeline.ts'
 import type { StepData } from './stepDetail.ts'
@@ -169,14 +169,15 @@ function Workspace({ runId }: { runId: string }) {
   const names = useMemo(() => nameIndex(shown?.design ?? []), [shown])
   // 최종 ERD 원문(.mmd)이 있으면 카드 속성 줄을 그 값으로 보인다 (최종 산출물과 같은 타입·이름·키·물리명)
   const erdFile = artifacts.find((a) => a.kind === 'erd' && a.file_format === 'mmd')
-  const [finalErd, setFinalErd] = useState<{ key: string; tables: Map<string, FinalRow[]> } | null>(null)
-  const erdKey = erdFile ? `${runId}:${erdFile.revision}` : null
+  const [finalErd, setFinalErd] = useState<{ key: string; tables: FinalErd } | null>(null)
+  const [erdError, setErdError] = useState<{ key: string; message: string } | null>(null)
+  const erdKey = erdFile ? `${runId}:${erdFile.revision}:${erdFile.hash}` : null
   useEffect(() => {
     if (!erdFile || !erdKey) return
     let alive = true
     artifactText(runId, erdFile)
       .then((text) => alive && setFinalErd({ key: erdKey, tables: parseFinalErd(text) }))
-      .catch(() => {}) // 못 읽으면 설계 결과로 그린다
+      .catch((error: unknown) => alive && setErdError({ key: erdKey, message: errorMessage(error) }))
     return () => {
       alive = false
     }
@@ -323,6 +324,9 @@ function Workspace({ runId }: { runId: string }) {
             )}
           </div>
           <div id="aiws-tabpanel" role="tabpanel" aria-labelledby={`aiws-tab-${tab}`} style={{ minHeight: 0 }}>
+            {tab === 'erd' && <p role={erdError?.key === erdKey ? 'alert' : 'status'} style={{ padding: '0 20px' }}>
+              {finalTables ? '최종 ERD 산출물 기준' : erdError?.key === erdKey ? `최종 ERD를 읽지 못해 설계 단계 결과를 표시합니다: ${erdError.message}` : erdFile ? '최종 ERD를 불러오는 중입니다. 현재는 설계 단계 결과입니다.' : '최종 ERD가 아직 없어 설계 단계 결과를 표시합니다.'}
+            </p>}
             {viewError ? (
               <p role="alert" style={{ padding: 20 }}>
                 {errorMessage(viewError)}
@@ -352,6 +356,7 @@ function Workspace({ runId }: { runId: string }) {
           {shown && (
             <DetailPanel
               selection={selection}
+              cards={erd.cards}
               design={shown.design}
               findings={shown.findings}
               artifacts={artifacts}
