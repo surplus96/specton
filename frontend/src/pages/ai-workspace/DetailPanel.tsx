@@ -3,7 +3,7 @@ import { dark } from '../../theme.ts'
 import { SEVERITY_LABEL, STAGE_LABEL, plainText, sortFindings, sourceText, targetText } from '../review/rules.ts'
 import type { SqlReview } from '../review/sqlValidation.ts'
 import { KIND_LABEL as ARTIFACT_LABEL, missingKinds } from '../workspace/rules.ts'
-import { findingEntities } from './erd.ts'
+import { findingEntities, type EntityCard } from './erd.ts'
 import { KIND_LABEL, STATE_LABEL, type PipelineNode } from './pipeline.ts'
 import { stepEvents, stepResult, type StepData } from './stepDetail.ts'
 import { COLUMN_TITLE, MARK_LABEL, refText, type TraceNode } from './trace.ts'
@@ -32,6 +32,7 @@ const SQL_LABEL: Record<SqlReview['status'], { text: string; color: string }> = 
 
 type Props = {
   selection: Selection | null
+  cards?: EntityCard[]
   design: DesignItem[]
   findings: Finding[]
   artifacts: ArtifactRef[]
@@ -134,7 +135,7 @@ function StepDetail({ node, events, step }: { node: PipelineNode; events: readon
   )
 }
 
-function SelectionDetail({ selection, design, findings, names, traceNodes, pipeline, events, step }: Props) {
+function SelectionDetail({ cards, selection, design, findings, names, traceNodes, pipeline, events, step }: Props) {
   if (!selection) {
     return <p style={{ padding: '0 16px', color: dark.inkMuted, fontSize: 13 }}>왼쪽 단계나 가운데 그림에서 하나를 누르면 여기서 자세히 볼 수 있어요.</p>
   }
@@ -179,7 +180,8 @@ function SelectionDetail({ selection, design, findings, names, traceNodes, pipel
   const entityId = selection.kind === 'entity' ? selection.id : null
   if (!entityId) return null
   const entity = design.find((d): d is DesignEntity => d.type === 'entity' && d.id === entityId)
-  if (!entity) return null
+  const card = cards?.find((c) => c.id === entityId)
+  if (!entity) return card ? <><Row label="테이블">{card.name}</Row><Row label="설명">{card.description}</Row><Row label="항목">{card.attributes.length}개</Row></> : null
   const crud = design
     .filter((d): d is DesignFunction => d.type === 'function')
     .flatMap((f) => f.entity_ops.filter((op) => op.entity_id === entityId).map((op) => `${f.id} ${f.name} (${op.operations.join(' ')})`))
@@ -188,7 +190,7 @@ function SelectionDetail({ selection, design, findings, names, traceNodes, pipel
     <>
       <Row label="테이블">{entity.name}</Row>
       <Row label="설명">{entity.description}</Row>
-      <Row label="항목">{entity.attributes.length}개</Row>
+      <Row label="항목">{card?.attributes.length ?? entity.attributes.length}개</Row>
       <Row label="근거 요구사항">{entity.req_ids.join(', ') || '없음'}</Row>
       <Row label="이 테이블을 쓰는 기능">{crud.length ? crud.map((c) => <div key={c}>{c}</div>) : '없음'}</Row>
       <Row label="검토 의견">{related.length ? related.map((f) => <div key={f.id}>{targetText(f.targets[0], names)}</div>) : '없음'}</Row>
@@ -215,7 +217,7 @@ function DetailPanel(props: Props) {
         {missing.length ? (
           <span style={{ color: 'var(--darktones-awaiting-fg)' }}>{missing.map((k) => ARTIFACT_LABEL[k]).join(', ')}</span>
         ) : (
-          <span style={{ color: 'var(--darktones-done-fg)' }}>없어요 (문서 3종 다 있음)</span>
+          <span style={{ color: 'var(--darktones-done-fg)' }}>없어요</span>
         )}
       </Row>
 

@@ -7,7 +7,7 @@ const DIRECTION: Record<string, string> = { up: '위', down: '아래', left: '�
 /** movable: 고른 카드를 방향키로 옮길 수 있는 캔버스(ERD)인가 */
 export function ariaLabels(movable: boolean): Partial<AriaLabelConfig> {
   const select = movable
-    ? 'Enter나 Space로 골라요. 고른 뒤 방향키로 옮길 수 있고(저장하지 않아요), Esc로 선택을 풀어요.'
+    ? 'Enter나 Space로 골라요. 고른 뒤 방향키로 옮길 수 있고, Esc로 선택을 풀어요.'
     : 'Enter나 Space로 골라요. Esc로 선택을 풀어요.'
   return {
     'node.a11yDescription.default': select,

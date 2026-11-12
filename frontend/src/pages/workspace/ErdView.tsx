@@ -93,7 +93,7 @@ function ErdView({ runId, artifact }: Props) {
 
   if (!artifact) {
     return (
-      <Notice kind="warning" title="ERD가 아직 없어요 (미완성)">
+      <Notice kind="warning" title="ERD가 아직 없어요">
         ERD를 아직 못 만들었어요.
       </Notice>
     )
@@ -130,7 +130,7 @@ function ErdView({ runId, artifact }: Props) {
         <Loading text="ERD를 그리는 중이에요" />
       ) : (
         // 크기 조절: SVG 원래 크기에 배율을 곱한다. 넘치면 상자 안에서 스크롤로 이동한다.
-        <div ref={box} className="erd-box" tabIndex={0} aria-label="ERD 그림 영역 (스크롤로 이동)">
+        <div ref={box} className="erd-box" tabIndex={0} aria-label="ERD 그림 영역">
           <img
             src={src}
             alt={`ERD revision ${artifact.revision}`}

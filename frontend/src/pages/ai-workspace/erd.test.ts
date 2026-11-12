@@ -1,7 +1,7 @@
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { describe, expect, it } from 'vitest'
 import type { DesignItem, Finding } from '../../api/viewItems.ts'
-import { ELK_OPTIONS, erdModel, findingEntities, positionsFrom, relationshipLabel, toElk, typeText } from './erd.ts'
+import { ELK_OPTIONS, erdModel, findingEntities, parseFinalErd, positionsFrom, relationshipLabel, toElk, typeText } from './erd.ts'
 
 const attr = (id: string, name: string, extra: Record<string, unknown> = {}) => ({
   id,
@@ -31,8 +31,8 @@ describe('ERD 캔버스: 카드와 선', () => {
     ]
     const { cards, lines } = erdModel(design, [])
     expect(cards[0].attributes).toEqual([
-      { id: 'A1', name: '창고코드', type: 'varchar(20)', pk: true, uq: false, nullable: false },
-      { id: 'A2', name: '단가', type: 'numeric(12,3)', pk: false, uq: true, nullable: true },
+      { id: 'A1', name: '창고코드', type: 'varchar(20)', keys: 'PK', note: '' },
+      { id: 'A2', name: '단가', type: 'numeric(12,3)', keys: 'UK', note: '' },
     ])
     expect(lines).toEqual([{ id: 'REL-01', source: 'E1', target: 'E2', label: '1:N · 없어도 됨 · 부모 키 포함', identifying: true, optional: true }])
   })
@@ -98,5 +98,77 @@ describe('ERD 캔버스: ELK 배치', () => {
   it('ELK 결과에 없는 카드도 자리를 받는다', () => {
     const { cards } = erdModel([entity('E1'), entity('E2')], [])
     expect(Object.keys(positionsFrom(cards, { children: [{ id: 'E1', x: 5, y: 6 }] }))).toEqual(['E1', 'E2'])
+  })
+})
+
+describe('최종 ERD 원문', () => {
+  const text = [
+    'erDiagram',
+    '    %% Specton ERD · 재고관리 1',
+    '    item["품목"] {',
+    '        varchar(20) 품목코드 PK "item_cd"',
+    '        numeric 단가 "untprc · numeric(12,2)"',
+    '        char(1) 입_출고구분 "io_se · 입·출고구분"',
+    '        varchar(20) 바코드 UK "brcd"',
+    '        varchar(20) 창고코드 FK,UK "wrhus_cd"',
+    '    }',
+    '    stock["창고"] {',
+    '        varchar(20) 창고코드 PK "wrhus_cd"',
+    '    }',
+    '    item ||--o{ stock : "REL-05"',
+  ].join('\n')
+
+  it('테이블 이름별로 타입·이름·키·설명을 읽는다', () => {
+    expect(parseFinalErd(text).tables[0].rows).toEqual([
+      { type: 'varchar(20)', name: '품목코드', keys: 'PK', note: 'item_cd' },
+      { type: 'numeric', name: '단가', keys: '', note: 'untprc · numeric(12,2)' },
+      { type: 'char(1)', name: '입_출고구분', keys: '', note: 'io_se · 입·출고구분' },
+      { type: 'varchar(20)', name: '바코드', keys: 'UK', note: 'brcd' },
+      { type: 'varchar(20)', name: '창고코드', keys: 'FK,UK', note: 'wrhus_cd' },
+    ])
+  })
+
+  it('같은 이름의 테이블이 있으면 카드 속성 줄을 최종 ERD 값으로 바꾼다', () => {
+    const { cards } = erdModel([entity('E1'), entity('E2')].map((e, i) => ({ ...e, name: i ? '창고' : '품목' })), [], parseFinalErd(text))
+    expect(cards[0].attributes.map((a) => a.note)).toEqual(['item_cd', 'untprc · numeric(12,2)', 'io_se · 입·출고구분', 'brcd', 'wrhus_cd'])
+    expect(cards[1].attributes).toEqual([{ id: 'E2:0', name: '창고코드', type: 'varchar(20)', keys: 'PK', note: 'wrhus_cd' }])
+  })
+})
+
+
+describe('최종 ERD의 전체 모델과 오류', () => {
+  const mmd = `erDiagram
+    a["엔티티E1"] {
+      int 코드 PK "a_cd"
+    }
+    b["엔티티E2"] {
+      int 코드 PK "b_cd"
+    }
+    ab["연결"] {
+      int 부모코드 PK,FK "a_cd"
+      int 자식코드 PK,FK "b_cd"
+    }
+    a ||--o{ ab : "R1"
+    b ||--o{ ab : "R1"
+`
+  it('N:M 원래 선 대신 연결 테이블과 FK 두 선을 사용한다', () => {
+    const model = erdModel([entity('E1'), entity('E2'), rel('R1', 'E1', 'E2', { cardinality: 'N:M' })], [], parseFinalErd(mmd))
+    expect(model.cards.map((c) => c.id)).toEqual(['E1', 'E2', 'final:ab'])
+    expect(model.lines.map((l) => [l.source, l.target])).toEqual([['E1', 'final:ab'], ['E2', 'final:ab']])
+    expect(new Set(model.lines.map((l) => l.id)).size).toBe(2)
+    expect(model.cards[2].attributes.map((a) => a.keys)).toEqual(['PK,FK', 'PK,FK'])
+  })
+  it('동일 표시 이름의 테이블도 물리 식별자로 구분한다', () => {
+    const model = erdModel([entity('E1')], [], parseFinalErd(mmd.replace('엔티티E2', '엔티티E1')))
+    expect(model.cards.map((c) => c.id)).toEqual(['final:a', 'final:b', 'final:ab'])
+  })
+  it('빈 파일·깨진 속성·닫히지 않은 테이블·없는 관계 대상을 거절한다', () => {
+    for (const text of ['', mmd.replace('int 코드 PK "a_cd"', 'invalid'), mmd.replace('    }', ''), mmd.replace('b ||--o{ ab', 'missing ||--o{ ab')]) {
+      expect(() => parseFinalErd(text)).toThrow()
+    }
+  })
+  it('선택 관계와 자기참조를 산출물대로 유지한다', () => {
+    const model = erdModel([], [], parseFinalErd(mmd + '    a |o..o| a : "R2"\n'))
+    expect(model.lines[2]).toMatchObject({ source: 'final:a', target: 'final:a', identifying: false, optional: true })
   })
 })

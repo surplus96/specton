@@ -141,7 +141,10 @@ function ProgressPanel({ run, events, receivedAt, connection, onChanged, label }
               </span>
               <span className="steps-list__name">{s.title}</span>
               <span className="steps-list__desc">{STAGE_DESC[s.stage]}</span>
-              <span className="steps-list__state">{text}</span>
+              <span className="steps-list__state">
+                {st === 'now' && <span className="spin" aria-hidden="true" />}
+                {text}
+              </span>
             </li>
           )
         })}

@@ -172,7 +172,7 @@
 }
 /* 미니맵은 카드를 덜 가리게 반투명. 마우스를 올리거나 포커스하면 진해진다 (#281 후속) */
 .aiws .react-flow__minimap {
-  background: rgba(15, 23, 42, 0.55);
+  background: color-mix(in srgb, var(--aiws-page) 60%, transparent);
   opacity: 0.7;
   transition: opacity 150ms ease;
 }
@@ -195,7 +195,7 @@
   left: 50%;
   bottom: calc(100% + 6px);
   transform: translateX(-50%);
-  background: #020617;
+  background: var(--aiws-page);
   color: var(--aiws-ink);
   border: 1px solid var(--aiws-border);
   font-size: 12px;
@@ -242,4 +242,74 @@
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* 밝은 화면: 같은 토큰 이름의 값만 바꾼다. 글자로 쓰이는 강조색은 라임 대신 진한 초록 */
+.aiws[data-theme='light'] {
+  color-scheme: light;
+  --dark-page: #f4f6f3;
+  --dark-panel: #ffffff;
+  --dark-canvas: #eef2ee;
+  --dark-card: #ffffff;
+  --dark-card-hover: #f1f6ef;
+  --dark-border: #c3d2c7;
+  --dark-line: #94a99a;
+  --dark-ink: #18211a;
+  --dark-ink-muted: #5a7462;
+  --dark-accent: #2f6b43;
+  --dark-focus: #2f6b43;
+  --darktones-waiting-fg: #5a7462;
+  --darktones-waiting-border: #94a99a;
+  --darktones-running-fg: #4a7a00;
+  --darktones-running-border: #8cc63f;
+  --darktones-awaiting-fg: #8a6414;
+  --darktones-awaiting-border: #d9a93a;
+  --darktones-done-fg: #2f6b43;
+  --darktones-done-border: #6aa57a;
+  --darktones-failed-fg: #a8453b;
+  --darktones-failed-border: #d2867c;
+  --darktones-skipped-fg: #5a7462;
+  --darktones-skipped-border: #94a99a;
+  --darktones-cancelled-fg: #6b756c;
+  --darktones-cancelled-border: #a6aea6;
+}
+.aiws {
+  transition: background-color 200ms ease, color 200ms ease;
+}
+.aiws-theme-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--aiws-border);
+  background: transparent;
+  color: var(--aiws-ink);
+  cursor: pointer;
+}
+.aiws-theme-btn:hover {
+  background: var(--aiws-card-hover);
+}
+.aiws-theme-btn svg {
+  transition: transform 300ms var(--ease);
+}
+.aiws-theme-btn:hover svg {
+  transform: rotate(-20deg);
+}
+/* 캔버스(React Flow)는 어두운 기본값을 쓰므로 밝은 화면에서만 값을 덮는다 */
+.aiws[data-theme='light'] .react-flow.dark {
+  --xy-background-color-default: var(--aiws-canvas);
+  --xy-background-pattern-dots-color-default: var(--aiws-line);
+  --xy-edge-stroke-default: var(--aiws-line);
+  --xy-edge-stroke-selected-default: var(--aiws-ink);
+  --xy-node-color-default: var(--aiws-ink);
+  --xy-node-background-color-default: var(--aiws-card);
+  --xy-node-border-default: 1px solid var(--aiws-border);
+  --xy-handle-background-color-default: var(--aiws-line);
+  --xy-handle-border-color-default: var(--aiws-card);
+  --xy-minimap-background-color-default: var(--aiws-panel);
+  --xy-minimap-node-background-color-default: var(--aiws-card);
+  --xy-minimap-mask-background-color-default: rgba(24, 33, 26, 0.12);
+  --xy-attribution-background-color-default: transparent;
 }

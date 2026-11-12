@@ -160,7 +160,7 @@ export function stepResult(id: PipelineNodeId, d: StepData): StepRow[] {
     case 'A08':
       return findingRows(d.findings.filter((f) => f.source === 'llm' && f.reviewer_id === id))
     case 'a09':
-      return [{ label: '재작업', value: `${d.revision}회 (선택 revision 기준)` }]
+      return [{ label: '재작업', value: `${d.revision}회` }]
     case 'final_review':
     case 'export':
       return [{ label: '승인본', value: `${d.artifacts.filter((a) => a.approved).length} / ${d.artifacts.length}개` }]

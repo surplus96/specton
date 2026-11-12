@@ -1566,14 +1566,26 @@ dialog.confirm p {
   animation: pop 250ms var(--ease);
 }
 
+/* 진행 중인 단계: 연한 원 위로 연두 호가 도는 로딩 링 */
 .state-dot--now::before {
   content: '';
-  width: 10px;
-  height: 10px;
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
   border-radius: 50%;
-  background: var(--lime);
-  box-shadow: 0 0 0 4px rgba(215, 255, 79, 0.35);
-  animation: pulse 1.4s ease-in-out infinite;
+  border: 3px solid var(--soft-2);
+  border-top-color: var(--forest);
+  border-right-color: var(--lime);
+  animation: spin 0.9s linear infinite;
+}
+
+.steps-list__state .spin {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+  margin-right: 6px;
+  vertical-align: -2px;
+  color: var(--forest);
 }
 
 .state-dot--wait::before {
@@ -2104,13 +2116,156 @@ dialog.confirm p {
 .stage-strip__item:nth-child(4) .stage-strip__bar { animation-delay: 270ms; }
 .stage-strip__item:nth-child(5) .stage-strip__bar { animation-delay: 360ms; }
 .stage-strip__item:nth-child(6) .stage-strip__bar { animation-delay: 450ms; }
+/* 내려받기 카드: 제목이 왼쪽부터 드러나고, 파일 타일이 차례로 올라온다 (처음 한 번) */
+@keyframes wipe-in {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+.dl-card__title {
+  animation: wipe-in 700ms var(--ease) 200ms both;
+}
+.dl-tile {
+  animation: rise-far 560ms var(--ease) both;
+  animation-delay: 380ms;
+}
+.dl-tile:nth-child(2) {
+  animation-delay: 460ms;
+}
+.dl-tile:nth-child(3) {
+  animation-delay: 540ms;
+}
+.dl-tile:nth-child(4) {
+  animation-delay: 620ms;
+}
+.dl-tile:nth-child(n + 5) {
+  animation-delay: 700ms;
+}
+
+/* 설계 중 단계가 끝나면 체크 원이 톡 커졌다 자리 잡고, 연두 테두리가 한 번 퍼진다 */
+@keyframes check-pop {
+  0% {
+    transform: scale(0.4);
+  }
+  60% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes ring-out {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+.steps-list .state-dot--done {
+  position: relative;
+  animation: check-pop 460ms cubic-bezier(0.3, 1.4, 0.5, 1) both;
+}
+.steps-list .state-dot--done::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--lime);
+  pointer-events: none;
+  animation: ring-out 700ms var(--ease) 120ms both;
+}
+
+/* 글자가 하나씩 떨어져 자리를 잡고, 밑에 연두 줄이 그어진다 */
+@keyframes letter-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-1.1em) rotate(-12deg);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(0.08em) rotate(3deg);
+  }
+  80% {
+    transform: translateY(-0.04em) rotate(-1deg);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes word-underline {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.drop-word {
+  position: relative;
+  display: inline-block;
+  isolation: isolate;
+}
+.drop-word span {
+  display: inline-block;
+  animation: letter-drop 720ms cubic-bezier(0.3, 1.4, 0.5, 1) both;
+  animation-delay: calc(260ms + var(--i) * 110ms);
+}
+.drop-word::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.06em;
+  height: 0.16em;
+  z-index: -1;
+  border-radius: 2px;
+  background: var(--lime);
+  transform-origin: left;
+  animation: word-underline 520ms var(--ease) 900ms both;
+}
+
+/* 위로 연두 조각이 오가는 로딩바 */
+@keyframes bar-run {
+  0% {
+    left: -40%;
+    width: 40%;
+  }
+  50% {
+    width: 55%;
+  }
+  100% {
+    left: 100%;
+    width: 40%;
+  }
+}
+
+.stage-strip__bar {
+  height: 4px;
+}
 .stage-strip__item--now .stage-strip__bar {
-  background-image: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.85) 50%, transparent 100%);
-  background-size: 45% 100%;
-  background-repeat: no-repeat;
-  animation:
-    bar-fill 700ms var(--ease) both,
-    bar-sheen 1.8s ease-in-out 900ms infinite;
+  position: relative;
+  overflow: hidden;
+  background: var(--soft-2);
+  box-shadow: none;
+  animation: bar-fill 700ms var(--ease) both;
+}
+.stage-strip__item--now .stage-strip__bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -40%;
+  width: 40%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--lime), var(--forest));
+  animation: bar-run 1.3s cubic-bezier(0.45, 0, 0.25, 1) infinite;
 }
 
 /* 로고의 + 가 마우스를 올리면 한 번 돈다. */
