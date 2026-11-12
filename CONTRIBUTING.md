@@ -5,7 +5,7 @@
 ## 한눈에 보기
 
 ```text
-이슈 배정 → 브랜치 → 커밋·push → PR (Closes #이슈) → CI 통과 + 리뷰 승인 → R1이 Squash 병합 → 이슈 자동 종료
+이슈 배정 → 브랜치 → 커밋·push → PR (Closes #이슈) → CI 통과 + 리뷰 승인 → 병합 담당자가 Squash 병합 → 이슈 자동 종료
 보드:  Backlog → Todo → In Progress → In Review(자동) → Done(자동)
 ```
 
@@ -23,7 +23,7 @@
 4. **커밋·push:** 작게 커밋하고 자주 push한다. 브랜치의 커밋은 병합할 때 하나로 합쳐진다(Squash).
 5. **PR:** 본문 첫 줄에 `Closes #이슈번호`를 적는다. **이슈 카드**와 **PR 카드**가 **In Review**로 자동 이동한다(Draft PR 카드는 In Progress, Ready for review로 바꾸면 In Review). 작업 중이면 Draft PR로 올린다. PR의 **Assignees에 작성자와 리뷰어를 모두** 넣는다. 팀원별 보드 뷰는 담당자로 거르므로, 리뷰어도 담당자여야 자기 뷰에 리뷰 건이 보인다.
 6. **리뷰:** CODEOWNERS가 경로별 리뷰어를 자동 지정한다. 수정 요청을 받으면 카드가 **In Progress**로 돌아간다. 수정을 반영하고 다시 리뷰를 요청하면(Re-request review) PR 카드와 연결 이슈 카드가 **In Review**로 자동 이동한다.
-7. **병합:** CI 통과와 승인이 끝나면 **R1(@surplus96)이 Squash 병합**한다. 병합되면 이슈가 닫히고 카드가 **Done**으로 이동하며 브랜치는 자동 삭제된다.
+7. **병합:** CI 통과와 승인이 끝나면 **병합 담당자(@surplus96, @kisoja24782-ux, @yugyeong-k) 중 한 명이 Squash 병합**한다. 실제 실행 권한은 아래 전환 상태를 따른다. 병합되면 이슈가 닫히고 카드가 **Done**으로 이동하며 브랜치는 자동 삭제된다.
 
 - 2·5·6번의 자동 이동은 `board-status` 워크플로(`.github/workflows/board-status.yml`)가 관리자 토큰(`PROJECT_TOKEN`)으로 한다. 카드가 움직이지 않으면 직접 옮기고 R1에게 알린다.
 - 이슈는 직접 닫지 않는다. 카드를 Done으로 끌어도 이슈는 닫히지 않는다. 완료는 PR 병합으로만 한다.
@@ -49,14 +49,17 @@ PR의 진행은 `pr-activity` 워크플로(`.github/workflows/pr-activity.yml`)�
 
 | 규칙 | 내용 |
 |---|---|
-| 병합 권한 | **R1(@surplus96)만.** 팀원은 PR 작성·리뷰·승인까지 하고 병합 버튼은 비활성 |
+| 병합 담당 | @surplus96, @kisoja24782-ux, @yugyeong-k. GitHub의 실제 제한은 아래 전환 상태 참고 |
 | PR 필수 | `main`에 직접 push 불가, 강제 push·삭제 불가 |
-| 승인 | **R1(@surplus96)의 승인 필수** (CODEOWNERS 리뷰). 새 커밋을 올리면 기존 승인이 취소된다 |
+| 승인 | 일반 PR은 **작성자가 아닌 CODEOWNERS 1명의 승인 필수**. 계약 변경의 추가 요건은 아래 유지. 새 커밋을 올리면 기존 승인이 취소된다 |
 | 리뷰 대화 | 모든 리뷰 댓글 대화를 해결해야 병합 가능 |
 | CI | `python`·`frontend` 통과, 브랜치가 `main` 최신 상태여야 함 |
 | 병합 방식 | Squash만 |
 
 - **브랜치가 뒤처졌을 때:** PR 화면의 **Update branch** 버튼을 누른다. 로컬에서 맞추려면 `git pull --rebase origin main` 후 `git push --force-with-lease`.
+- **전환 상태:** 이 변경은 CODEOWNERS와 협업 규정만 갱신한다. 현재 main ruleset의 `Restrict updates`는 유지되므로 두 팀원의 실제 병합은 아직 제한된다. 이를 허용하려면 소유자가 별도로 ruleset을 변경해야 한다. `Restrict updates`만 해제하면 조건을 충족한 모든 write Collaborator가 병합할 수 있으며, 위 두 명만 기술적으로 허용하는 설정은 아니다. CI·PR·승인 요건을 함께 우회하도록 권한을 추가하지 않는다.
+- **본인 PR:** 원칙적으로 다른 CODEOWNERS에게 리뷰를 요청한다. 아래 R1 관리자 예외는 팀원에게 확대하지 않는다. 계약 변경의 R1·R2 확인 및 추가 승인 절차도 유지한다.
+
 - **R1 자신의 PR:** GitHub는 작성자 본인의 승인을 허용하지 않는다. R1은 아래 [리뷰 점검표](#리뷰-점검표)로 스스로 점검하고, PR 본문에 점검 결과를 적은 뒤 관리자 예외로 병합한다. 병합 커밋 본문에 예외 병합 사유를 남긴다.
 
 ## 이름 규칙
@@ -74,8 +77,8 @@ PR의 진행은 `pr-activity` 워크플로(`.github/workflows/pr-activity.yml`)�
 
 ## 리뷰
 
-- 구현 단계 동안 **모든 PR의 리뷰어는 R1(@surplus96)**이다. CODEOWNERS가 자동으로 지정한다.
-- 팀원끼리 서로 리뷰 댓글을 다는 것은 권장한다. 병합 조건은 R1의 승인이다.
+- 일반 PR의 리뷰·승인 담당자는 **@surplus96, @kisoja24782-ux, @yugyeong-k**이며 CODEOWNERS가 자동으로 요청한다.
+- 일반 PR은 작성자가 아닌 위 담당자 1명의 승인으로 코드 소유자 승인 조건을 충족한다. 본인 PR은 스스로 승인할 수 없다. CI·최신 main·리뷰 대화 해결 조건은 그대로 유지한다.
 - `specton/contracts/` 변경은 `contract-change` 라벨을 붙이고 **2명 승인**(R1 + 계약 영향을 받는 담당 1명)을 받는다. 두 번째 승인은 자동으로 강제되지 않으므로 R1이 병합 전에 확인한다.
 - **계약 변경 확인:** `contract-change` PR은 R2가 의미·문서·테스트를 확인해 PR에 코멘트한다 (승인과 별개). 계약 변경 요청은 해당 이슈에 코멘트로 남긴다.
 - **R1이 작성한 계약 변경:** R1이 승인한다. GitHub은 작성자가 자기 PR을 승인(Approve)할 수 없으므로 다음으로 승인을 대신한다.
@@ -87,15 +90,15 @@ PR의 진행은 `pr-activity` 워크플로(`.github/workflows/pr-activity.yml`)�
 ### 리뷰 흐름
 
 1. **작성자:** PR을 Ready로 올린다(Draft는 리뷰하지 않음). 본문에 `Closes #번호`, 테스트 명령과 결과, 미정·실패 사항을 적는다.
-2. **R1:** 알림 또는 [리뷰 요청 목록](https://github.com/pulls/review-requested)에서 PR을 연다. CI가 실패한 PR은 먼저 작성자에게 돌려보낸다.
-3. **R1:** **Files changed** 탭에서 파일마다 점검표를 보고, 문제 줄에 댓글을 단다. 바로 고칠 수 있는 것은 **Suggest changes**로 제안한다. 확인한 파일은 **Viewed**에 체크한다.
-4. **R1:** **Review changes**에서 하나를 고른다.
+2. **리뷰 담당자:** 알림 또는 [리뷰 요청 목록](https://github.com/pulls/review-requested)에서 PR을 연다. CI가 실패한 PR은 먼저 작성자에게 돌려보낸다.
+3. **리뷰 담당자:** **Files changed** 탭에서 파일마다 점검표를 보고, 문제 줄에 댓글을 단다. 바로 고칠 수 있는 것은 **Suggest changes**로 제안한다. 확인한 파일은 **Viewed**에 체크한다.
+4. **리뷰 담당자:** **Review changes**에서 하나를 고른다.
    - **Approve:** 점검표를 모두 통과
    - **Request changes:** 고쳐야 할 것이 있음. 카드가 In Progress로 돌아간다
    - **Comment:** 질문만 있고 판단은 보류
-5. **작성자:** 수정해서 push하고, 각 댓글에 답한 뒤 대화를 **Resolve**한다. 새 커밋이 올라오면 기존 승인은 취소되므로 R1이 다시 승인한다.
-   - `main`이 앞서 나가 브랜치 갱신이 필요하면 **작성자가 Update branch**를 한다. R1이 갱신하면 작성자 외 변경으로 추가 승인이 필요해져 R1 승인만으로 병합할 수 없다 (#79).
-6. **R1:** 승인·CI 통과·대화 해결이 끝나면 **Squash and merge**. 커밋 제목은 PR 제목 + `(#PR번호)` 그대로 두고, 본문의 체크박스·빈 항목은 정리한다.
+5. **작성자:** 수정해서 push하고, 각 댓글에 답한 뒤 대화를 **Resolve**한다. 새 커밋이 올라오면 기존 승인은 취소되므로 작성자가 아닌 리뷰 담당자가 다시 승인한다.
+   - `main`이 앞서 나가 브랜치 갱신이 필요하면 **작성자가 Update branch**를 한다. 리뷰 담당자가 갱신하면 작성자 외 변경에 대한 추가 승인이 필요할 수 있으므로 GitHub의 최신 승인 요구를 확인한다 (#79).
+6. **병합 담당자:** 승인·CI 통과·대화 해결이 끝나면 **Squash and merge**. 커밋 제목은 PR 제목 + `(#PR번호)` 그대로 두고, 본문의 체크박스·빈 항목은 정리한다.
 
 ### 리뷰 점검표
 
@@ -189,4 +192,4 @@ Task 템플릿의 칸을 그대로 채운다. 초기 작업 이슈 #3~#25가 예
 
 - `.env`, API 키, 고객 문서 원문, 실행 산출물, 평가 데이터·정답은 커밋하지 않는다.
 - 실제 LLM 호출 테스트(`-m llm`)는 예산 승인 후 수동으로 실행한다.
-- Dependabot 보안 업데이트 PR은 R1이 검토·병합한다.
+- Dependabot 보안 업데이트 PR도 위 리뷰·병합 담당자가 검토·병합한다.
