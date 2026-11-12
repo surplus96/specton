@@ -11,11 +11,13 @@ import DataTable, { type Column } from '../../ui/DataTable.tsx'
 import Loading from '../../ui/Loading.tsx'
 import Notice from '../../ui/Notice.tsx'
 import ScreenHead from '../../ui/ScreenHead.tsx'
+import Segmented from '../../ui/Segmented.tsx'
 import { useResume } from '../run/useResume.ts'
 import { needsAttention, sortRequirements, splitFromSameSource, typeText } from './rules.ts'
 
 // UI-03 분석 확인 (docs/09). 보기 전용: 요구사항을 보여 주고, 버튼 하나로 모두 유지(빈 answers)로 보내 설계를 시작한다.
 // 수정·분할 입력은 쓰지 않는다. 서버 계약(빈 answers = 모두 keep)은 그대로다.
+// 상세 보기의 유지·제외는 화면에서만 표시한다. 서버로 보내지 않는다.
 // 품질 경고·질문이 있거나 같은 원문에서 나뉜 요구사항을 먼저 보인다. 질문을 「자동으로 고쳤다」고 표시하지 않는다.
 type Props = {
   run: RunStatus
@@ -27,6 +29,7 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
   const interruptId = run.interrupt?.interrupt_id
   const [reqs, setReqs] = useState<AnalysedRequirement[] | null>(null)
   const [loadError, setLoadError] = useState<unknown>(null)
+  const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set())
   const { send, sending, error, notice, reloadKey, reload, canAnswer } = useResume(run, onChanged)
 
   useEffect(() => {
@@ -38,6 +41,7 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
         if (!alive) return
         const items = view.items as AnalysedRequirement[]
         setReqs(items)
+        setExcluded(new Set())
       })
       .catch((err: unknown) => alive && setLoadError(err))
     return () => {
@@ -74,9 +78,11 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
     { key: 'type', title: '유형', width: 110, render: (r) => typeText(r) },
     {
       key: 'issues',
-      title: 'AI가 물어본 것',
+      title: '확인 사항',
       width: 180,
-      render: (r) => r.quality_issues.length === 0
+      render: (r) => excluded.has(r.id)
+        ? <StatusTag tone="neutral">제외</StatusTag>
+        : r.quality_issues.length === 0
         ? <span className="subtle">{split.has(r.id) ? '자동 분할됨 · 진행 가능' : '경고 없음'}</span>
         : <div className="stack-sm">
             <StatusTag tone="warning">경고 {r.quality_issues.length}건 · 질문 {r.quality_issues.filter((q) => q.question).length}건</StatusTag>
@@ -87,11 +93,23 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
 
   const details = (req: AnalysedRequirement) => (
     <section className="requirement-details stack-sm" aria-label={`${req.source_id ?? req.id} 상세`}>
+      <Segmented<'keep' | 'exclude'>
+        variant="choice"
+        label={`${req.source_id ?? req.id} 유지 또는 제외`}
+        value={excluded.has(req.id) ? 'exclude' : 'keep'}
+        onChange={(v) => setExcluded((prev) => {
+          const next = new Set(prev)
+          if (v === 'exclude') next.add(req.id)
+          else next.delete(req.id)
+          return next
+        })}
+        options={[{ value: 'keep', label: '유지' }, { value: 'exclude', label: '제외' }]}
+      />
       <h3 className="h3">요구사항 전체</h3>
       <p className="requirement-detail-text">{req.text}</p>
       {split.has(req.id) && <Notice title="같은 원문에서 자동 분할된 요구사항입니다." />}
       {req.source_text && req.source_text !== req.text && <div className="stack-sm"><h3 className="h3">원문 전체</h3><p className="requirement-detail-text">{req.source_text}</p></div>}
-      {req.quality_issues.length > 0 && <div className="stack-sm"><h3 className="h3">AI가 물어본 것</h3>
+      {req.quality_issues.length > 0 && <div className="stack-sm"><h3 className="h3">확인 사항</h3>
         {req.quality_issues.map((issue, i) => <div key={i} className="stack-sm"><strong className="requirement-detail-text">{issue.message}</strong>{issue.question && <p className="requirement-detail-text">확인 질문: {issue.question}</p>}</div>)}
       </div>}
     </section>
@@ -116,12 +134,12 @@ function RequirementsPanel({ run, onChanged, label }: Props) {
       ) : (
         <>
           <div className="muted" style={{ fontSize: 15 }}>
-            요구사항 {reqs.length}건 · AI가 물어본 것 {toCheck.length}건
+            요구사항 {reqs.length}건 · 확인 사항 {toCheck.length}건{excluded.size > 0 ? ` · 제외 ${excluded.size}건` : ''}
           </div>
           {notice && <Notice kind="warning" title={notice} />}
           <section aria-label="품질 경고·질문" className="stack-sm">
             <h2 className="section-title" style={{ margin: 0 }}>
-              AI가 물어본 것 {toCheck.length}건
+              확인 사항 {toCheck.length}건
             </h2>
             <DataTable label="품질 경고·질문" rows={toCheck} rowKey={(r) => r.id} columns={columns} expand={details} expandLabel={detailLabel} expandText="상세 보기" minWidth={1000} empty="품질 경고·질문이 없어요." />
           </section>

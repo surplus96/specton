@@ -46,7 +46,7 @@ function DownloadCard({ runId, artifacts, approved, subject }: Props) {
   return (
     <section className="dl-card" aria-label="설계 문서 내려받기">
       <div className="dl-card__eyebrow">
-        {subject} · {approved ? '승인본' : '초안 (승인 전)'}
+        {subject} · {approved ? '승인본' : '초안'}
       </div>
       <h2 className="dl-card__title">{approved ? '설계 완성.' : '설계 초안.'}</h2>
       <div className="dl-card__grid">

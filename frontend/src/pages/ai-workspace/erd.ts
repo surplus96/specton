@@ -9,9 +9,37 @@ export type AttributeRow = {
   id: string
   name: string
   type: string
-  pk: boolean
-  uq: boolean
-  nullable: boolean
+  /** 키 글자: PK · FK · UK (여러 개면 쉼표) */
+  keys: string
+  /** 최종 ERD 설명 칸: 물리명 · 원래 표기. 최종 ERD가 아직 없으면 빈 글자 */
+  note: string
+}
+
+/** 최종 ERD 한 테이블의 속성 줄 (specton/codegen/erd.py `타입 이름 키 "설명"`) */
+export type FinalRow = Pick<AttributeRow, 'name' | 'type' | 'keys' | 'note'>
+
+/**
+ * 서버가 만든 ERD 원문(.mmd)에서 테이블별 속성 줄을 읽는다. 키는 테이블 표시 이름.
+ * 원문 형식은 생성 코드가 정한다. 읽지 못한 줄은 건너뛴다.
+ */
+export function parseFinalErd(text: string): Map<string, FinalRow[]> {
+  const tables = new Map<string, FinalRow[]>()
+  let rows: FinalRow[] | null = null
+  for (const line of text.split('\n')) {
+    const head = /^\s*[^\s"]+\["(.*)"\]\s*\{\s*$/.exec(line)
+    if (head) {
+      rows = []
+      tables.set(head[1], rows)
+      continue
+    }
+    if (/^\s*\}\s*$/.test(line)) {
+      rows = null
+      continue
+    }
+    const attr = rows && /^\s*(\S+)\s+(\S+)(?:\s+((?:PK|FK|UK)(?:,(?:PK|FK|UK))*))?\s+"(.*)"\s*$/.exec(line)
+    if (rows && attr) rows.push({ type: attr[1], name: attr[2], keys: attr[3] ?? '', note: attr[4] })
+  }
+  return tables
 }
 
 export type EntityCard = {
@@ -51,11 +79,11 @@ export function relationshipLabel(r: Pick<DesignRelationship, 'id' | 'cardinalit
 const ROW_HEIGHT = 22
 const HEAD_HEIGHT = 40
 const CHAR_WIDTH = 8.5
-const MIN_WIDTH = 180
-const MAX_WIDTH = 320
+const MIN_WIDTH = 200
+const MAX_WIDTH = 440
 
 function cardSize(name: string, rows: readonly AttributeRow[]): { width: number; height: number } {
-  const longest = Math.max(name.length * 1.6, ...rows.map((r) => r.name.length * 1.6 + r.type.length + 6))
+  const longest = Math.max(name.length * 1.6, ...rows.map((r) => r.name.length * 1.6 + r.type.length + r.keys.length + r.note.length * 1.3 + 6))
   const width = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(longest * CHAR_WIDTH + 32)))
   return { width, height: HEAD_HEIGHT + Math.max(1, rows.length) * ROW_HEIGHT + 8 }
 }
@@ -82,7 +110,15 @@ export function findingEntities(design: readonly DesignItem[]): (f: Finding) => 
   }
 }
 
-export function erdModel(design: readonly DesignItem[], findings: readonly Finding[]): { cards: EntityCard[]; lines: RelationshipLine[] } {
+/**
+ * 카드와 선. `final`(최종 ERD 원문을 읽은 것)에 같은 이름의 테이블이 있으면 그 속성 줄을 그대로 쓴다.
+ * 최종 ERD가 아직 없으면 설계 결과의 속성으로 같은 칸을 채운다.
+ */
+export function erdModel(
+  design: readonly DesignItem[],
+  findings: readonly Finding[],
+  final?: ReadonlyMap<string, readonly FinalRow[]>,
+): { cards: EntityCard[]; lines: RelationshipLine[] } {
   const entities = design.filter((d): d is DesignEntity => d.type === 'entity')
   const rels = design.filter((d): d is DesignRelationship => d.type === 'relationship')
   const ids = new Set(entities.map((e) => e.id))
@@ -90,9 +126,18 @@ export function erdModel(design: readonly DesignItem[], findings: readonly Findi
   const counts = new Map<string, number>()
   for (const f of findings) for (const e of of(f)) counts.set(e, (counts.get(e) ?? 0) + 1)
   const cards = entities.map((e): EntityCard => {
-    const attributes = e.attributes.map(
-      (a): AttributeRow => ({ id: a.id, name: a.name, type: typeText(a), pk: a.is_key, uq: a.is_unique, nullable: a.nullable }),
-    )
+    const finalRows = final?.get(e.name)
+    const attributes = finalRows
+      ? finalRows.map((r, i): AttributeRow => ({ id: `${e.id}:${i}`, ...r }))
+      : e.attributes.map(
+          (a): AttributeRow => ({
+            id: a.id,
+            name: a.name,
+            type: typeText(a),
+            keys: [a.is_key && 'PK', a.is_unique && 'UK'].filter(Boolean).join(','),
+            note: '',
+          }),
+        )
     return { id: e.id, name: e.name, description: e.description, attributes, reqIds: e.req_ids, findingCount: counts.get(e.id) ?? 0, ...cardSize(e.name, attributes) }
   })
   // 양 끝 엔티티가 있는 관계만 그린다 (없는 대상을 메우지 않음)

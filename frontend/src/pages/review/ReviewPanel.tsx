@@ -163,7 +163,7 @@ function ReviewPanel({ run, events, onChanged, label }: Props) {
                     id="feedback"
                     className="textarea"
                     rows={3}
-                    placeholder={decision === 'revise' ? '무엇을 고쳐야 하는지 적어 주세요 (필수)' : '메모 (선택)'}
+                    placeholder={decision === 'revise' ? '무엇을 고쳐야 하는지 적어 주세요' : '메모'}
                     aria-invalid={decision === 'revise' && !feedback.trim()}
                     value={feedback}
                     onChange={(e) => setFeedback(e.target.value)}

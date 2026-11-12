@@ -102,7 +102,7 @@ function WorkspacePanel({ run, label, onReview }: Props) {
           ))}
         </select>
         {data && data.artifacts.length > 0 && (
-          <StatusTag tone={isApproved(data.artifacts) ? 'success' : 'warning'}>{isApproved(data.artifacts) ? '승인본' : '초안 (승인 전)'}</StatusTag>
+          <StatusTag tone={isApproved(data.artifacts) ? 'success' : 'warning'}>{isApproved(data.artifacts) ? '승인본' : '초안'}</StatusTag>
         )}
       </div>
 
@@ -157,7 +157,7 @@ function TextArtifact({ runId, artifact, kind }: { runId: string; artifact: Arti
     }
   }, [runId, artifact])
 
-  if (!artifact) return <Notice kind="warning" title={`${KIND_LABEL[kind]}이 아직 없어요 (미완성)`} />
+  if (!artifact) return <Notice kind="warning" title={`${KIND_LABEL[kind]}이 아직 없어요`} />
   return (
     <div className="stack-sm" style={{ gap: 14 }}>
       <div className="row row--between">
@@ -209,7 +209,7 @@ function RtmTab({ runId, artifacts }: { runId: string; artifacts: ArtifactRef[] 
         <span className="muted">요구사항 추적표 전체예요. 내려받는 파일과 같아요.</span>
         <div className="row">{files.map((a) => <DownloadButton key={a.file_format} runId={runId} artifact={a} />)}</div>
       </div>
-      {!csv ? <Notice kind="warning" title="RTM CSV가 아직 없어요 (미완성)" />
+      {!csv ? <Notice kind="warning" title="RTM CSV가 아직 없어요" />
         : error ? <Notice kind="error" title={error} action={<Button onClick={() => setAttempt((n) => n + 1)}>다시 불러오기</Button>} />
         : rows === null ? <Loading text="추적표를 불러오는 중이에요" />
         : <DataTable<RtmRow> label="요구사항 추적표 미리보기" rows={rows} rowKey={(r) => String(rows.indexOf(r))} pageSize={30} minWidth={1500}

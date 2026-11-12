@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import Button from '../ui/Button.tsx'
 import Notice from '../ui/Notice.tsx'
 import { isActive } from './runMeta.ts'
@@ -28,7 +29,15 @@ function StartPage() {
       {loadFailed}
       {loading && <p role="status">지난 작업을 불러오는 중이에요.</p>}
       <h1 className="hero">
-        어떤 <strong>요구사항</strong>을 설계할까요?
+        어떤{' '}
+        <strong className="drop-word" aria-label="요구사항">
+          {[...'요구사항'].map((ch, i) => (
+            <span key={i} aria-hidden="true" style={{ '--i': i } as CSSProperties}>
+              {ch}
+            </span>
+          ))}
+        </strong>
+        을 설계할까요?
       </h1>
       <section aria-labelledby="new-title">
         <h2 className="section-title" id="new-title">

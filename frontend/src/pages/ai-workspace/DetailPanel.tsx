@@ -215,7 +215,7 @@ function DetailPanel(props: Props) {
         {missing.length ? (
           <span style={{ color: 'var(--darktones-awaiting-fg)' }}>{missing.map((k) => ARTIFACT_LABEL[k]).join(', ')}</span>
         ) : (
-          <span style={{ color: 'var(--darktones-done-fg)' }}>없어요 (문서 3종 다 있음)</span>
+          <span style={{ color: 'var(--darktones-done-fg)' }}>없어요</span>
         )}
       </Row>
 

@@ -24,6 +24,8 @@ export type IconName =
   | 'external'
   | 'clock'
   | 'refresh'
+  | 'sun'
+  | 'moon'
 
 const PATHS: Record<IconName, string[]> = {
   file: ['M6 3h8l4 4v14H6V3Z', 'M14 3v5h5M9 13h6M9 17h5'],
@@ -52,6 +54,8 @@ const PATHS: Record<IconName, string[]> = {
   menu: ['M4 6h16M4 12h16M4 18h16'],
   external: ['M14 4h6v6M20 4l-9 9', 'M18 14v6H4V6h6'],
   clock: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z', 'M12 7v5l3 2'],
+  sun: ['M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z', 'M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'],
+  moon: ['M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z'],
   refresh: ['M20 11a8 8 0 0 0-14.8-4M4 4v4h4', 'M4 13a8 8 0 0 0 14.8 4M20 20v-4h-4'],
 }
 

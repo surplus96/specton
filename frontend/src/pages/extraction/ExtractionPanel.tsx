@@ -158,7 +158,7 @@ function ExtractionPanel({ run, events, onChanged, label }: Props) {
             <input
               className="input"
               aria-label={`${blockLabel(b)} 제외 사유`}
-              placeholder={isReview ? '제외 사유 (필수)' : '제외 사유 (선택)'}
+              placeholder={isReview ? '제외 사유를 적어 주세요' : '제외 사유'}
               value={d.reason}
               aria-invalid={reasonMissing}
               onChange={(e) => decide(b.block_id, { reason: e.target.value })}

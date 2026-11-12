@@ -72,7 +72,7 @@ function DesignTables({ items, names }: Props) {
             },
             { key: 'desc', title: '설명', render: (f) => f.description },
             { key: 'priority', title: '우선순위', width: 110, render: (f) => priorityText(f) },
-            { key: 'crud', title: '쓰는 테이블 (만들기·조회·수정·삭제)', width: 190, render: (f) => crudText(f, names) },
+            { key: 'crud', title: '쓰는 테이블', width: 190, render: (f) => crudText(f, names) },
             { key: 'req', title: '근거 요구사항', width: 140, render: (f) => <span className="mono">{reqText(f.req_ids)}</span> },
           ]}
         />

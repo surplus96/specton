@@ -120,6 +120,6 @@ describe('stepResult', () => {
   })
 
   it('A09: 재작업 횟수는 선택한 revision', () => {
-    expect(value(stepResult('a09', data({ revision: 0, runRevision: 2 })), '재작업')).toBe('0회 (선택 revision 기준)')
+    expect(value(stepResult('a09', data({ revision: 0, runRevision: 2 })), '재작업')).toBe('0회')
   })
 })

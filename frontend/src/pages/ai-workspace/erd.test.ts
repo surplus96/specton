@@ -1,7 +1,7 @@
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { describe, expect, it } from 'vitest'
 import type { DesignItem, Finding } from '../../api/viewItems.ts'
-import { ELK_OPTIONS, erdModel, findingEntities, positionsFrom, relationshipLabel, toElk, typeText } from './erd.ts'
+import { ELK_OPTIONS, erdModel, findingEntities, parseFinalErd, positionsFrom, relationshipLabel, toElk, typeText } from './erd.ts'
 
 const attr = (id: string, name: string, extra: Record<string, unknown> = {}) => ({
   id,
@@ -31,8 +31,8 @@ describe('ERD 캔버스: 카드와 선', () => {
     ]
     const { cards, lines } = erdModel(design, [])
     expect(cards[0].attributes).toEqual([
-      { id: 'A1', name: '창고코드', type: 'varchar(20)', pk: true, uq: false, nullable: false },
-      { id: 'A2', name: '단가', type: 'numeric(12,3)', pk: false, uq: true, nullable: true },
+      { id: 'A1', name: '창고코드', type: 'varchar(20)', keys: 'PK', note: '' },
+      { id: 'A2', name: '단가', type: 'numeric(12,3)', keys: 'UK', note: '' },
     ])
     expect(lines).toEqual([{ id: 'REL-01', source: 'E1', target: 'E2', label: '1:N · 없어도 됨 · 부모 키 포함', identifying: true, optional: true }])
   })
@@ -98,5 +98,36 @@ describe('ERD 캔버스: ELK 배치', () => {
   it('ELK 결과에 없는 카드도 자리를 받는다', () => {
     const { cards } = erdModel([entity('E1'), entity('E2')], [])
     expect(Object.keys(positionsFrom(cards, { children: [{ id: 'E1', x: 5, y: 6 }] }))).toEqual(['E1', 'E2'])
+  })
+})
+
+describe('최종 ERD 원문', () => {
+  const text = [
+    'erDiagram',
+    '    %% Specton ERD · 재고관리 1',
+    '    item["품목"] {',
+    '        varchar(20) 품목코드 PK "item_cd"',
+    '        numeric 단가 "untprc · numeric(12,2)"',
+    '        char(1) 입_출고구분 "io_se · 입·출고구분"',
+    '        varchar(20) 바코드 UK "brcd"',
+    '        varchar(20) 창고코드 FK,UK "wrhus_cd"',
+    '    }',
+    '    item ||--o{ stock : "REL-05"',
+  ].join('\n')
+
+  it('테이블 이름별로 타입·이름·키·설명을 읽는다', () => {
+    expect(parseFinalErd(text).get('품목')).toEqual([
+      { type: 'varchar(20)', name: '품목코드', keys: 'PK', note: 'item_cd' },
+      { type: 'numeric', name: '단가', keys: '', note: 'untprc · numeric(12,2)' },
+      { type: 'char(1)', name: '입_출고구분', keys: '', note: 'io_se · 입·출고구분' },
+      { type: 'varchar(20)', name: '바코드', keys: 'UK', note: 'brcd' },
+      { type: 'varchar(20)', name: '창고코드', keys: 'FK,UK', note: 'wrhus_cd' },
+    ])
+  })
+
+  it('같은 이름의 테이블이 있으면 카드 속성 줄을 최종 ERD 값으로 바꾼다', () => {
+    const { cards } = erdModel([entity('E1'), entity('E2')].map((e, i) => ({ ...e, name: i ? '창고' : '품목' })), [], parseFinalErd(text))
+    expect(cards[0].attributes.map((a) => a.note)).toEqual(['item_cd', 'untprc · numeric(12,2)', 'io_se · 입·출고구분', 'brcd', 'wrhus_cd'])
+    expect(cards[1].attributes).toEqual([{ id: 'E2-K', name: '코드', type: 'varchar(20)', keys: 'PK', note: '' }])
   })
 })

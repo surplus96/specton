@@ -19,7 +19,8 @@ import { MINIMAP_STYLE, ariaLabels } from './flowText.ts'
 import { pickedNode } from './select.ts'
 import { positionsFrom, toElk, type EntityCard, type RelationshipLine } from './erd.ts'
 
-// 가운데 「ERD 캔버스」 (#281). view design으로 엔티티 카드와 관계선을 직접 그린다(Mermaid 아님).
+// 가운데 「ERD 캔버스」 (#281). 엔티티 카드와 관계선을 직접 그린다(Mermaid 그림 아님).
+// 속성 줄은 최종 ERD 원문이 있으면 그 값(타입 · 이름 · 키 · 물리명)을, 없으면 설계 결과를 쓴다.
 // 배치는 ELK(서버 개요와 같은 layered · 위→아래). 끌어서 옮긴 자리는 화면에서만 바뀌고 저장하지 않는다.
 type CardData = { card: EntityCard; dimmed: boolean; lit: boolean }
 type CardNode = Node<CardData, 'entity'>
@@ -41,12 +42,10 @@ function EntityNode({ data }: NodeProps<CardNode>) {
         {card.attributes.length === 0 && <div style={{ padding: '2px 10px', fontSize: 12, color: dark.inkMuted }}>항목 없음</div>}
         {card.attributes.map((a) => (
           <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '1px 10px', fontSize: 12, lineHeight: '20px' }}>
-            <span style={{ width: 22, color: a.pk ? 'var(--darktones-awaiting-fg)' : dark.inkMuted, fontWeight: 700 }} aria-label={a.pk ? '기본 키' : undefined}>
-              {a.pk ? 'PK' : a.uq ? 'UQ' : ''}
-            </span>
+            <span style={{ color: dark.inkMuted, minWidth: 74 }}>{a.type}</span>
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
-            <span style={{ color: dark.inkMuted }}>{a.type}</span>
-            <span style={{ width: 34, textAlign: 'right', color: a.nullable ? dark.inkMuted : dark.ink }}>{a.nullable ? 'NULL' : 'NN'}</span>
+            <span style={{ minWidth: 22, color: a.keys.includes('PK') ? 'var(--darktones-awaiting-fg)' : dark.inkMuted, fontWeight: 700 }}>{a.keys}</span>
+            {a.note && <span style={{ color: dark.inkMuted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 170 }} title={a.note}>{a.note}</span>}
           </div>
         ))}
       </div>

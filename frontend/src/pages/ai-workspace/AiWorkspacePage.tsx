@@ -10,6 +10,7 @@ import { dotDateTime, revisionText } from '../runMeta.ts'
 import { runTitle } from '../../api/runNames.ts'
 import Button from '../../ui/Button.tsx'
 import Notice from '../../ui/Notice.tsx'
+import Icon from '../../layout/Icon.tsx'
 import ScreenHead from '../../ui/ScreenHead.tsx'
 import { dark } from '../../theme.ts'
 import { nameIndex } from '../review/rules.ts'
@@ -21,7 +22,8 @@ import DetailPanel, { type Selection } from './DetailPanel.tsx'
 import ErdCanvas from './ErdCanvas.tsx'
 import PipelineGraph from './PipelineGraph.tsx'
 import TraceCanvas from './TraceCanvas.tsx'
-import { erdModel, findingEntities } from './erd.ts'
+import { erdModel, findingEntities, parseFinalErd, type FinalRow } from './erd.ts'
+import { artifactText } from '../workspace/files.ts'
 import { pipelineNodes, pipelineProgress } from './pipeline.ts'
 import type { StepData } from './stepDetail.ts'
 import { buildTrace, traceSummary } from './trace.ts'
@@ -56,6 +58,13 @@ const cssVars = {
   '--aiws-accent': dark.accent,
   '--aiws-focus': dark.focus,
 } as CSSProperties
+
+// 밝은·어두운 화면은 이 브라우저에만 기억한다 (기본: 어두운 화면)
+type Theme = 'dark' | 'light'
+const THEME_KEY = 'specton.aiws.theme'
+function readTheme(): Theme {
+  try { return localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark' } catch { return 'dark' }
+}
 
 function AiWorkspacePage() {
   const [params] = useSearchParams()
@@ -95,6 +104,12 @@ function Workspace({ runId }: { runId: string }) {
   const [selection, setSelection] = useState<Selection | null>(null)
   const [focus, setFocus] = useState<{ id: string; at: number } | null>(null)
   const [panelOpen, setPanelOpen] = useState(true)
+  const [theme, setTheme] = useState<Theme>(readTheme)
+  function toggleTheme() {
+    const next: Theme = theme === 'dark' ? 'light' : 'dark'
+    setTheme(next)
+    try { localStorage.setItem(THEME_KEY, next) } catch { /* 저장 못 해도 이번 화면에서는 바뀐다 */ }
+  }
 
   const revision = picked ?? run?.revision ?? 0
   const artifactEvents = events.filter((e) => e.event === 'artifact').length
@@ -152,7 +167,23 @@ function Workspace({ runId }: { runId: string }) {
     [shown, runId, run?.revision, artifacts],
   )
   const names = useMemo(() => nameIndex(shown?.design ?? []), [shown])
-  const erd = useMemo(() => erdModel(shown?.design ?? [], shown?.findings ?? []), [shown])
+  // 최종 ERD 원문(.mmd)이 있으면 카드 속성 줄을 그 값으로 보인다 (최종 산출물과 같은 타입·이름·키·물리명)
+  const erdFile = artifacts.find((a) => a.kind === 'erd' && a.file_format === 'mmd')
+  const [finalErd, setFinalErd] = useState<{ key: string; tables: Map<string, FinalRow[]> } | null>(null)
+  const erdKey = erdFile ? `${runId}:${erdFile.revision}` : null
+  useEffect(() => {
+    if (!erdFile || !erdKey) return
+    let alive = true
+    artifactText(runId, erdFile)
+      .then((text) => alive && setFinalErd({ key: erdKey, tables: parseFinalErd(text) }))
+      .catch(() => {}) // 못 읽으면 설계 결과로 그린다
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId, erdKey])
+  const finalTables = finalErd && finalErd.key === erdKey ? finalErd.tables : undefined
+  const erd = useMemo(() => erdModel(shown?.design ?? [], shown?.findings ?? [], finalTables), [shown, finalTables])
   const trace = useMemo(
     () => buildTrace({ blocks: shown?.blocks ?? [], requirements: shown?.requirements ?? [], design: shown?.design ?? [], findings: shown?.findings ?? [] }),
     [shown],
@@ -166,7 +197,7 @@ function Workspace({ runId }: { runId: string }) {
 
   if (loadError) {
     return (
-      <div className="aiws" style={{ ...cssVars, padding: 32 }}>
+      <div className="aiws" data-theme={theme} style={{ ...cssVars, padding: 32 }}>
         <h1>AI Workspace</h1>
         <p role="alert">{errorMessage(loadError)}</p>
         <Link to="/">처음으로</Link>
@@ -213,7 +244,7 @@ function Workspace({ runId }: { runId: string }) {
   const erdSelected = selection?.kind === 'entity' ? selection.id : selection?.kind === 'finding' ? (focus?.id ?? null) : null
 
   return (
-    <div className="aiws" style={cssVars}>
+    <div className="aiws" data-theme={theme} style={cssVars}>
       <header className="aiws-header">
         <Link to={`/?run=${encodeURIComponent(runId)}`} style={{ color: dark.accent }}>
           ← 실행 화면
@@ -245,6 +276,9 @@ function Workspace({ runId }: { runId: string }) {
             {approved ? '승인본' : '초안'}
           </span>
         )}
+        <button type="button" className="aiws-theme-btn" onClick={toggleTheme} aria-label={theme === 'dark' ? '밝은 화면으로' : '어두운 화면으로'} title={theme === 'dark' ? '밝은 화면으로' : '어두운 화면으로'}>
+          <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={16} />
+        </button>
         <button type="button" className="aiws-chip" style={{ cursor: 'pointer', background: 'transparent' }} onClick={() => setPanelOpen((o) => !o)} aria-expanded={panelOpen}>
           {panelOpen ? '자세히 닫기 ›' : '‹ 자세히 보기'}
         </button>
@@ -284,7 +318,7 @@ function Workspace({ runId }: { runId: string }) {
             {tab === 'trace' && (
               <span style={{ fontSize: 13, color: dark.inkMuted }}>
                 요구사항 {summary.requirements} · 요구사항 미연결 {summary.unlinkedRequirements} · 원문 미연결 {summary.unlinkedBlocks} · 제외{' '}
-                {summary.excludedBlocks} · 확인(원문 없음) {summary.noSourceBlocks}
+                {summary.excludedBlocks} · 원문 없음 {summary.noSourceBlocks}
               </span>
             )}
           </div>
