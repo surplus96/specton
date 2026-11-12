@@ -1341,160 +1341,88 @@ dialog.confirm p {
   white-space: nowrap;
 }
 
-/* 작동 과정 샘플 (어두운 카드) */
-.demo {
-  background: var(--forest);
-  color: var(--ivory);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
+/* 작동 과정 (첫 방문 안내, pages/start/HowItWorks.tsx) */
+.how {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
 }
 
-.demo__inner {
-  padding: clamp(24px, 4vw, 40px);
-  display: grid;
-  gap: 28px;
-}
-
-.demo__steps {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 20px;
-}
-
-.demo__step {
-  display: grid;
-  gap: 8px;
-  align-content: start;
-}
-
-.demo__step-bar {
-  height: 3px;
-  border-radius: var(--radius-sm);
-  background: rgba(243, 242, 233, 0.18);
-  overflow: hidden;
-}
-
-.demo__step-bar > i {
-  display: block;
-  height: 100%;
-  width: 0;
-  background: var(--lime);
-}
-
-.demo__step b {
-  font-size: 17px;
-  font-weight: 600;
-}
-
-.demo__step b span {
-  color: rgba(243, 242, 233, 0.5);
-  font-weight: 400;
-  margin-right: 8px;
-  font-family: var(--mono);
-  font-size: 14px;
-}
-
-.demo__step p {
-  margin: 0;
-  font-size: 13px;
-  color: rgba(243, 242, 233, 0.6);
-}
-
-.demo__cols {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 20px;
-}
-
-.demo__col {
-  border: 1px solid rgba(243, 242, 233, 0.16);
-  border-radius: var(--radius-lg);
-  padding: 18px;
-  display: grid;
-  gap: 10px;
-  align-content: start;
-  min-width: 0;
-}
-
-.demo__col h4 {
-  margin: 0 0 4px;
-  font-size: 15px;
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.demo__col h4 small {
-  color: rgba(243, 242, 233, 0.5);
-  font-weight: 400;
-}
-
-.demo__line {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  font-size: 14px;
-  padding: 7px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid rgba(243, 242, 233, 0.12);
-  min-width: 0;
-}
-
-.demo__line span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.demo__chip {
-  font-size: 11px;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: var(--radius-pill);
-  background: var(--lime);
-  color: var(--forest);
-  flex: none;
-}
-
-.demo__chip--ghost {
-  background: transparent;
-  color: var(--ivory);
-  border: 1px solid rgba(243, 242, 233, 0.4);
-}
-
-.demo__foot {
+.how__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  border-top: 1px solid rgba(243, 242, 233, 0.14);
-  padding: 18px clamp(24px, 4vw, 40px);
+  padding: 18px 0;
   font-size: 15px;
+  color: var(--ink-muted);
+  cursor: pointer;
+  list-style: none;
 }
 
-.dot-lime {
-  display: inline-block;
+.how__head::-webkit-details-marker {
+  display: none;
+}
+
+.how__chevron {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
-  background: var(--lime);
-  margin-right: 10px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.15s var(--ease);
 }
 
-/* 샘플 재생: 단계가 차례로 채워진다. 줄어든 동작이면 모두 채운 채로 둔다 */
-@media (prefers-reduced-motion: no-preference) {
-  .demo__step:nth-child(1) .demo__step-bar > i { animation: fill 8s 0s infinite; }
-  .demo__step:nth-child(2) .demo__step-bar > i { animation: fill 8s 0s infinite; animation-delay: 1.4s; }
-  .demo__step:nth-child(3) .demo__step-bar > i { animation: fill 8s 0s infinite; animation-delay: 2.8s; }
-  .demo__step:nth-child(4) .demo__step-bar > i { animation: fill 8s 0s infinite; animation-delay: 4.2s; }
-  .demo__col { animation: col-in 8s infinite both; }
-  .demo__col:nth-child(2) { animation-delay: 1.4s; }
-  .demo__col:nth-child(3) { animation-delay: 2.8s; }
+.how[open] .how__chevron {
+  transform: rotate(-135deg);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .demo__step-bar > i { width: 100%; }
+.how__steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+}
+
+.how__step {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 22px 20px 26px;
+}
+
+.how__step + .how__step {
+  border-left: 1px solid var(--line);
+}
+
+.how__num {
+  font-family: var(--mono);
+  font-size: 26px;
+  font-weight: 300;
+  color: var(--ink-subtle);
+}
+
+.how__title {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.how__desc {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-muted);
+}
+
+@media (max-width: 760px) {
+  .how__steps {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .how__step + .how__step {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
 }
 
 /* ── 실행 화면 ─────────────────────────────── */
@@ -1512,7 +1440,7 @@ dialog.confirm p {
 
 .stage-strip {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr)); /* 결과 보기·최종 승인을 한 칸으로 묶어 6칸 (layout/stageSteps.ts) */
   gap: 8px;
   margin-bottom: 28px;
 }
@@ -2099,33 +2027,6 @@ dialog.confirm p {
   }
 }
 
-@keyframes fill {
-  0% {
-    width: 0;
-  }
-  14%,
-  92% {
-    width: 100%;
-  }
-  100% {
-    width: 0;
-  }
-}
-
-@keyframes col-in {
-  0%,
-  4% {
-    opacity: 0.25;
-  }
-  14%,
-  92% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0.25;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -2137,13 +2038,8 @@ dialog.confirm p {
 }
 
 @media (max-width: 960px) {
-  .demo__steps,
   .steps4 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .demo__cols {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 
