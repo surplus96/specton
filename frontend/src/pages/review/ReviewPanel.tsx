@@ -32,7 +32,7 @@ import {
   type Decision,
 } from './rules.ts'
 
-// UI-06 최종 검토 (docs/09, ADR-0010). 「마지막 결정은 사람이 합니다」
+// UI-06 최종 검토 (docs/09, ADR-0010). 「최종 결정 해주세요」
 // 산출물 확인 목록과 결정 카드를 위에, 지적·설계 결과를 아래에 둔다.
 // 승인(확인 대화) · 수정 요청(내용 필수) · 보류(메모). 차단(critical) 지적이 있으면 승인할 수 없다.
 type Props = {
@@ -83,7 +83,7 @@ function ReviewPanel({ run, events, onChanged, label }: Props) {
         eyebrow={<RunEyebrow screen="최종 승인" label={label} run={run} />}
         title={
           <>
-            마지막 결정은 <strong>사람이</strong> 합니다
+            <strong>최종 결정</strong> 해주세요
           </>
         }
       />

@@ -366,7 +366,7 @@ a {
   width: 100%;
   max-width: 1360px;
   margin: 0 auto;
-  padding: 16px clamp(16px, 4vw, 64px) 96px;
+  padding: clamp(40px, 6vw, 88px) clamp(20px, 5.5vw, 88px) 96px;
   flex: 1;
 }
 
@@ -2027,11 +2027,108 @@ dialog.confirm p {
   }
 }
 
+/* 화면을 열 때 한 번의 연출: 제목이 아래에서 드러나고, 구역이 차례로 올라오고, 단계 막대가 채워진다.
+   모양·색·배치는 바꾸지 않고 처음 그릴 때만 움직인다. */
+@keyframes title-reveal {
+  from {
+    clip-path: inset(0 0 100% 0);
+    transform: translateY(0.45em);
+  }
+  to {
+    clip-path: inset(0 0 -0.2em 0);
+    transform: none;
+  }
+}
+
+@keyframes rise-far {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bar-fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes bar-sheen {
+  from {
+    background-position: -120% 0;
+  }
+  to {
+    background-position: 220% 0;
+  }
+}
+
+.screen .hero,
+.screen .title {
+  animation: title-reveal 760ms var(--ease) both;
+}
+
+.screen > *,
+.screen > .stack > *,
+.screen > .stack-lg > * {
+  animation: rise-far 640ms var(--ease) both;
+}
+.screen > :nth-child(2),
+.screen > .stack > :nth-child(2),
+.screen > .stack-lg > :nth-child(2) { animation-delay: 120ms; }
+.screen > :nth-child(3),
+.screen > .stack > :nth-child(3),
+.screen > .stack-lg > :nth-child(3) { animation-delay: 240ms; }
+.screen > :nth-child(4),
+.screen > .stack > :nth-child(4),
+.screen > .stack-lg > :nth-child(4) { animation-delay: 360ms; }
+.screen > :nth-child(n + 5),
+.screen > .stack > :nth-child(n + 5),
+.screen > .stack-lg > :nth-child(n + 5) { animation-delay: 480ms; }
+
+.stage-strip__bar {
+  transform-origin: left center;
+}
+.stage-strip__item--done .stage-strip__bar,
+.stage-strip__item--now .stage-strip__bar {
+  animation: bar-fill 700ms var(--ease) both;
+}
+.stage-strip__item:nth-child(2) .stage-strip__bar { animation-delay: 90ms; }
+.stage-strip__item:nth-child(3) .stage-strip__bar { animation-delay: 180ms; }
+.stage-strip__item:nth-child(4) .stage-strip__bar { animation-delay: 270ms; }
+.stage-strip__item:nth-child(5) .stage-strip__bar { animation-delay: 360ms; }
+.stage-strip__item:nth-child(6) .stage-strip__bar { animation-delay: 450ms; }
+.stage-strip__item--now .stage-strip__bar {
+  background-image: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.85) 50%, transparent 100%);
+  background-size: 45% 100%;
+  background-repeat: no-repeat;
+  animation:
+    bar-fill 700ms var(--ease) both,
+    bar-sheen 1.8s ease-in-out 900ms infinite;
+}
+
+/* 로고의 + 가 마우스를 올리면 한 번 돈다. */
+.logo i {
+  display: inline-block;
+  transition: transform 400ms var(--ease);
+}
+a:hover > .logo i,
+a:focus-visible > .logo i {
+  transform: rotate(90deg);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
